@@ -1,0 +1,375 @@
+                     Sherpa 4.2.2 Release Notes
+                             2010 SAO
+
+
+
+  o In Sherpa package 2, we will no longer support S-Lang.  As a
+    consequence, the Sherpa S-Lang interface has been removed.  We no
+    longer provide any means of importing Sherpa as a S-Lang module.
+
+    * We no longer provide a S-Lang version of the Sherpa high-level
+      UI.
+
+    * It is no longer possible to do 'require("sherpa");' in slsh, or
+      any other S-Lang application.
+
+    * We no longer provide the option to use slsh as the interpreter
+      in the Sherpa application script.  The "-l" switch has been
+      removed.  The remaining switches are:
+
+      % sherpa -h
+      -- sherpa
+        usage: sherpa [-x] [-n] [-b] [-rcfile file] [-norcfile] 
+           -x       launch sherpa shell in separate display terminal
+           -n       do not print banner
+           -b       batch mode
+           -rcfile  load a user specifiable preference file
+           -norcfile do not load any user specifiable preference file
+                     (overrides -rcfile)
+              Python command file to execute
+
+  o The Sherpa banner now prints the Sherpa package number, and the 
+    date Sherpa was built.  For example,
+
+    % sherpa
+    -----------------------------------------------------
+    Welcome to Sherpa: CXC's Modeling and Fitting Package
+    -----------------------------------------------------
+    CIAO 4.2 Sherpa version 2 Tuesday, July 6, 2010
+
+    sherpa-1>
+
+  o Sherpa now allows the user to define model expressions that apply
+    response matrices, or PSFs, to some models, while not applying the
+    response or the PSF to the rest of the model expression.  An
+    example of this kind of model is an expression where a spectral
+    model is defined in energy space, and folded through a response
+    matrix; then, a background model defined in *counts*, which is
+    *not* folded through the response, is added to the model
+    expression.
+
+    The new functions set_full_model(), set_bkg_full_model() allow
+    users to explicitly define instruments and convolutions that are
+    applied to specified model components.
+    
+    Legacy functionality is still supported with set_source() and
+    set_model(); CIAO 4.2 scripts using these functions will continue
+    to work in the current Sherpa.
+
+    Automatic            Manual Definition
+    =============        =================
+    set_source()         set_full_model()
+    set_model()
+
+    set_bkg_source()     set_bkg_full_model()
+    set_bkg_model()
+
+  o Two iterative fitting methods have been added to Sherpa: Primini's
+    methods, and sigma-rejection.  Both were fitting methods in Sherpa
+    3.4, and their ports to Sherpa 4 have just been completed.
+
+    Primini's method is to re-calculate statistical errors, using the
+    best-fit model parameters from the *previous* fit, until the fit
+    can no longer be improved.
+
+    Sigma-rejection is based on the IRAF SFIT function.  In successive
+    fits, data points for which ((data - model) / error) exceeds some
+    threshold are added to the filter, and automatically excluded from
+    the next fit.
+
+    The essence of an iterative fitting method is that the fit method
+    can be called several times, until some criterion is met.
+
+    Several new UI functions have been added, to allow users to set
+    the iterative fitting method, to find out what the current
+    iterative fitting method is, and to get and set options for this
+    method.  These functions are:
+
+    set_iter_method()		# Choices are:
+					# ["none" | "primini" | "sigmarej" ]
+                                        # "none" is the default.
+
+    get_iter_method_name()		# Print the name of the current
+                                        # iterative fitting method
+
+    list_iter_methods()	                # List all possible iterative fitting
+                                        # methods
+
+    get_iter_method_opt()       # Get the value of the named option
+                                        # for the current iterative
+					# fitting method
+                                        # If no argument, list all options
+     
+    set_iter_method(, value)    # Set the named option to a new value
+                                        # for the current iterative
+                                        # fitting method
+
+    If the iterative fitting method is "none" (the default value),
+    then no iterative fitting is done -- when "fit()" is called, the
+    optimization method is called once, and Sherpa otherwise operates
+    as expected.
+
+    The statistic and optimization methods are selected independently
+    of the iterative fitting method -- thus:
+
+    sherpa> set_stat("chi2datavar")
+    sherpa> set_method("neldermead")
+    sherpa> set_iter_method("primini")
+    sherpa> fit()			# Primini's method is called
+    sherpa> set_iter_method("none")
+    sherpa> fit()			# Nelder-Mead is called once,
+					# as expected.
+
+    N.B. Primini's method and sigma-rejection can only be called when
+    the statistic is a chi-squared statistic -- it cannot be used with
+    least-squares, Cash or C-statistic.
+
+  o Updates to load_filter() include the ability to read FITS images
+    that hold filter information.  There is a new keyword argument
+    'ignore' that indicates whether the filter information should be
+    used to notice or ignore data points.  'ignore' is False by
+    default.
+
+    e.g.
+
+    load_filter(id=1, filename, bkg_id=None, ignore=False, ncols=2)
+    set_filter(id=1, val, bkg_id=None, ignore=False)
+
+  o Updates to plot_source() now support the 'factor' setting of
+    set_analysis().  Calling plot_source() with a setting of factor=1
+    corresponds to the XSPEC plot eufspec, a setting of factor=2
+    represents eeufspec.
+
+    e.g.
+
+    eufspec: E f(E)
+
+    set_analysis("energy", factor=1)
+    plot_source()
+
+    eeufspec: E^2 f(E)
+
+    set_analysis("energy", factor=2)
+    plot_source()
+
+    eufspec: \lambda f(\lambda)
+
+    set_analysis("wave", factor=1)
+    plot_source()
+
+    eeufspec: \lambda^2 f(\lambda)
+
+    set_analysis("wave", factor=2)
+    plot_source()
+
+  o User creation of WCS objects does not require keywords to
+    be of type numpy ndarray.
+
+  o There is a new vectorized function 'interpolate' found in
+    the module sherpa.utils
+
+    e.g.
+
+    from sherpa.utils import interpolate
+    yout = interpolate(xout, xin, yin, method='linear'|'nearest')
+
+  o Fix to display plot errorbars correctly when statistical error
+    is calculated by the statistic and systematic error is set by
+    the user.
+
+  o Fix to PSF imaging to correctly display rectangular PSF images
+    from file in DS9.
+
+  o When Ctrl-C is issued while proj() or conf() are running, Sherpa
+    will now correctly kill off slave processes from any parallel
+    evaluation.
+
+  o Parallel evaluation of proj() and conf() is now automatically
+    turned off on single core machines.
+
+  o show_psf() now hides the header information if the PSF is from
+    file.
+
+  o show_all() now displays the correct response information for PHA
+    data sets.
+
+  o A new high level UI function add_model() that assigns a
+    user-defined model class as a Sherpa model type.  User-defined
+    model classes that inherit from the Sherpa Arithmetic model class
+    or other Sherpa models are accepted.
+
+    e.g.
+
+    from sherpa.models import PowLaw1D
+    class MyPowLaw(PowLaw1D): pass
+    add_model(MyPowLaw)
+    set_model(mypowlaw.p1)
+
+  o New Sherpa models called scale1d, scale2d and logparlaw1d.  The
+    scale1d model is simply const1d with the integrate flag turned off
+    by default.  If a user sets scale1d as a model with an integrated
+    data set, it will behave as a simple constant by default.
+    Similarly, scale2d is the const2d model with the integrate flag
+    turned off.  If a user sets scale2d as a model with an integrated
+    data set, it will behave as a simple constant by default.
+
+    The logparlaw1d model has the following form
+
+                /  x \ - p[1] - p[2] * log10(x/p[0])
+    f(x) = p[3] |----|
+                 \p[0]/
+
+    e.g.
+
+    list_models()
+    [..., 'logparlaw1d', 'scale1d',...]
+
+  o The Sherpa table model has been updated to support interpolation
+    of data points on the data set grid from the grid supplied from
+    file.  The grids need not be of constant or comparable bin size.
+    If the table model grid is not sorted, Sherpa will sort it in
+    ascending order.
+
+  o The energy and photon flux is calculated more efficiently for PHA
+    data sets with multiple responses.
+
+  o A fix to allow simultaneous fitting, when a different PSF model
+    is assigned to each data set in a fit.
+
+  o New function get_response() returns the associated PHA instrument
+    (RMF + ARF) or any combination or iteration.  This response object
+    is callable for use in a model expression.  Backgrounds are
+    supported using the bkg_id argument.  This is especially useful
+    when dealing with multiple responses.
+
+    e.g.
+
+    rsp = get_response()
+
+    set_full_model(rsp(xsphabs.abs1*powlaw1d.p1))
+
+  o High level functions get_arf() and get_rmf() return 'instrument'
+    versions of the ARF or RMF dataset that include a callable
+    functionality.  This allows the user to define a response in a
+    model expression using arf and rmf instances.  The multiplication
+    with the exposure time is implicit.
+
+    e.g.
+
+    arf = get_arf()
+    rmf = get_rmf()
+
+    set_full_model(rmf(arf(xsphabs.abs1*powlaw1d.p1)))
+
+  o A new utility function, parallel_map(), is available in
+    sherpa.utils.  All usage of the function divide_run_parallel()
+    have been replaced with parallel_map() (except within
+    OptMethods). divide_run_parallel() is to be deprecated.
+
+    This function is a parallelized version of the native Python map
+    which evaluates a function over a list of arguments.
+
+    e.g.
+
+    parallel_map(lambda x: x*x, [1,2,3]) -> [1,4,9]
+
+  o The Sherpa Model base class now includes startup() and teardown()
+    methods for one-time initialization and cleanup.  This is primary
+    used for noticing instrument responses before and after model
+    evaluation, but extends to all derived Model classes including
+    UserModel and user extensions.
+
+    - These methods are called *once* during fitting, confidence,
+      confidence plotting.
+
+    - These methods are called *every* time with calc_stat().
+
+  o XSPEC-style table models are now supported using
+    load_table_model().  Additive and multiplicative table models are
+    supported (Atable and Mtable).
+
+    e.g.
+
+    load_table_model("xstbl", "mymod.mod")
+    set_model(xstbl)
+
+  o PSF and Table model instances now have consistent signatures to
+    their fold() methods.  fold() takes a single dataset instance.
+
+  o Improved error messages during model evaluation when arrays are
+    different sizes.
+
+  o XSPEC model parameter bug fixes -- flag parameters are now always
+    frozen.
+
+  o Sherpa now uses a private DS9 window for communication, with id
+    'sherpa' for session imaging.
+
+
+Bugs
+====
+  o RFE: show_bkg_model() now displays the bkg scale factor
+  o 12157  get_arf() reports an error from dataset 1 when given an explicit
+           dataset
+  o 12223  Re: BUG: numerical issues mean powlaw1d results are very strange
+           when gamma is v. close to
+  o 12225  Re: helpdesk: using XSpec table models
+  o 12226  RFE: sample_energy_flux()
+  o 12253  BUG?: background doesn't seem to change analysis setting for
+           grating case
+  o 12257  Advanced user defined instrument models
+  o 12264  BUG: show_bkg_source ignores the bkg_id value
+  o 12265  atten model: I think it should ignore the integrate setting
+  o 12280  BUG: space needed in Model.__getattr__ AttributeError warning
+           message
+  o 12281  RFE: show_data -- header info is removed from show_* commands
+  o 12316  get_proj_results() and get_conf_results() fail
+  o 12350  using set_full_model() (and get_response()) to sum multiple
+           rsp*model components
+  o 12352  BUG: set_grouping fails with an ugly error message
+           indicative of an internal error
+  o 12353  BUG: delete_model_component throws a KeyError
+  o 12355  BUG: power law model - incorrect model values
+  o 12356  BUG: cannot replace arf in CIAOX/CIAOT
+  o 12369  plot_fit()/plot_model fails with set_full_model()
+  o 12381  print(get_model()) output in CIAO 4.2.1 versus CIAO 4.2
+  o 12382  normbeta1d model equation
+  o 12383  Helpdesk: Gauss-Kronrod integration has failed
+  o 12384  BUG: set_source/set_model show different behaviour
+  o 12395  2D Fit With Rectangular PSF
+  o 12396  2D Fit With Multiple PSFs
+
+Caveats:
+========
+  o In Sherpa package 2, an attribute of the TableModel class has been
+    changed.  This means that if a saved binary or "pickle" file was
+    created with the CIAO 4.2 Sherpa package 1 version of Sherpa,
+    using the save() function, and the pickle happens to contain a
+    table model, then the file cannot be read back in via restore() in
+    Sherpa package 2.  (If the pickle file does not contain any table
+    models, then restore() should work as expected.  
+
+    (And if save() and restore() are both called in Sherpa package 2,
+    then table models can be included in the pickle file.  This caveat
+    only applies for saved binaries created with Sherpa package 1,
+    that the user attempts to read into Sherpa package 2.)
+
+  o In Sherpa package 2, when the user calls save_all(), the model
+    definition is always written as a "set_full_model" statement.
+
+    In certain cases (such as use of apply_rmf or apply_arf in the
+    model definition) reading that statement back into Sherpa package
+    2 does not work properly.
+
+    The remedy is for the user to manually edit the file created by
+    save_all, to change the "set_full_model" statement to
+    "set_source".  For example, a statement like this:
+
+    set_full_model(1, apply_rmf(apply_arf(xsmekal.clus * xsphabs.gal)))
+
+    The user should modify to:
+
+    set_source(1, (xsmekal.clus * xsphabs.gal))
+
+    Then the user can read the file back in to Sherpa.
+

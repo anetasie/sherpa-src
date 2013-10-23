@@ -110,6 +110,12 @@ while True:
                 softmin = '0'
                 softmax = '1'
                 hardmax = '1'
+            elif len(parts) == 3:
+                val = parts[2]
+                hardmin = '0'
+                softmin = '0'
+                softmax = '1'
+                hardmax = '1'
             else:
                 val, hardmin, softmin, softmax, hardmax = parts[1:6]
 

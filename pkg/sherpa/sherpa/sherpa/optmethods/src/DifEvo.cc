@@ -1,1024 +1,90 @@
 #ifdef testDifEvo
 
+// 
+//  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+//
+//
+//  This program is free software; you can redistribute it and/or modify
+//  it under the terms of the GNU General Public License as published by
+//  the Free Software Foundation; either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License along
+//  with this program; if not, write to the Free Software Foundation, Inc.,
+//  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+//
+
+
 #include "DifEvo.hh"
 
-#include "fcmp.h"
-#include "tstoptfct.hh"
-#include "sherpa/functor.hh"
-
-#include "minpack/levmar.hh"
+#include "minpack/LevMar.hh"
 #include "NelderMead.hh"
 
-using namespace sherpa;
+#include "tests/tstopt.hh"
 
-template <typename Real>
-void print_pars( const char* prefix, const char* name, int nfev, Real stat,
-		 Real answer, int n, const std::vector< Real >& x,
-		 Real tol=
-		 1.0e4*std::sqrt( std::numeric_limits< Real >::epsilon() ) ) {
+void tstde( Init init, Fct fct, int npar, std::vector<double>& par,
+	    std::vector<double>& lo, std::vector<double>& hi,
+	    double tol, const char* fct_name, int npop, int maxfev,
+	    double xprob, double sfactor ) {
 
-  
-  std::cout << prefix << name << '\t';
-  if ( 0 == _sao_fcmp( stat, answer, std::sqrt(tol) ) )
-    std::cout << nfev << '\t';
-  else
-    std::cout << -nfev << '\t';
-  std::cout << answer << '\t';
-  std::cout << stat << '\t';
-  std::cout << x[0];
-  for ( int ii = 1; ii < n; ++ii )
-    std::cout << ',' << x[ii];
-  std::cout << '\n';
+  int nfev, mfcts=0, seed=1357, verbose = 0, size = npop * npar,
+    maxnfev = maxfev * npar * size;
+  double fmin, answer=0.0;
+  //
+  // you may think you are clever by eliminating the following overhead
+  // and simply use the vector par, but believe me it is necessary to call
+  // with de_nm and de with mypar!
+  //
+  std::vector<double> mypar( npar, 0.0 );
 
-}
+  init( npar, mfcts, answer, &par[0], &lo[0], &hi[0] );
+  sherpa::DifEvo< Fct, void*,
+    sherpa::NelderMead< Fct, void* > > de_nm( fct, NULL );
+  for ( int ii = 0; ii < npar; ++ii )
+    mypar[ ii ] = par[ ii ];
+  de_nm( verbose, maxnfev, tol, size, seed, xprob, sfactor, npar, lo, hi,
+	 mypar, nfev, fmin );
+  print_pars( "DifEvo_nm_", fct_name, nfev, fmin, answer, npar, mypar );
 
-#define NPOP 16
-#define MAXNFEV 64
-
-template< typename Init, typename Fct >
-void justdoit( Init init, Fct fct, int npars, 
-	       std::vector< double >& pars, std::vector< double >& lo,
-	       std::vector< double >& hi, double tol, const char* header ) {
-
-  int mfcts, seed=1357;
-  double answer;
-  double xprob = 0.9, scale=1.0;
-  int begin_strategy = 0, end_strategy = 10;
-
-  for ( int strategy = begin_strategy; strategy < end_strategy; ++ strategy ) {
-
-    init( npars, mfcts, answer, &pars[0], &lo[0], &hi[0] );
-
-    sherpa::DifEvo< Fct, void*,
-      sherpa::NelderMead< Fct, void* > > de_nm( npars, &pars[0], &lo[0],
-						&hi[0], fct, NULL, xprob,
-						scale, strategy, seed );
-
-    sherpa::DifEvo< Fct, void*,
-      sherpa::OptFunc< Fct, void* > > de( npars, &pars[0], &lo[0], &hi[0], fct,
-					  NULL, xprob, scale, strategy, seed );
-
-    int nfev, verbose = 0, population_size = NPOP * npars;
-    int maxnfev = MAXNFEV * npars * population_size;
-    double fmin;
-    de_nm( &pars[0], verbose, maxnfev, tol, population_size, nfev, fmin );
-    print_pars( "DifEvo_nm_", header, nfev, fmin, answer, npars, pars );
-
-    de( &pars[0], verbose, maxnfev, tol, population_size, nfev, fmin );
-    print_pars( "DifEvo_", header, nfev, fmin, answer, npars, pars );
-
-  }
+  init( npar, mfcts, answer, &par[0], &lo[0], &hi[0] );
+  sherpa::DifEvo< Fct, void*,
+    sherpa::OptFunc< Fct, void* > > de( fct, NULL );
+  for ( int ii = 0; ii < npar; ++ii )
+    mypar[ ii ] = par[ ii ];
+  de( verbose, maxnfev, tol, size, seed, xprob, sfactor, npar, lo, hi,
+      mypar, nfev, fmin );
+  print_pars( "DifEvo_", fct_name, nfev, fmin, answer, npar, mypar );
 
 }
 
-template< typename Init, typename Fct >
-void justdoitlm( Init init, Fct fct, int npars, 
-		 std::vector< double >& pars, std::vector< double >& lo,
-		 std::vector< double >& hi, double tol, const char* header ) {
-
-  int mfcts, seed=1357;
-  double answer;
-  double xprob = 0.9, scale=1.0;
-  int begin_strategy = 0, end_strategy = 10;
-
-  for ( int strategy = begin_strategy; strategy < end_strategy; ++ strategy ) {
-
-    init( npars, mfcts, answer, &pars[0], &lo[0], &hi[0] );
-
-    sherpa::DifEvo< Fct, void*,
-      minpack::LevMar< Fct, void* > > de( npars, &pars[0], &lo[0], &hi[0],
-					  fct, NULL, xprob, scale, strategy,
-					  seed, mfcts );
-
-    int nfev, verbose = 0, population_size = NPOP * npars;
-    int maxnfev = MAXNFEV * npars * population_size;
-    double fmin;
-    de( &pars[0], verbose, maxnfev, tol, population_size, nfev, fmin );
-    
-    print_pars( "DifEvo_lm_", header, nfev, fmin, answer, npars, pars );
-
-  }
-
-}
-
-void tstuncopt( int npars, double tol ) {
-
-  const int verbose=0, size=npars*32;
-  std::vector< double > par( size, 0 ), lo( size, -1.0e2 ), hi( size, 1.0e2 );
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Rosenbrock<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::RosenbrockInit<double> ), fct, npars, par,
-	      lo, hi, tol, "Rosenbrock" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::FreudensteinRoth<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::FreudensteinRothInit<double> ),
-	      fct, npars, par, lo, hi, tol, "FreudensteinRoth" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::PowellBadlyScaled<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::PowellBadlyScaledInit<double> ),
-	      fct, npars, par, lo, hi, tol, "PowellBadlyScaled" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BrownBadlyScaled<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BrownBadlyScaledInit<double> ),
-	      fct, 2, par, lo, hi, tol, "BrownBadlyScaled" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Beale<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BealeInit<double> ),
-	      fct, npars, par, lo, hi, tol, "Beale" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::JennrichSampson<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::JennrichSampsonInit<double> ),
-	      fct, npars, par, lo, hi, tol,
-	      "JennrichSampson" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::HelicalValley<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::HelicalValleyInit<double> ),
-	      fct, 3, par, lo, hi, tol, "HelicalValley" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bard<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BardInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Bard" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Gaussian<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::GaussianInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Gaussian" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Meyer<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MeyerInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Meyer" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::GulfResearchDevelopment<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::GulfResearchDevelopmentInit<double> ),
-	      fct, 3, par, lo, hi, tol, "GulfResearchDevelopment" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Box3d<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Box3dInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Box3d" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::PowellSingular<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::PowellSingularInit<double> ),
-	      fct, 4, par, lo, hi, tol, "PowellSingular" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Wood<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::WoodInit<double> ),
-	      fct, 4, par, lo, hi, tol, "Wood" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::KowalikOsborne<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::KowalikOsborneInit<double> ),
-	      fct, 4, par, lo, hi, tol, "KowalikOsborne" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BrownDennis<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BrownDennisInit<double> ),
-	      fct, 4, par, lo, hi, tol, "BrownDennis" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Osborne1<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Osborne1Init<double> ),
-	      fct, 5, par, lo, hi, tol, "Osborne1" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Biggs<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BiggsInit<double> ),
-	      fct, 6, par, lo, hi, tol, "Biggs" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Osborne2<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Osborne2Init<double> ),
-	      fct, 11, par, lo, hi, tol, "Osborne2" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Watson<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::WatsonInit<double> ),
-	      fct, 6, par, lo, hi, tol, "Watson" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::PenaltyI<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::PenaltyIInit<double> ),
-	      fct, 4, par, lo, hi, tol, "PenaltyI" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::PenaltyII<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::PenaltyIIInit<double> ),
-	      fct, 4, par, lo, hi, tol, "PenaltyII" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::VariablyDimensioned<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::VariablyDimensionedInit<double> ),
-	      fct, npars, par, lo, hi, tol, "VariablyDimensioned" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Trigonometric<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::TrigonometricInit<double> ),
-	      fct, npars, par, lo, hi, tol, "Trigonometric" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BrownAlmostLinear<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BrownAlmostLinearInit<double> ),
-	      fct, npars, par, lo, hi, tol, "BrownAlmostLinear" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::DiscreteBoundary<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::DiscreteBoundaryInit<double> ),
-	      fct, npars, par, lo, hi, tol, "DiscreteBoundary" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::DiscreteIntegral<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::DiscreteIntegralInit<double> ),
-	      fct, npars, par, lo, hi, tol, "DiscreteIntegral" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BroydenTridiagonal<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BroydenTridiagonalInit<double> ),
-	      fct, npars, par, lo, hi, tol, "BroydenTridiagonal" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BroydenBanded<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BroydenBandedInit<double> ),
-	      fct, npars, par, lo, hi, tol, "BroydenBanded" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::LinearFullRank<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LinearFullRankInit<double> ),
-	      fct, npars, par, lo, hi, tol, "LinearFullRank" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::LinearFullRank1<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LinearFullRank1Init<double> ),
-	      fct, npars, par, lo, hi, tol, "LinearFullRank1" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::LinearFullRank0cols0rows<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LinearFullRank0cols0rowsInit<double> ),
-	      fct, npars, par, lo, hi, tol, "LinearFullRank0cols0rows" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Chebyquad<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::ChebyquadInit<double> ),
-	      fct, 9, par, lo, hi, tol, "Chebyquad" );
-  }
-
-  return;
-
-}
-
-void tstuncoptlm( int npars, double tol ) {
-
-  const int verbose=0, size=npars*32;
-  std::vector< double > par( size, 0 ), lo( size, -1.0e2 ), hi( size, 1.0e2 );
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Rosenbrock<double,void*> );
-    
-    justdoitlm( sherpa::fct_ptr( tstoptfct::RosenbrockInit<double> ),
-		fct, npars, par, lo, hi, tol, "Rosenbrock" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::FreudensteinRoth<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::FreudensteinRothInit<double> ),
-		fct, npars, par, lo, hi, tol, "FreudensteinRoth" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::PowellBadlyScaled<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::PowellBadlyScaledInit<double> ),
-		fct, npars, par, lo, hi, tol, "PowellBadlyScaled" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::BrownBadlyScaled<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BrownBadlyScaledInit<double> ),
-	      fct, 2, par, lo, hi, tol, "BrownBadlyScaled" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Beale<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BealeInit<double> ),
-	      fct, npars, par, lo, hi, tol, "Beale" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::JennrichSampson<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::JennrichSampsonInit<double> ),
-	      fct, npars, par, lo, hi, tol, "JennrichSampson" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::HelicalValley<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::HelicalValleyInit<double> ),
-	      fct, 3*npars, par, lo, hi, tol, "HelicalValley" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Bard<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BardInit<double> ),
-	      fct, 3*npars, par, lo, hi, tol, "Bard" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Gaussian<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::GaussianInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Gaussian" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Meyer<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::MeyerInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Meyer" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::GulfResearchDevelopment<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::GulfResearchDevelopmentInit<double> ),
-	      fct, 3, par, lo, hi, tol, "GulfResearchDevelopment" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Box3d<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::Box3dInit<double> ),
-	      fct, 3, par, lo, hi, tol, "Box3d" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::PowellSingular<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::PowellSingularInit<double> ),
-	      fct, 4*npars, par, lo, hi, tol, "PowellSingular" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Wood<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::WoodInit<double> ),
-	      fct, 4, par, lo, hi, tol, "Wood" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::KowalikOsborne<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::KowalikOsborneInit<double> ),
-	      fct, 4, par, lo, hi, tol, "KowalikOsborne" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::BrownDennis<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BrownDennisInit<double> ),
-	      fct, 4, par, lo, hi, tol, "BrownDennis" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Osborne1<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::Osborne1Init<double> ),
-	      fct, 5, par, lo, hi, tol, "Osborne1" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Biggs<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BiggsInit<double> ),
-	      fct, 6, par, lo, hi, tol, "Biggs" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Osborne2<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::Osborne2Init<double> ),
-	      fct, 11, par, lo, hi, tol, "Osborne2" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Watson<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::WatsonInit<double> ),
-	      fct, 6, par, lo, hi, tol, "Watson" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::PenaltyI<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::PenaltyIInit<double> ),
-	      fct, 4, par, lo, hi, tol, "PenaltyI" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::PenaltyII<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::PenaltyIIInit<double> ),
-	      fct, 4, par, lo, hi, tol, "PenaltyII" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::VariablyDimensioned<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::VariablyDimensionedInit<double> ),
-	      fct, npars, par, lo, hi, tol, "VariablyDimensioned" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Trigonometric<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::TrigonometricInit<double> ),
-	      fct, npars, par, lo, hi, tol, "Trigonometric" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::BrownAlmostLinear<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BrownAlmostLinearInit<double> ),
-	      fct, npars, par, lo, hi, tol, "BrownAlmostLinear" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::DiscreteBoundary<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::DiscreteBoundaryInit<double> ),
-	      fct, npars, par, lo, hi, tol, "DiscreteBoundary" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::DiscreteIntegral<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::DiscreteIntegralInit<double> ),
-	      fct, npars, par, lo, hi, tol, "DiscreteIntegral" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::BroydenTridiagonal<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BroydenTridiagonalInit<double> ),
-	      fct, npars, par, lo, hi, tol, "BroydenTridiagonal" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::BroydenBanded<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::BroydenBandedInit<double> ),
-	      fct, npars, par, lo, hi, tol, "BroydenBanded" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::LinearFullRank<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::LinearFullRankInit<double> ),
-	      fct, npars, par, lo, hi, tol, "LinearFullRank" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::LinearFullRank1<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::LinearFullRank1Init<double> ),
-	      fct, npars, par, lo, hi, tol, "LinearFullRank1" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::LinearFullRank0cols0rows<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::LinearFullRank0cols0rowsInit<double> ),
-	      fct, npars, par, lo, hi, tol, "LinearFullRank0cols0rows" );
-  }
-
-  {
-    sherpa::FctPtr< void, int, int, double*, double*, int&, void* >
-      fct( tstoptfct::Chebyquad<double,void*> );
-
-    justdoitlm( sherpa::fct_ptr( tstoptfct::ChebyquadInit<double> ),
-	      fct, 9, par, lo, hi, tol, "Chebyquad" );
-  }
-
-  return;
-
-}
-
-void tstglobal( int npars, double tol ) {
-
-  const int verbose = 0, size=npars*32;
-  std::vector< double > par( size, 0 ), lo( size, -1.0e2 ), hi( size, 1.0e2 );
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::McCormick<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::McCormickInit<double> ),
-	      fct, 2, par, lo, hi, tol, "McCormick" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BoxBetts<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BoxBettsInit<double> ),
-	      fct, 3, par, lo, hi, tol, "BoxBetts" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Paviani<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::PavianiInit<double> ),
-	      fct, 10, par, lo, hi, tol, "Paviani" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::GoldsteinPrice<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::GoldsteinPriceInit<double> ),
-	      fct, 2, par, lo, hi, tol, "GoldsteinPrice" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shekel5<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Shekel5Init<double> ),
-	      fct, 4, par, lo, hi, tol, "Shekel5" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shekel7<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Shekel7Init<double> ),
-	      fct, 4, par, lo, hi, tol, "Shekel7" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shekel10<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Shekel10Init<double> ),
-	      fct, 4, par, lo, hi, tol, "Shekel10" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Levy<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LevyInit<double> ),
-	      fct, 4, par, lo, hi, tol, "Levy4" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Levy<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LevyInit<double> ),
-	      fct, 5, par, lo, hi, tol, "Levy5" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Levy<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LevyInit<double> ),
-	      fct, 6, par, lo, hi, tol, "Levy6" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Levy<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::LevyInit<double> ),
-	      fct, 7, par, lo, hi, tol, "Levy7" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Griewank<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::GriewankInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Griewank" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::SixHumpCamel<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::SixHumpCamelInit<double> ),
-	      fct, 2, par, lo, hi, tol, "SixHumpCamel" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Branin<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BraninInit<double> ),
-	      fct, 2, par, lo, hi, tol,
-	      "Branin" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shubert<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::ShubertInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Shubert" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Hansen<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::HansenInit<double> ),
-	      fct, 2, par, lo, hi, tol,
-	      "Hansen" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Cola<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::ColaInit<double> ),
-	      fct, 17, par, lo, hi, tol, "Cola" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Ackley<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::AckleyInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Ackley" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bohachevsky1<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Bohachevsky1Init<double> ),
-	      fct, 2, par, lo, hi, tol, "Bohachevsky1" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bohachevsky2<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Bohachevsky2Init<double> ),
-	      fct, 2, par, lo, hi, tol, "Bohachevsky2" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bohachevsky3<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Bohachevsky3Init<double> ),
-	      fct, 2, par, lo, hi, tol, "Bohachevsky3" );
-  }
-
-
-  // {
-  //   FctPtr< void, int, double*, double&, int&, void* >
-  //     fct( tstoptfct::DixonPrice<double,void*> );
-  // 
-  //   justdoit( fct_ptr( tstoptfct::DixonPriceInit<double> ),
-  // 	      fct, 25, par, lo, hi, tol, "DixonPrice" );
-  // }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Easom<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::EasomInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Easom" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Rastrigin<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::RastriginInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Rastrigin" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Michalewicz<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MichalewiczInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Michalewicz2" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Michalewicz<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MichalewiczInit<double> ),
-	      fct, 5, par, lo, hi, tol, "Michalewicz5" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Michalewicz<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MichalewiczInit<double> ),
-	      fct, 10, par, lo, hi, tol, "Michalewicz10" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::McCormick<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::McCormickInit<double> ),
-	      fct, 2, par, lo, hi, tol, "McCormick" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::BoxBetts<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::BoxBettsInit<double> ),
-	      fct, 3, par, lo, hi, tol, "BoxBetts" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Paviani<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::PavianiInit<double> ),
-	      fct, 10, par, lo, hi, tol, "Paviani" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::GoldsteinPrice<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::GoldsteinPriceInit<double> ),
-	      fct, 2, par, lo, hi, tol, "GoldsteinPrice" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shekel5<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Shekel5Init<double> ),
-	      fct, 4, par, lo, hi, tol, "Shekel5" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shekel7<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Shekel7Init<double> ),
-	      fct, 4, par, lo, hi, tol, "Shekel7" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Shekel10<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Shekel10Init<double> ),
-	      fct, 4, par, lo, hi, tol, "Shekel10" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Griewank<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::GriewankInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Griewank" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Ackley<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::AckleyInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Ackley" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bohachevsky1<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Bohachevsky1Init<double> ),
-	      fct, 2, par, lo, hi, tol, "Bohachevsky1" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bohachevsky2<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Bohachevsky2Init<double> ),
-	      fct, 2, par, lo, hi, tol, "Bohachevsky2" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Bohachevsky3<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::Bohachevsky3Init<double> ),
-	      fct, 2, par, lo, hi, tol, "Bohachevsky3" );
-  }
-
-
-  // {
-  //   FctPtr< void, int, double*, double&, int&, void* >
-  //     fct( tstoptfct::DixonPrice<double,void*> );
-  // 
-  //  justdoit( fct_ptr( tstoptfct::DixonPriceInit<double> ),
-  // 	      fct, 25, par, lo, hi, tol, "DixonPrice" );
-  // }
-
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Easom<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::EasomInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Easom" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Rastrigin<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::RastriginInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Rastrigin" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Michalewicz<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MichalewiczInit<double> ),
-	      fct, 2, par, lo, hi, tol, "Michalewicz2" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Michalewicz<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MichalewiczInit<double> ),
-	      fct, 5, par, lo, hi, tol, "Michalewicz5" );
-  }
-
-  {
-    FctPtr< void, int, double*, double&, int&, void* >
-      fct( tstoptfct::Michalewicz<double,void*> );
-
-    justdoit( fct_ptr( tstoptfct::MichalewiczInit<double> ),
-	      fct, 10, par, lo, hi, tol, "Michalewicz10" );
-  }
-
-  return;
+void tstde_lm( Init init, FctVec fct, int npar, std::vector<double>& par,
+	       std::vector<double>& lo, std::vector<double>& hi,
+	       double tol, const char* fct_name, int npop, int maxfev,
+	       double xprob, double sfactor ) {
+
+  int nfev, mfcts=0, seed=1357, verbose = 0, size = npop * npar,
+    maxnfev = maxfev * npar * size;
+  double fmin, answer=0.0;
+  //
+  // you may think you are clever by eliminating the following overhead
+  // and simply use the vector par, but believe me it is necessary to call
+  // with de_nm and de with mypar!
+  //
+  std::vector<double> mypar( npar, 0.0 );
+
+  init( npar, mfcts, answer, &par[0], &lo[0], &hi[0] );
+  sherpa::DifEvo< FctVec, void*,
+    minpack::LevMar< FctVec, void* > > de_lm( fct, NULL, mfcts );
+  for ( int ii = 0; ii < npar; ++ii )
+    mypar[ ii ] = par[ ii ];
+  de_lm( verbose, maxnfev, tol, size, seed, xprob, sfactor, npar, lo, hi,
+	 mypar, nfev, fmin );
+  print_pars( "DifEvo_lm_", fct_name, nfev, fmin, answer, npar, mypar );
 }
 
 int main( int argc, char* argv[] ) {
@@ -1035,257 +101,211 @@ int main( int argc, char* argv[] ) {
 	  break;
       default:
 	fprintf( stderr, "%s: illegal option '%c'\n", argv[ 0 ], c );
-	fprintf( stderr, "Usage %s [ -g ] [ -u ] [ npars ]\n", argv[ 0 ] );
+	fprintf( stderr, "Usage %s [ -g ] [ -u ] [ npar ]\n", argv[ 0 ] );
 	return EXIT_FAILURE;
       }
 
-  int npars=2;
-  if ( argc == 1 ) {
-    npars = atoi( *argv );
-    std::cout << "#\n# npars = " << npars << "\n#\n";
-  }
+  int npar=2;
+  if ( argc == 1 )
+    npar = atoi( *argv );
 
   double tol=1.0e-6;
+  std::cout << "#\n#:npar = " << npar << "\n";
   std::cout << "#:tol=" << tol << '\n';
   std::cout << "#\n# A negative value for the nfev signifies that the "
     "optimization method did not converge\n#\n";
-  std::cout << "name\tnfev\tanswer\tstat\tpars\nS\tN\tN\tN\tN\n";
+  std::cout << "name\tnfev\tanswer\tstat\tpar\nS\tN\tN\tN\tN\n";
+
+
+  int npop=16, maxfev=64;
+  double xprob=0.9, sfactor=1.0;
 
   if ( uncopt ) {
-    tstuncopt( npars, tol );
-    tstuncoptlm( npars, tol );
+    tst_unc_opt( npar, tol, tstde, npop, maxfev, xprob, sfactor );
+    tst_unc_opt( npar, tol, tstde_lm, npop, maxfev, xprob, sfactor );
   }
   if ( globalopt )
-    tstglobal( npars, tol );
+    tst_global( npar, tol, tstde, npop, maxfev, xprob, sfactor );
+    
 
   return 0;
 
- }
+}
+
 /*
-gcc -g -Wall -pedantic -ansi -c -O3 mt19937ar.c
-gcc -g -Wall -pedantic -ansi -c -O3 ../../utils/src/gsl/fcmp.c
-g++ -g -Wall -pedantic -ansi -c -O3 -I../../include/ -I../../utils/src/gsl Simplex.cc
-g++ -g -Wall -pedantic -ansi -O3 -I. -I../../include/ -I../tests -I../../utils/src/gsl -DtestDifEvo DifEvo.cc Simplex.o fcmp.o mt19937ar.o
-valgrind --tool=memcheck --leak-check=yes --show-reachable=yes a.out
-==11191== Memcheck, a memory error detector.
-==11191== Copyright (C) 2002-2006, and GNU GPL'd, by Julian Seward et al.
-==11191== Using LibVEX rev 1658, a library for dynamic binary translation.
-==11191== Copyright (C) 2004-2006, and GNU GPL'd, by OpenWorks LLP.
-==11191== Using valgrind-3.2.1, a dynamic binary instrumentation framework.
-==11191== Copyright (C) 2000-2006, and GNU GPL'd, by Julian Seward et al.
-==11191== For more details, rerun with: -v
-==11191== 
+==1609== Memcheck, a memory error detector
+==1609== Copyright (C) 2002-2009, and GNU GPL'd, by Julian Seward et al.
+==1609== Using Valgrind-3.5.0 and LibVEX; rerun with -h for copyright info
+==1609== Command: tstde
+==1609==
+#
+#:npar = 2
+#:tol=1e-06
 #
 # A negative value for the nfev signifies that the optimization method did not converge
 #
-name	nfev	answer	stat	pars
+name	nfev	answer	stat	par
 S	N	N	N	N
-DifEvo_McCormick	221	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_McCormick	889	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_McCormick	221	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_McCormick	8192	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_McCormick	1498	-1.91	-1.91322	-0.547404,-1.54723
-DifEvo_McCormick	310	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_McCormick	976	-1.91	-1.91322	-0.547013,-1.5473
-DifEvo_McCormick	310	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_McCormick	1129	-1.91	-1.91322	-0.547215,-1.54717
-DifEvo_McCormick	1076	-1.91	-1.91322	-0.547614,-1.54759
-DifEvo_BoxBetts	438	0	1.46276e-06	1.00262,9.96803,0.99759
-DifEvo_BoxBetts	2588	0	6.92735e-09	0.999957,10.0018,1.00002
-DifEvo_BoxBetts	438	0	1.46276e-06	1.00262,9.96803,0.99759
-DifEvo_BoxBetts	12288	0	1.46276e-06	1.00262,9.96803,0.99759
-DifEvo_BoxBetts	3919	0	2.16333e-09	0.999869,10.0014,1.00007
-DifEvo_BoxBetts	568	0	1.46276e-06	1.00262,9.96803,0.99759
-DifEvo_BoxBetts	2086	0	1.47751e-08	1.00046,9.99673,0.999703
-DifEvo_BoxBetts	568	0	1.46276e-06	1.00262,9.96803,0.99759
-DifEvo_BoxBetts	3093	0	1.1011e-08	0.999602,10.0026,1.00023
-DifEvo_BoxBetts	3276	0	1.623e-08	0.999733,10.0009,1.0002
-DifEvo_Paviani	15677	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	30721	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	15677	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	40960	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	40960	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	1890	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	40960	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	1890	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	40960	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_Paviani	40960	-45.7	-45.7784	9.34977,9.34997,9.35003,9.35181,9.3508,9.35024,9.3502,9.34811,9.34999,9.34946
-DifEvo_GoldsteinPrice	348	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	927	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	552	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	8192	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	1422	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	372	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	643	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	270	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	1094	3	3	-4.53033e-05,-1.00002
-DifEvo_GoldsteinPrice	1213	3	3	-4.53033e-05,-1.00002
-DifEvo_Shekel5	-1554	-10.1532	-5.10077	7.99949,7.99915,7.99954,7.99974
-DifEvo_Shekel5	5313	-10.1532	-10.1532	3.9999,4.00035,4.00003,3.99989
-DifEvo_Shekel5	-1554	-10.1532	-5.10077	7.99949,7.99915,7.99954,7.99974
-DifEvo_Shekel5	-16384	-10.1532	-5.10077	7.99949,7.99915,7.99954,7.99974
-DifEvo_Shekel5	9679	-10.1532	-10.1532	3.99995,4.00001,4.0002,4.00004
-DifEvo_Shekel5	-691	-10.1532	-5.10077	7.99949,7.99915,7.99954,7.99974
-DifEvo_Shekel5	4374	-10.1532	-10.1532	4.00032,4.00038,3.99997,4.00006
-DifEvo_Shekel5	-691	-10.1532	-5.10077	7.99949,7.99915,7.99954,7.99974
-DifEvo_Shekel5	7148	-10.1532	-10.1532	3.99984,4.00006,4.00011,4.00002
-DifEvo_Shekel5	10167	-10.1532	-10.1532	3.99995,4.00025,4.00003,3.99991
-DifEvo_Shekel7	-1901	-10.4029	-5.12882	7.99958,7.99983,7.99964,7.99975
-DifEvo_Shekel7	5363	-10.4029	-10.4029	4.00052,4.00085,3.99944,3.99984
-DifEvo_Shekel7	-1901	-10.4029	-5.12882	7.99958,7.99983,7.99964,7.99975
-DifEvo_Shekel7	-16384	-10.4029	-5.12882	7.99958,7.99983,7.99964,7.99975
-DifEvo_Shekel7	9135	-10.4029	-10.4029	4.00067,4.0005,3.99972,3.99951
-DifEvo_Shekel7	-758	-10.4029	-5.12882	7.99958,7.99983,7.99964,7.99975
-DifEvo_Shekel7	5179	-10.4029	-10.4029	4.00061,4.00057,3.99936,3.99978
-DifEvo_Shekel7	-758	-10.4029	-5.12882	7.99958,7.99983,7.99964,7.99975
-DifEvo_Shekel7	7584	-10.4029	-10.4029	4.00083,4.00088,3.99956,3.9994
-DifEvo_Shekel7	12969	-10.4029	-10.4029	4.00059,4.00058,3.99944,3.99981
-DifEvo_Shekel10	1694	-10.5364	-10.5364	4.00072,4.00045,3.99961,3.99969
-DifEvo_Shekel10	5343	-10.5364	-10.5364	4.00057,4.00065,3.99974,3.99953
-DifEvo_Shekel10	1694	-10.5364	-10.5364	4.00072,4.00045,3.99961,3.99969
-DifEvo_Shekel10	-16384	-10.5364	-5.17564	7.99938,7.99918,7.99936,7.9992
-DifEvo_Shekel10	12078	-10.5364	-10.5364	4.00066,4.00068,3.99952,3.99941
-DifEvo_Shekel10	1100	-10.5364	-10.5364	4.00087,4.00084,3.99971,3.99933
-DifEvo_Shekel10	4757	-10.5364	-10.5364	4.00071,4.00049,3.99967,3.99927
-DifEvo_Shekel10	1100	-10.5364	-10.5364	4.00087,4.00084,3.99971,3.99933
-DifEvo_Shekel10	8631	-10.5364	-10.5364	4.00125,4.00077,3.99957,3.9997
-DifEvo_Shekel10	11297	-10.5364	-10.5364	4.00069,4.00051,3.99982,3.99979
-DifEvo_Griewank	-567	0	0.0394593	12.559,-0.000449444
-DifEvo_Griewank	1783	0	0.0073965	3.13953,-4.43728
-DifEvo_Griewank	-627	0	0.0394589	12.5596,-0.000449444
-DifEvo_Griewank	3284	0	6.68743e-09	4.9327e-05,0.000147848
-DifEvo_Griewank	4406	0	1.3728e-08	5.27899e-05,-0.000222005
-DifEvo_Griewank	1109	0	0.00739627	-3.14043,-4.43767
-DifEvo_Griewank	1842	0	1.92659e-08	0.000116045,-0.000223757
-DifEvo_Griewank	1109	0	0.00739627	-3.14043,-4.43767
-DifEvo_Griewank	3070	0	2.56402e-08	-0.000225947,-2.01272e-05
-DifEvo_Griewank	3778	0	8.50242e-10	-9.0804e-06,-5.68572e-05
-DifEvo_SixHumpCamel	221	-1.03	-1.03163	0.0895984,-0.71269
-DifEvo_SixHumpCamel	1381	-1.03	-1.03163	-0.0897643,0.712763
-DifEvo_SixHumpCamel	221	-1.03	-1.03163	0.0895984,-0.71269
-DifEvo_SixHumpCamel	8192	-1.03	-1.03163	0.0895984,-0.71269
-DifEvo_SixHumpCamel	2521	-1.03	-1.03163	0.089959,-0.712517
-DifEvo_SixHumpCamel	175	-1.03	-1.03163	0.0895984,-0.71269
-DifEvo_SixHumpCamel	733	-1.03	-1.03163	0.0895984,-0.71269
-DifEvo_SixHumpCamel	175	-1.03	-1.03163	0.0895984,-0.71269
-DifEvo_SixHumpCamel	2017	-1.03	-1.03163	-0.0897924,0.712623
-DifEvo_SixHumpCamel	3148	-1.03	-1.03163	0.0898212,-0.712675
-DifEvo_Shubert	-407	-24.06	-21.5259	-0.491651,4.55775
-DifEvo_Shubert	1110	-24.06	-24.0625	-0.491243,-0.491156
-DifEvo_Shubert	-407	-24.06	-21.5259	-0.491651,4.55775
-DifEvo_Shubert	8192	-24.06	-24.0625	-0.491334,-6.77432
-DifEvo_Shubert	2326	-24.06	-24.0625	-6.77463,5.7921
-DifEvo_Shubert	-328	-24.06	-21.5259	-0.491481,4.55745
-DifEvo_Shubert	1732	-24.06	-24.0625	-0.491288,5.79178
-DifEvo_Shubert	-407	-24.06	-21.5259	-0.491481,4.55745
-DifEvo_Shubert	1890	-24.06	-24.0625	5.79176,-0.491392
-DifEvo_Shubert	1662	-24.06	-24.0625	-6.77457,-6.77461
-DifEvo_Hansen	678	-176.54	-176.542	4.97654,-1.4253
-DifEvo_Hansen	2109	-176.54	-176.542	4.97671,-7.70823
-DifEvo_Hansen	678	-176.54	-176.542	4.97654,-1.4253
-DifEvo_Hansen	8192	-176.54	-176.542	-1.30678,4.85818
-DifEvo_Hansen	4114	-176.54	-176.542	4.97646,-1.42513
-DifEvo_Hansen	467	-176.54	-176.542	4.97637,-1.42542
-DifEvo_Hansen	755	-176.54	-176.542	4.97629,-1.42526
-DifEvo_Hansen	467	-176.54	-176.542	4.97637,-1.42542
-DifEvo_Hansen	4232	-176.54	-176.542	-1.30671,-7.70831
-DifEvo_Hansen	4226	-176.54	-176.542	-7.58989,-1.42513
-DifEvo_Ackley	792	0	2.39448e-06	-3.12293e-07,7.86865e-07
-DifEvo_Ackley	1379	0	4.43822e-06	1.43402e-06,6.36968e-07
-DifEvo_Ackley	792	0	2.39448e-06	-3.12293e-07,7.86865e-07
-DifEvo_Ackley	1931	0	2.04394e-06	-6.41251e-07,3.33164e-07
-DifEvo_Ackley	2290	0	3.24083e-06	3.19246e-07,1.10042e-06
-DifEvo_Ackley	573	0	2.72339e-06	-9.20229e-07,2.83322e-07
-DifEvo_Ackley	909	0	1.38965e-05	2.78327e-06,-4.04848e-06
-DifEvo_Ackley	573	0	2.72339e-06	-9.20229e-07,2.83322e-07
-DifEvo_Ackley	1831	0	1.09558e-06	1.40256e-07,3.6106e-07
-DifEvo_Ackley	1737	0	5.07638e-06	2.29979e-07,-1.77995e-06
-DifEvo_Bohachevsky1	284	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	1407	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	284	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	1815	0	3.5449e-07	5.96988e-05,9.50558e-05
-DifEvo_Bohachevsky1	1858	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	286	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	1244	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	286	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	1777	0	8.90415e-07	-0.000165047,-0.000122046
-DifEvo_Bohachevsky1	2420	0	1.20855e-08	2.41911e-05,-1.05007e-05
-DifEvo_Bohachevsky2	284	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	1355	0	2.85184e-07	8.5379e-05,-8.38889e-05
-DifEvo_Bohachevsky2	284	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	1685	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	2274	0	2.44601e-08	-9.54606e-07,3.08501e-05
-DifEvo_Bohachevsky2	396	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	1292	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	740	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	1458	0	8.27817e-07	-0.000233765,-4.18875e-05
-DifEvo_Bohachevsky2	1845	0	5.39408e-07	-1.68607e-05,-0.000144363
-DifEvo_Bohachevsky3	284	0	3.83822e-07	-0.000199647,2.95373e-05
-DifEvo_Bohachevsky3	1548	0	1.43438e-08	-4.07221e-05,4.88246e-05
-DifEvo_Bohachevsky3	1506	0	3.83822e-07	-0.000199647,2.95373e-05
-DifEvo_Bohachevsky3	1967	0	1.43935e-07	0.00020853,-0.000190635
-DifEvo_Bohachevsky3	2575	0	9.87139e-08	0.00020864,-0.000124541
-DifEvo_Bohachevsky3	556	0	3.83822e-07	-0.000199647,2.95373e-05
-DifEvo_Bohachevsky3	1466	0	1.73513e-07	0.000286824,-0.000183214
-DifEvo_Bohachevsky3	462	0	3.83822e-07	-0.000199647,2.95373e-05
-DifEvo_Bohachevsky3	2047	0	6.10196e-08	-0.000131821,0.000122747
-DifEvo_Bohachevsky3	2358	0	3.54981e-08	-6.07921e-05,7.50413e-05
-DifEvo_Easom	-781	-1	-8.10999e-05	4.9764,1.30555
-DifEvo_Easom	1154	-1	-0.999999	3.14203,3.14212
-DifEvo_Easom	-991	-1	-8.10999e-05	4.9764,1.30555
-DifEvo_Easom	8192	-1	-1	3.1412,3.14122
-DifEvo_Easom	3131	-1	-1	3.14202,3.14123
-DifEvo_Easom	-843	-1	-8.11007e-05	4.97884,1.30639
-DifEvo_Easom	1094	-1	-1	3.14166,3.1419
-DifEvo_Easom	-925	-1	-8.11007e-05	4.97884,1.30639
-DifEvo_Easom	1652	-1	-0.999999	3.14123,3.14213
-DifEvo_Easom	2570	-1	-1	3.14188,3.14181
-DifEvo_Rastrigin	774	0	1.79606e-07	2.85961e-05,9.35771e-06
-DifEvo_Rastrigin	1404	0	4.53968e-07	-4.69884e-05,-8.96251e-06
-DifEvo_Rastrigin	774	0	1.79606e-07	2.85961e-05,9.35771e-06
-DifEvo_Rastrigin	1815	0	1.09824e-06	-7.06252e-05,-2.34045e-05
-DifEvo_Rastrigin	2627	0	2.83246e-07	-1.76469e-05,3.3411e-05
-DifEvo_Rastrigin	-338	0	0.99496	9.19171e-06,0.994903
-DifEvo_Rastrigin	1201	0	5.30971e-07	-4.61495e-05,-2.33794e-05
-DifEvo_Rastrigin	-338	0	0.99496	9.19171e-06,0.994903
-DifEvo_Rastrigin	1970	0	3.3732e-07	3.19813e-05,2.60282e-05
-DifEvo_Rastrigin	1934	0	6.96922e-07	4.99665e-06,-5.90583e-05
-DifEvo_Michalewicz2	264	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	627	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	264	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	8192	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	1006	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	471	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	712	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	471	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	767	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz2	805	-1.8013	-1.8013	2.20311,1.57076
-DifEvo_Michalewicz5	3861	-4.68766	-4.68765	2.20298,1.57089,1.28517,1.92313,1.72036
-DifEvo_Michalewicz5	9434	-4.68766	-4.68766	2.20301,1.571,1.28495,1.92308,1.72051
-DifEvo_Michalewicz5	3861	-4.68766	-4.68765	2.20298,1.57089,1.28517,1.92313,1.72036
-DifEvo_Michalewicz5	-20480	-4.68766	-4.53765	2.20279,1.57071,1.28519,1.92312,0.996674
-DifEvo_Michalewicz5	18738	-4.68766	-4.68765	2.20317,1.57092,1.28517,1.92312,1.72048
-DifEvo_Michalewicz5	-1406	-4.68766	-4.53765	2.20279,1.57071,1.28519,1.92312,0.996674
-DifEvo_Michalewicz5	9708	-4.68766	-4.68765	2.20278,1.57051,1.285,1.92308,1.72048
-DifEvo_Michalewicz5	-1406	-4.68766	-4.53765	2.20279,1.57071,1.28519,1.92312,0.996674
-DifEvo_Michalewicz5	19626	-4.68766	-4.68766	2.20254,1.57073,1.28505,1.92307,1.7205
-DifEvo_Michalewicz5	-12415	-4.68766	-4.53765	2.20279,1.57071,1.28519,1.92312,0.996674
-DifEvo_Michalewicz10	28315	-9.66015	-9.66014	2.20289,1.5708,1.28497,1.92312,1.72035,1.57081,1.45433,1.75614,1.65571,1.5708
-DifEvo_Michalewicz10	39942	-9.66015	-9.5765	2.20304,1.57104,1.28492,1.92313,1.72055,1.57085,1.45431,1.36052,1.28277,1.85849
-DifEvo_Michalewicz10	28315	-9.66015	-9.66014	2.20289,1.5708,1.28497,1.92312,1.72035,1.57081,1.45433,1.75614,1.65571,1.5708
-DifEvo_Michalewicz10	-40960	-9.66015	-8.63908	2.20304,1.57092,1.95495,1.92304,1.72042,1.57076,1.45442,1.75616,1.65574,1.21697
-DifEvo_Michalewicz10	-23687	-9.66015	-8.63908	2.20304,1.57092,1.95495,1.92304,1.72042,1.57076,1.45442,1.75616,1.65574,1.21697
-DifEvo_Michalewicz10	11619	-9.66015	-9.59815	2.20369,1.57043,1.2846,1.9231,1.7204,1.57078,1.45442,1.75604,1.65567,1.21699
-DifEvo_Michalewicz10	-37887	-9.66015	-9.18803	2.20284,1.57051,2.21942,1.92308,1.72044,1.57082,2.22106,1.75613,1.95893,1.85853
-DifEvo_Michalewicz10	11619	-9.66015	-9.59815	2.20369,1.57043,1.2846,1.9231,1.7204,1.57078,1.45442,1.75604,1.65567,1.21699
-DifEvo_Michalewicz10	-40960	-9.66015	-8.63908	2.20304,1.57092,1.95495,1.92304,1.72042,1.57076,1.45442,1.75616,1.65574,1.21697
-DifEvo_Michalewicz10	-40960	-9.66015	-8.63908	2.20304,1.57092,1.95495,1.92304,1.72042,1.57076,1.45442,1.75616,1.65574,1.21697
-==11191== 
-==11191== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 15 from 1)
-==11191== malloc/free: in use at exit: 0 bytes in 0 blocks.
-==11191== malloc/free: 8,766 allocs, 8,766 frees, 582,556 bytes allocated.
-==11191== For counts of detected errors, rerun with: -v
-==11191== All heap blocks were freed -- no leaks are possible.
-
+DifEvo_nm_Rosenbrock	132	0	9.9559e-08	0.999758,0.999536
+DifEvo_Rosenbrock	-1269	0	0.479983	1.69281,2.86563
+DifEvo_nm_FreudensteinRoth	1620	0	3.84554e-07	5.00002,4.00001
+DifEvo_FreudensteinRoth	-507	0	105.64	18.2546,-0.775174
+DifEvo_nm_PowellBadlyScaled	191	0	1.24641e-09	1.13276e-05,8.82805
+DifEvo_PowellBadlyScaled	-874	0	1	0,305017
+DifEvo_nm_BrownBadlyScaled	391	0	2.96214e-07	1e+06,2.00048e-06
+DifEvo_BrownBadlyScaled	-209	0	9.99998e+11	1,1
+DifEvo_nm_Beale	877	0	3.15355e-07	2.99976,0.500055
+DifEvo_Beale	-1978	0	4.76487	1,-0.733235
+DifEvo_nm_JennrichSampson	504	124.362	124.362	0.257808,0.257827
+DifEvo_JennrichSampson	-4096	124.362	2020	-71514,-67403.1
+DifEvo_nm_HelicalValley	311	0	9.44041e-08	1.00002,6.81226e-05,0.000131188
+DifEvo_HelicalValley	-1630	0	2500	-1,0,0
+DifEvo_nm_Bard	678	0.00821487	0.00821488	0.0823833,1.13289,2.34378
+DifEvo_Bard	-467	0.00821487	17.8095	1,1,-7.76037e+11
+DifEvo_nm_Gaussian	-748	1.12793e-08	2.31995e-08	0.398944,0.999662,5.61966e-05
+DifEvo_Gaussian	-1486	1.12793e-08	3.88811e-06	0.4,1,0
+DifEvo_nm_Meyer	237	87.9458	87.9459	0.00560995,6181.3,345.222
+DifEvo_Meyer	-437	87.9458	1.39812e+09	138.542,75704.7,16626.3
+DifEvo_nm_GulfResearchDevelopment	804	0	7.16939e-09	14.1092,31.4397,1.21371
+DifEvo_GulfResearchDevelopment	2562	0	0.0013055	522.104,-99.5005,1.6251
+DifEvo_nm_Box3d	758	0	1.42751e-08	1.00002,10.0026,1.00001
+DifEvo_Box3d	3141	0	3.97157e-12	98.2308,98.4796,1.02445e-06
+DifEvo_nm_PowellSingular	3344	0	3.76824e-12	-0.00014145,1.40511e-05,-0.000254254,-0.000253504
+DifEvo_PowellSingular	-4520	0	95	-3,1,0,-3
+DifEvo_nm_Wood	534	0	5.18912e-07	0.999954,0.999933,0.999929,0.9999
+DifEvo_Wood	-1237	0	19192	-3,-1,-3,-1
+DifEvo_nm_KowalikOsborne	3113	0.000307505	0.000307506	0.192802,0.191566,0.123083,0.136232
+DifEvo_KowalikOsborne	-8435	0.000307505	0.0017944	0.25,-7658.21,-8244.23,-3350.5
+DifEvo_nm_BrownDennis	203	85822.2	85822.2	-11.5931,13.2026,-0.40607,0.23835
+DifEvo_BrownDennis	-2468	85822.2	7.92669e+06	25,5,-5,-1
+DifEvo_nm_Osborne1	-2350	5.46489e-05	7.18413e-05	0.369941,1.52707,-1.05201,0.0118033,0.0245497
+DifEvo_Osborne1	-4846	5.46489e-05	0.879026	0.5,1.5,-1,0.01,0.02
+DifEvo_nm_Biggs	5787	0	0	1,10,1,5,4,3
+DifEvo_Biggs	4544	0	0	1,10,1,5,4,3
+DifEvo_nm_Osborne2	1769	0.0401377	0.0401787	1.3089,0.429306,0.632834,0.595968,0.748637,0.919646,1.35078,4.8479,2.39916,4.57012,5.67618
+DifEvo_Osborne2	-42394	0.0401377	0.382866	1.0763,968.461,0.4195,0.577258,0.281223,581.856,5.01397,7,-0.118868,4.5,5.5
+DifEvo_nm_Watson	431	0.00228767	0.00228769	-0.015653,1.01242,-0.233011,1.26064,-1.51402,0.993226
+DifEvo_Watson	-3617	0.00228767	30	0,0,0,0,0,0
+DifEvo_nm_PenaltyI	-508	9.37629e-06	2.24998e-05	0.249964,0.249672,0.250394,0.250001
+DifEvo_PenaltyI	-3794	9.37629e-06	885.063	1,2,3,4
+DifEvo_nm_PenaltyII	790	9.37629e-06	9.38448e-06	0.200008,0.148759,0.50296,0.517361
+DifEvo_PenaltyII	-3609	9.37629e-06	2.34001	0.5,0.5,0.5,0.5
+DifEvo_nm_VariablyDimensioned	340	0	1.6999e-07	0.999875,1.00022
+DifEvo_VariablyDimensioned	-208	0	21	1,0
+DifEvo_nm_Trigonometric	108	0	4.31325e-08	1.35221,0.631523
+DifEvo_Trigonometric	469	0	0.00622617	925639,404486
+DifEvo_nm_BrownAlmostLinear	-978	1	7.20419e-08	0.499704,2.00067
+DifEvo_BrownAlmostLinear	-872	1	2.8125	0.5,0.5
+DifEvo_nm_DiscreteBoundary	179	0	2.48442e-07	-0.138079,-0.181779
+DifEvo_DiscreteBoundary	-1294	0	0.128254	-0,-0.222222
+DifEvo_nm_DiscreteIntegral	92	0	7.65449e-08	-0.128008,-0.159333
+DifEvo_DiscreteIntegral	-1566	0	0.0250711	0,-0.222222
+DifEvo_nm_BroydenTridiagonal	1030	0	4.37316e-07	-0.445255,-0.365894
+DifEvo_BroydenTridiagonal	-1130	0	13	-1,-1
+DifEvo_nm_BroydenBanded	1625	0	4.21199e-07	-0.427387,-0.4272
+DifEvo_BroydenBanded	-1313	0	72	-1,-1
+DifEvo_nm_LinearFullRank	72	0	1.40066e-07	-1.00026,-0.999727
+DifEvo_LinearFullRank	-1132	0	8	1,1
+DifEvo_nm_LinearFullRank1	475	0.2	0.2	3.17795,-1.28898
+DifEvo_LinearFullRank1	-296	0.2	29	1,1
+DifEvo_nm_LinearFullRank0cols0rows	4096	2	2	1,1
+DifEvo_LinearFullRank0cols0rows	4096	2	2	1,1
+DifEvo_nm_Chebyquad	3072	0	7.26574e-07	0.0443548,0.199942,0.235651,0.41659,0.500148,0.583794,0.764891,0.799883,0.955769
+DifEvo_Chebyquad	-5305	0	0.028883	0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9
+DifEvo_lm_Rosenbrock	54	0	0	1,1
+DifEvo_lm_FreudensteinRoth	-23	0	48.9843	11.4174,-0.896464
+DifEvo_lm_PowellBadlyScaled	50	0	6.75462e-29	1.09816e-05,9.10615
+DifEvo_lm_BrownBadlyScaled	46	0	1.97215e-31	1e+06,2e-06
+DifEvo_lm_Beale	23	0	1.83079e-26	3,0.5
+DifEvo_lm_JennrichSampson	41	124.362	124.362	0.257837,0.257818
+DifEvo_lm_HelicalValley	35	0	9.69231e-33	1,-6.18577e-18,0
+DifEvo_lm_Bard	21	0.00821487	0.00821488	0.0824106,1.13304,2.34369
+DifEvo_lm_Gaussian	9	1.12793e-08	1.12793e-08	0.398956,1.00002,-3.34829e-13
+DifEvo_lm_Meyer	537	87.9458	87.9459	0.00560966,6181.34,345.224
+DifEvo_lm_GulfResearchDevelopment	1729	0	1.7747e-21	50,25,1.5
+DifEvo_lm_Box3d	25	0	2.49066e-22	1,10,1
+DifEvo_lm_PowellSingular	287	0	4.83914e-58	3.98842e-15,-3.98842e-16,1.78612e-15,1.78612e-15
+DifEvo_lm_Wood	-31	0	7.87697	-0.969487,0.950066,-0.968,0.948317
+DifEvo_lm_KowalikOsborne	62	0.000307505	0.000307506	0.192813,0.191149,0.123032,0.136001
+DifEvo_lm_BrownDennis	1055	85822.2	85823	-11.5697,13.1946,-0.404388,0.236564
+DifEvo_lm_Osborne1	93	5.46489e-05	5.46489e-05	0.37541,1.93582,-1.46466,0.0128675,0.0221228
+DifEvo_lm_Biggs	7	0	0	1,10,1,5,4,3
+DifEvo_lm_Osborne2	148	0.0401377	0.0401683	1.30997,0.431458,0.633631,0.599303,0.753912,0.905584,1.36503,4.8248,2.39882,4.56887,5.67537
+DifEvo_lm_Watson	-36	0.00228767	0.00260576	1.88024e-22,1.01364,-0.244321,1.37383,-1.68571,1.09812
+DifEvo_lm_PenaltyI	-118	9.37629e-06	2.24998e-05	0.249976,0.249907,0.249945,0.250203
+DifEvo_lm_PenaltyII	585	9.37629e-06	9.37629e-06	0.199999,0.191382,0.480075,0.518822
+DifEvo_lm_VariablyDimensioned	19	0	0	1,1
+DifEvo_lm_Trigonometric	25	0	0	0,0
+DifEvo_lm_BrownAlmostLinear	-7	1	1.97215e-31	0.5,2
+DifEvo_lm_DiscreteBoundary	13	0	7.89631e-33	-0.138333,-0.18186
+DifEvo_lm_DiscreteIntegral	13	0	9.62965e-34	-0.128247,-0.159268
+DifEvo_lm_BroydenTridiagonal	16	0	2.56873e-29	-0.445209,-0.366025
+DifEvo_lm_BroydenBanded	19	0	1.26733e-26	-0.427305,-0.427305
+DifEvo_lm_LinearFullRank	6	0	0	-1,-1
+DifEvo_lm_LinearFullRank1	6	0.2	0.2	1,-0.2
+DifEvo_lm_LinearFullRank0cols0rows	3	2	2	1,1
+DifEvo_lm_Chebyquad	84	0	3.50827e-25	0.0442053,0.199491,0.235619,0.416047,0.5,0.583953,0.764381,0.800509,0.955795
+DifEvo_nm_McCormick	948	-1.91	-1.91322	-0.546776,-1.54733
+DifEvo_McCormick	913	-1.91	-1.91321	-0.547323,-1.54402
+DifEvo_nm_BoxBetts	1978	0	1.99794e-08	1.00001,10.0021,0.99997
+DifEvo_BoxBetts	1174	0	9.28277e-06	0.998957,10.0246,1.00266
+DifEvo_nm_Paviani	503	-45.7	-45.7784	9.35094,9.35057,9.35122,9.35054,9.35029,9.35182,9.351,9.34902,9.35211,9.35062
+DifEvo_Paviani	53542	-45.7	-45.776	9.35841,9.3382,9.34925,9.34385,9.34023,9.34306,9.3535,9.35683,9.34874,9.36638
+DifEvo_nm_GoldsteinPrice	940	3	3	-3.46632e-05,-1.00005
+DifEvo_GoldsteinPrice	991	3	3.01109	-0.00384429,-1.00518
+DifEvo_nm_Shekel5	-786	-10.1532	-5.10077	7.99967,7.99985,7.99985,7.99987
+DifEvo_Shekel5	-690	-10.1532	-5.10076	8,8,8,8
+DifEvo_nm_Shekel7	3552	-10.4029	-10.4029	4.00089,4.00086,3.99937,3.99956
+DifEvo_Shekel7	-868	-10.4029	-5.1288	8,8,8,8
+DifEvo_nm_Shekel10	-2449	-10.5364	-5.17564	7.99963,7.99923,7.99955,7.99932
+DifEvo_Shekel10	6884	-10.5364	-10.5326	4.0042,3.99791,4.00391,3.99837
+DifEvo_nm_Levy4	1457	-21.502	-21.3924	0.67054,1.00058,1.00162,-9.75198
+DifEvo_Levy4	4384	-21.502	-21.4998	0.997884,1.02367,1.02269,-9.75371
+DifEvo_nm_Levy5	-2147	-11.504	-10.5048	1.00002,1.00001,0.994246,1.00009,-4.25488
+DifEvo_Levy5	12857	-11.504	-11.5042	1.00068,0.996768,1.00957,0.993801,-4.75458
+DifEvo_nm_Levy6	5178	-11.504	-11.5044	0.999965,1.00132,0.999997,0.998609,0.999548,-4.75449
+DifEvo_Levy6	18778	-11.504	-11.5038	0.998553,0.983666,1.00953,0.999233,0.998124,-4.75395
+DifEvo_nm_Levy7	-2275	-11.504	-5.39837	1.32966,0.990614,1.00139,0.997245,1.00045,0.999861,-1.75922
+DifEvo_Levy7	25584	-11.504	-11.5014	1.00281,0.954325,0.998442,1.00281,0.990281,1.00492,-4.75403
+DifEvo_nm_Griewank	86	0	0.00986565	6.28101,0.00143405
+DifEvo_Griewank	1112	0	0.00954858	-3.1916,4.49578
+DifEvo_nm_SixHumpCamel	1118	-1.03	-1.03163	0.0901221,-0.712666
+DifEvo_SixHumpCamel	1301	-1.03	-1.03162	-0.090866,0.71167
+DifEvo_nm_Branin	490	0.397889	0.397888	9.42459,2.4742
+DifEvo_Branin	758	0.397889	0.397916	3.14261,2.27908
+DifEvo_nm_Shubert	570	-24.06	-24.0625	-0.491212,-0.491489
+DifEvo_Shubert	-319	-24.06	-20.789	-0.520742,-0.633668
+DifEvo_nm_Hansen	685	-176.54	-176.541	4.9764,4.85846
+DifEvo_Hansen	644	-176.54	-176.15	-1.29284,-1.43547
+DifEvo_nm_Cola	295936	12.8154	12.8668	3.37086,-0.968193,0.0776433,1.34515,0.666296,0.0593934,3.33401,0.676154,3.30015,-2.02212,1.23676,-0.597915,3.38159,-1.12001,3.13852,1.42521,1.48432
+DifEvo_Cola	-149662	12.8154	13.1554	1.71311,0.650242,-0.769167,-1.45086,0.415661,-2.7686,-1.82584,-1.83686,-2.91437,0.726565,-2.29956,-2.24795,-2.44269,-1.31676,-3.14506,-1.93621,-0.344594
+DifEvo_nm_Ackley	602	0	8.55324e-07	-3.01211e-07,2.68131e-08
+DifEvo_Ackley	-1260	0	0.0309546	0.00442412,0.00897125
+DifEvo_nm_Bohachevsky1	1226	0	3.12923e-07	-2.3973e-05,-9.52514e-05
+DifEvo_Bohachevsky1	1236	0	0.00840666	0.021335,-0.00753833
+DifEvo_nm_Bohachevsky2	692	0	2.03681e-06	-7.80486e-05,-0.000275493
+DifEvo_Bohachevsky2	-1302	0	0.0159607	-0.00842493,-0.0242418
+DifEvo_nm_Bohachevsky3	1471	0	3.04e-08	-0.000120621,7.79945e-05
+DifEvo_Bohachevsky3	1327	0	0.00373264	0.00331815,-0.014323
+DifEvo_nm_Easom	1296	-1	-0.999999	3.14085,3.14218
+DifEvo_Easom	-758	-1	-2.52976e-09	6.86302,0.821265
+DifEvo_nm_Rastrigin	398	0	2.45568e-07	-1.45021e-05,-3.20543e-05
+DifEvo_Rastrigin	-373	0	0.73034	0.00521053,0.060817
+DifEvo_nm_Michalewicz2	508	-1.8013	-1.8013	2.20273,1.57087
+DifEvo_Michalewicz2	768	-1.8013	-1.80122	2.20083,1.57136
+DifEvo_nm_Michalewicz5	1083	-4.68766	-4.64589	2.20292,1.57053,1.2851,1.11375,1.72044
+DifEvo_Michalewicz5	13344	-4.68766	-4.68754	2.205,1.57137,1.28544,1.92321,1.72067
+DifEvo_nm_Michalewicz10	12511	-9.66015	-9.61838	2.20326,1.57071,1.28499,1.11359,1.72045,1.57073,1.45438,1.75605,1.65573,1.57082
+DifEvo_Michalewicz10	52873	-9.66015	-9.55588	2.20803,1.57377,1.28519,1.92256,1.72089,1.57051,1.4554,1.75435,1.28298,1.21835
+==1609==
+==1609== HEAP SUMMARY:
+==1609==     in use at exit: 0 bytes in 0 blocks
+==1609==   total heap usage: 919,570 allocs, 919,570 frees, 157,350,820 bytes allocated
+==1609==
+==1609== All heap blocks were freed -- no leaks are possible
+==1609==
+==1609== For counts of detected and suppressed errors, rerun with: -v
+==1609== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 4 from 4)
 */
+
 #endif

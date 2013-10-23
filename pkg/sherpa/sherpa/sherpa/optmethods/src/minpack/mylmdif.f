@@ -56,13 +56,13 @@ c
 
       subroutine mylmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,
      *     diag,mode,factor,nprint,info,nfev,fjac,ldfjac,ipvt,qtf,
-     +     wa1,wa2,wa3,wa4,lb,ub,fmin,multicore,myfdjac,covarerr)
+     +     wa1,wa2,wa3,wa4,lb,ub,fmin,covarerr)
 c     *     lowtri,ifault,covarerr)
 c     **********
 c
 c     subroutine mylmdif
       implicit none
-      integer m,n,maxfev,mode,nprint,info,nfev,ldfjac,multicore
+      integer m,n,maxfev,mode,nprint,info,nfev,ldfjac
       integer ipvt(n)
       double precision ftol,xtol,gtol,epsfcn,factor
       double precision x(n),fvec(m),diag(n),fjac(ldfjac,n),qtf(n),
@@ -71,12 +71,18 @@ c     subroutine mylmdif
 c      double precision lowtri(n*(n+1)/2)
       double precision fmin,enorm
       integer iflag, ii
-      external fcn,myfdjac, covar
+      external fcn, covar
       iflag = 1
+
+      if ( n .gt. m ) then
+        print *, 'the number of parameters must < number of data points'
+        info = 0
+        return
+      endif
 
       call lmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,
      *     diag,mode,factor,nprint,info,nfev,fjac,ldfjac,
-     *     ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub,multicore,myfdjac)
+     *     ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub)
       fmin = enorm( m, fvec )**2.0
       call covar( n, fjac, ldfjac, ipvt, ftol, wa1 )
       do ii = 1, n

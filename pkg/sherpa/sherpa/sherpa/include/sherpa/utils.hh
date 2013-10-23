@@ -4,7 +4,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -31,10 +31,9 @@
 
 #include <vector>
 #include <limits>
-#include <sherpa/constants.hh>
 
-#undef MAX
-#undef MIN
+#include <sherpa/constants.hh>
+#include <sherpa/Array2d.hh>
 
 #define ACOS(x)			std::acos(x)
 #define ASIN(x)			std::asin(x)
@@ -47,8 +46,6 @@
 #define LGAMMA(x)      		sherpa::utils::lgamma(x)
 #define LOG(x)			std::log(x)
 #define LOG10(x)       		std::log10(x)
-#define MAX(a, b)		sherpa::utils::max(a, b)
-#define MIN(a, b)		sherpa::utils::min(a, b)
 #define POW(x, y)		std::pow(x, y)
 #define SIN(x)			std::sin(x)
 #define SQRT(x)			std::sqrt(x)
@@ -438,6 +435,86 @@ namespace sherpa { namespace utils {
     
   }
     
+  template<typename ConstFloatArrayType, typename FloatType>
+  inline int neville2d( int m, int n, const ConstFloatArrayType& x, 
+			const ConstFloatArrayType& y, 
+			const sherpa::Array2d< FloatType >& fxy,
+			FloatType xinterp, FloatType yinterp,
+			FloatType& answer ) {
+
+    std::vector< FloatType > tmp( m );
+    for ( int ii = 0; ii < m; ++ii )
+      if ( EXIT_SUCCESS != neville( n, y, fxy[ ii ], yinterp, tmp[ ii ] ) )
+	return EXIT_FAILURE;
+    return neville( m, x, tmp, xinterp, answer );
+
+  }
+
+  //
+  // The following text was taken verbatim from:
+  //        
+  // http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction
+  //
+  // In most cases it is unreasonable to use an operator==(...)
+  // for a floating-point values equality check. The simple solution
+  // like abs(f1-f2) <= e does not work for very small or very big values.
+  // This floating-point comparison algorithm is based on the more
+  // confident solution presented by D. E. Knuth in 'The art of computer
+  // programming (vol II)'. For a given floating point values u and v and
+  // a tolerance e:
+  //    
+  // | u - v | <= e * |u| and | u - v | <= e * |v|                    (1)
+  // defines a "very close with tolerance e" relationship between u and v
+  //    
+  // | u - v | <= e * |u| or   | u - v | <= e * |v|                   (2)
+  // defines a "close enough with tolerance e" relationship between
+  // u and v. Both relationships are commutative but are not transitive.
+  // The relationship defined by inequations (1) is stronger that the
+  // relationship defined by inequations (2) (i.e. (1) => (2) ).
+  //
+  template< typename T >
+  T safe_div( T num, T denom ) {
+
+    T my_max = std::numeric_limits< T >::max( );
+    T my_min = std::numeric_limits< T >::min( );
+
+    // avoid overflow
+    if ( denom < 1 && num > denom * my_max )
+      return my_max;
+
+    // avoid underflow
+    if ( 0.0 == num || denom > 1 && num < denom * my_min )
+      return T(0);
+    
+    return num / denom;
+
+  }
+
+  //
+  // more strict then ||
+  //
+  template< typename T >
+  inline bool Knuth_more_strict_cmp( T diff_x, T diff_y, T tol ) {
+    return diff_x <= tol && diff_y <= tol;
+  }
+  //
+  // more lenient then &&
+  //
+  template< typename T >
+  inline bool Knuth_less_strict_cmp( T diff_x, T diff_y, T tol ) {
+    return diff_x <= tol || diff_y <= tol;
+  }
+
+  template< typename T >
+  inline bool Knuth_close( T x, T y, T tol,
+			   bool (*cmp)( T, T, T )=Knuth_less_strict_cmp ) {
+    T diff = std::fabs( x - y );
+    if ( 0.0 == x || 0.0 == y )
+      return diff <= tol;
+    T diff_x = safe_div( diff, x );
+    T diff_y = safe_div( diff, y );
+    return cmp( diff_x, diff_y, tol );
+  }
 
   template <typename ConstFloatType, typename FloatType,
 	    typename ConstIntType, typename IndexType>

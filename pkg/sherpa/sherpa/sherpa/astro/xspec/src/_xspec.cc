@@ -4,7 +4,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -188,7 +188,17 @@ void xszvph_(float* ear, int* ne, float* param, int* ifl, float* photar, float* 
 void xszabs_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xszwnb_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 
+// New XSPEC 12.7 models
 
+void C_cplinear(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
+void xseqpair_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void xseqth_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void xscompth_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void xsbvvp_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void xsvvap_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void zigm_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+
+// XSPEC table models
 void xsatbl(float* ear, int ne, float* param, const char* filenm, int ifl, 
 	    float* photar, float* photer);
 void xsmtbl(float* ear, int ne, float* param, const char* filenm, int ifl, 
@@ -204,6 +214,15 @@ int _sherpa_init_xspec_library()
   if ( init )
     return EXIT_SUCCESS;
 
+
+  if ( !getenv("HEADAS") ) {
+    // Raise appropriate error message that XSPEC initialization failed.
+    PyErr_SetString( PyExc_ImportError,
+		     (char*)"XSPEC initialization failed; "
+		     "check HEADAS environment variable" );
+    return EXIT_FAILURE;
+  }
+  
   // Stream buffer for redirected stdout
   std::streambuf* cout_sbuf = NULL;
 
@@ -856,6 +875,15 @@ static PyMethodDef XSpecMethods[] = {
   XSPECMODELFCT( xszvph, 19 ),
   XSPECMODELFCT( xszabs, 2 ),
   XSPECMODELFCT( xszwnb, 3 ),
+  // New XSPEC 12.7 models
+  XSPECMODELFCT_C_NORM( C_cplinear, 21 ),
+  XSPECMODELFCT_NORM( xseqpair, 21 ),
+  XSPECMODELFCT_NORM( xseqth, 21 ),
+  XSPECMODELFCT_NORM( xscompth, 21 ),
+  XSPECMODELFCT_NORM( xsbvvp, 34 ),
+  XSPECMODELFCT_NORM( xsvvap, 33 ),
+  XSPECMODELFCT( zigm, 3 ),
+  // XSPEC table models
   XSPECTABLEMODEL_NORM( xsatbl ),
   XSPECTABLEMODEL_NORM( xsmtbl ),
 

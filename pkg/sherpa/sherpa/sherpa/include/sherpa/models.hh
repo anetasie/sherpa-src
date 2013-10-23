@@ -4,7 +4,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -609,7 +609,8 @@ namespace sherpa { namespace models {
   {
 
     // p[1] is an always frozen parameter, currently initialized to 1
-    if ( x > 0.0 ) {
+    // x must be zero or greater
+    if ( !(x < 0.0) ) {
       val = p[2] * POW( x / p[ 1 ], - p[ 0 ] );
       return EXIT_SUCCESS;
     }
@@ -625,8 +626,18 @@ namespace sherpa { namespace models {
 				DataType xlo, DataType xhi, DataType& val )
   {
 
-    if ( xlo > 0 ) {
+    // xlo must be 0 or greater
+    if ( !(xlo < 0.0) ) {
       if ( p[0] == 1.0 ) {
+	if ( xlo > 0.0 ) {
+	  ;
+	}
+	else {
+	  // If we get here, xlo == 0.0
+	  // Stub in Sherpa minimum value for xlo,
+	  // so we can take its log
+	  xlo = SMP_MIN;
+	}	
 	val = p[2] * p[1] * ( LOG(xhi) - LOG(xlo) );
 	return EXIT_SUCCESS;
       } else {

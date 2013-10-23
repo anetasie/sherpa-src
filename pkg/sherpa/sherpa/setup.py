@@ -6,7 +6,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -298,45 +298,12 @@ def get_deps(deps):
 clibs = [
 
     ('sherpa',
-     {'sources':
-          ['sherpa/utils/src/gsl/fcmp.c',
-           'sherpa/utils/src/gsl/err.c',
-           'sherpa/utils/src/gsl/error.c',
-           'sherpa/utils/src/gsl/stream.c',
-           'sherpa/utils/src/gsl/strerror.c',
-           'sherpa/utils/src/gsl/message.c',
-           'sherpa/utils/src/gsl/qng.c',
-           'sherpa/utils/src/adapt_integrate.c',
-           'sherpa/utils/src/cephes/const.c',
-           'sherpa/utils/src/cephes/fabs.c',
-           'sherpa/utils/src/cephes/isnan.c',
-           'sherpa/utils/src/cephes/mtherr.c',
-           'sherpa/utils/src/cephes/polevl.c',
-           'sherpa/utils/src/cephes/ndtri.c',
-           'sherpa/utils/src/cephes/gamma.c',
-           'sherpa/utils/src/cephes/igam.c',
-           'sherpa/utils/src/cephes/igami.c',
-           'sherpa/utils/src/cephes/incbet.c',
-           'sherpa/utils/src/cephes/incbi.c',
-           'sherpa/utils/src/tcd/tcdCastArray.c',
-           'sherpa/utils/src/tcd/tcdError.c',
-           'sherpa/utils/src/tcd/tcdFFTConvolve.c',
-           'sherpa/utils/src/tcd/tcdInitConvolveOut.c',
-           'sherpa/utils/src/tcd/tcdInitTransform.c',
-           'sherpa/utils/src/tcd/tcdPadData.c',
-           'sherpa/utils/src/tcd/tcdPixelArith.c',
-           'sherpa/utils/src/tcd/tcdTransform.c',
-           'sherpa/astro/utils/src/fftn.c'],
+     {'sources': ['sherpa/utils/src/gsl/fcmp.c'],
       'sourceDir' : 'sherpa/utils',
-      'libs' : ['fftw3','fftw3f'],
-      'libdirs' : [conf['fftw_library_dir']],
-      'include_dirs':
-          ['sherpa/utils/src',
-           'sherpa/utils/src/cephes',
-           'sherpa/utils/src/gsl',
-           'sherpa/utils/src/tcd',
-           conf['fftw_include_dir']],
-      'headerExportDir' : []
+      'libs' : [],
+      'libdirs' : [],
+      'include_dirs': ['sherpa/utils/src'],
+      'headerExportDir' : [],
       })
     ]
 
@@ -419,21 +386,25 @@ extension_modules = [
 
     # sherpa.optmethods._saoopt
     Extension('sherpa.optmethods._saoopt',
-              ['sherpa/optmethods/src/mt19937ar.c',
-               'sherpa/optmethods/src/_saoopt.cc',
+              ['sherpa/optmethods/src/_saoopt.cc',
                'sherpa/optmethods/src/Simplex.cc'],
               sherpa_inc + ['sherpa/utils/src/gsl'],
               libraries=(cpp_libs + ['sherpa']),              
               depends=(get_deps(['Array2d', 'extension']) +
-                       ['sherpa/utils/src/gsl/fcmp.h',
-                        'sherpa/optmethods/src/mt19937ar.h',
+                       ['sherpa/include/sherpa/fcmp.hh',
+                        'sherpa/include/sherpa/MersenneTwister.h',
+                        'sherpa/include/sherpa/functor.hh',
                         'sherpa/optmethods/src/DifEvo.hh',
-                        'sherpa/optmethods/src/DirectSearch.hh',
-#                        'sherpa/optmethods/src/MulDirSearch.hh',
+                        'sherpa/optmethods/src/DifEvo.cc',
                         'sherpa/optmethods/src/NelderMead.hh',
-                        'sherpa/optmethods/src/Simplex.hh',
+                        'sherpa/optmethods/src/NelderMead.cc',
                         'sherpa/optmethods/src/Opt.hh',
-                        'sherpa/optmethods/src/RanOpt.hh'])),
+                        'sherpa/optmethods/src/PyWrapper.hh',
+                        'sherpa/optmethods/src/RanOpt.hh',
+                        'sherpa/optmethods/src/Simplex.hh',
+                        'sherpa/optmethods/src/Simplex.cc',
+                        'sherpa/optmethods/src/minpack/LevMar.hh',
+                        'sherpa/optmethods/src/minpack/LevMar.cc'])),
 
     # sherpa.optmethods._tstoptfct
     Extension('sherpa.optmethods._tstoptfct',
@@ -441,13 +412,20 @@ extension_modules = [
               sherpa_inc,
               libraries=cpp_libs,
               depends=(get_deps(['extension']) +
-                       ['sherpa/optmethods/src/Opt.hh',
-                        'sherpa/optmethods/src/RanOpt.hh',
-                        'sherpa/optmethods/src/PyWrapper.hh',
-                        'sherpa/optmethods/src/DirectSearch.hh',
+                       ['sherpa/include/sherpa/fcmp.hh',
+                        'sherpa/include/sherpa/MersenneTwister.h',
+                        'sherpa/include/sherpa/functor.hh',
+                        'sherpa/optmethods/src/DifEvo.hh',
+                        'sherpa/optmethods/src/DifEvo.cc',
                         'sherpa/optmethods/src/NelderMead.hh',
                         'sherpa/optmethods/src/NelderMead.cc',
-                        'sherpa/optmethods/tests/tstoptfct.hh'])),
+                        'sherpa/optmethods/src/Opt.hh',
+                        'sherpa/optmethods/src/PyWrapper.hh',
+                        'sherpa/optmethods/src/RanOpt.hh',
+                        'sherpa/optmethods/src/Simplex.hh',
+                        'sherpa/optmethods/src/Simplex.cc',
+                        'sherpa/optmethods/src/minpack/LevMar.hh',
+                        'sherpa/optmethods/src/minpack/LevMar.cc'])),
 
 ##################################optmethods###################################
 
@@ -460,7 +438,18 @@ extension_modules = [
 
     # sherpa.utils._utils
     Extension('sherpa.utils._utils',
-              ['sherpa/utils/src/_utils.cc'],
+              ['sherpa/utils/src/cephes/const.c',
+               'sherpa/utils/src/cephes/fabs.c',
+               'sherpa/utils/src/cephes/isnan.c',
+               'sherpa/utils/src/cephes/mtherr.c',
+               'sherpa/utils/src/cephes/polevl.c',
+               'sherpa/utils/src/cephes/ndtri.c',
+               'sherpa/utils/src/cephes/gamma.c',
+               'sherpa/utils/src/cephes/igam.c',
+               'sherpa/utils/src/cephes/igami.c',
+               'sherpa/utils/src/cephes/incbet.c',
+               'sherpa/utils/src/cephes/incbi.c',
+               'sherpa/utils/src/_utils.cc'],
               sherpa_inc + ['sherpa/utils/src/cephes',
                             'sherpa/utils/src/gsl'],
               libraries=(cpp_libs + ['sherpa']),
@@ -468,20 +457,50 @@ extension_modules = [
                        ['sherpa/utils/src/gsl/fcmp.h',
                         'sherpa/utils/src/cephes/cephes.h'])),
 
+
+    # sherpa.utils._pykdtree
+    Extension('sherpa.utils._pykdtree',
+              ['sherpa/utils/src/_pykdtree.cc'],
+              sherpa_inc + ['sherpa/utils/src'],
+              libraries=cpp_libs,
+              depends=(get_deps([]) +
+                       ['sherpa/utils/src/kdtree++/allocator.hpp',
+                        'sherpa/utils/src/kdtree++/function.hpp',
+                        'sherpa/utils/src/kdtree++/iterator.hpp',
+                        'sherpa/utils/src/kdtree++/kdtree.hpp',
+                        'sherpa/utils/src/kdtree++/region.hpp',
+                        'sherpa/utils/src/kdtree++/node.hpp'])),
+
     # sherpa.utils._psf
     Extension('sherpa.utils._psf',
-              ['sherpa/utils/src/_psf.cc'],
-              sherpa_inc + ['sherpa/utils/src/tcd'],
-              libraries=(cpp_libs + ['sherpa']),
+              ['sherpa/utils/src/tcd/tcdCastArray.c',
+               'sherpa/utils/src/tcd/tcdError.c',
+               'sherpa/utils/src/tcd/tcdFFTConvolve.c',
+               'sherpa/utils/src/tcd/tcdInitConvolveOut.c',
+               'sherpa/utils/src/tcd/tcdInitTransform.c',
+               'sherpa/utils/src/tcd/tcdPadData.c',
+               'sherpa/utils/src/tcd/tcdPixelArith.c',
+               'sherpa/utils/src/tcd/tcdTransform.c',
+               'sherpa/utils/src/_psf.cc'],
+              sherpa_inc + ['sherpa/utils/src/tcd', conf['fftw_include_dir']],
+              library_dirs=[conf['fftw_library_dir']],
+              libraries=(cpp_libs + ['fftw3']),
               depends=(get_deps(['extension', 'utils'])+
                        ['sherpa/utils/src/tcd/tcd.h'])),
     
     # sherpa.utils.integration
     Extension('sherpa.utils.integration',
-              ['sherpa/utils/src/integration.cc'],
+              ['sherpa/utils/src/gsl/err.c',
+               'sherpa/utils/src/gsl/error.c',
+               'sherpa/utils/src/gsl/stream.c',
+               'sherpa/utils/src/gsl/strerror.c',
+               'sherpa/utils/src/gsl/message.c',
+               'sherpa/utils/src/gsl/qng.c',
+               'sherpa/utils/src/adapt_integrate.c',
+               'sherpa/utils/src/integration.cc'],
               sherpa_inc + ['sherpa/utils/src',
                             'sherpa/utils/src/gsl'],
-              libraries=(cpp_libs + ['sherpa']),
+              libraries=cpp_libs,
               depends=(get_deps(['integration'])+
                        ['sherpa/utils/src/adapt_integrate.h',
                         'sherpa/utils/src/gsl/gsl_integration.h'])),
@@ -495,10 +514,11 @@ extension_modules = [
 
     # sherpa.astro.utils._pileup
     Extension('sherpa.astro.utils._pileup',
-              ['sherpa/astro/utils/src/_pileup.cc',
+              ['sherpa/astro/utils/src/fftn.c',
+               'sherpa/astro/utils/src/_pileup.cc',
                'sherpa/astro/utils/src/pileup.cc'],
               sherpa_inc + ['sherpa/astro/utils/src'],
-              libraries=(cpp_libs + ['sherpa']),
+              libraries=cpp_libs,
               depends=(get_deps(['extension']) +
                        ['sherpa/astro/utils/src/pileup.hh',
                         'sherpa/astro/utils/src/PyWrapper.hh',
@@ -537,18 +557,21 @@ if (conf['wcs_library_dir'] is not None and
 
 if (conf['reg_library_dir'] is not None and
     conf['reg_include_dir'] is not None and 
-    conf['cfitsio_library_dir'] is not None):
+    conf['wcs_library_dir'] is not None and
+    conf['wcs_include_dir'] is not None):
+
+    reg_lib_dirs = [conf['reg_library_dir'], conf['wcs_library_dir']]
+    if conf['cfitsio_library_dir'] is not None:
+        reg_lib_dirs.append(conf['cfitsio_library_dir'])
 
     extension_modules.append(
         # sherpa.astro.utils._region
         Extension('sherpa.astro.utils._region',
                   ['sherpa/astro/utils/src/_region.cc'],
-                  sherpa_inc + [conf['reg_include_dir']],
-                  library_dirs=[conf['reg_library_dir'],
-                                conf['cfitsio_library_dir']
-                                ],
+                  sherpa_inc + [conf['reg_include_dir'], conf['wcs_include_dir']],
+                  library_dirs=reg_lib_dirs,
                   libraries=(cpp_libs +
-                             ['region', 'ascdm', conf['cfitsio_lib']]),
+                             ['region', 'ascdm', conf['cfitsio_lib'], 'wcs']),
                   depends=get_deps(['extension'])),
         )
 
@@ -590,17 +613,10 @@ if conf['xspec_library_dir'] is not None:
 # Run setup
 #
 ###############################################################################
-from build_clib import build_clib
-from install_lib import install_lib
 
-overloadedCommands = {
-    'build_clib'  : build_clib,
-    'install_lib' : install_lib,
-    }
-
-# CIAO 4.3 release, Sherpa package 1
+# CIAO 4.4 release, Sherpa package 1
 setup(name='sherpa',
-      version='4.3.1',
+      version='4.4.1',
       author='Smithsonian Astrophysical Observatory / Chandra X-Ray Center',
       author_email='cxchelp@head.cfa.harvard.edu',
       url='http://cxc.harvard.edu/sherpa/',
@@ -611,12 +627,15 @@ setup(name='sherpa',
                 'sherpa.models',
                 'sherpa.optmethods',
                 'sherpa.plot',
+                'sherpa.sim',
                 'sherpa.stats',
                 'sherpa.ui',
                 'sherpa.utils',
                 'sherpa.astro',
                 'sherpa.astro.io',
                 'sherpa.astro.models',
+                'sherpa.astro.optical',
+                'sherpa.astro.sim',
                 'sherpa.astro.ui',
                 'sherpa.astro.utils',
                 'sherpa.astro.xspec'],
@@ -628,12 +647,15 @@ setup(name='sherpa',
                     'sherpa.models': ['tests/test_*.py'],
                     'sherpa.optmethods': ['tests/test_*.py'],
                     'sherpa.plot': ['tests/test_*.py'],
+                    'sherpa.sim': ['tests/test_*.py'],
                     'sherpa.stats': ['tests/test_*.py'],
                     'sherpa.ui': ['tests/test_*.py'],
                     'sherpa.utils': ['tests/test_*.py'],
                     'sherpa.astro': ['tests/test_*.py'],
                     'sherpa.astro.io': ['tests/test_*.py'],
                     'sherpa.astro.models': ['tests/test_*.py'],
+                    'sherpa.astro.optical': ['tests/test_*.py'],
+                    'sherpa.astro.sim': ['tests/test_*.py'],
                     'sherpa.astro.ui': ['tests/test_*.py'],
                     'sherpa.astro.utils': ['tests/test_*.py'],
                     'sherpa.astro.xspec': ['tests/test_*.py']},
@@ -642,4 +664,4 @@ setup(name='sherpa',
       data_files=[('sherpa', ['sherpa/sherpa.rc']),
                   ('sherpa', ['sherpa/ipythonrc-sherpa']),
                   ('sherpa', ['sherpa/ipythonrc-sherpa-user'])],
-      cmdclass = overloadedCommands)
+      )

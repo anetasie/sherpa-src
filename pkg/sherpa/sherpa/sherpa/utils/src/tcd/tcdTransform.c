@@ -5,7 +5,7 @@
 /*                                                                          */
 /*  This program is free software; you can redistribute it and/or modify    */
 /*  it under the terms of the GNU General Public License as published by    */
-/*  the Free Software Foundation; either version 2 of the License, or       */
+/*  the Free Software Foundation; either version 3 of the License, or       */
 /*  (at your option) any later version.                                     */
 /*                                                                          */
 /*  This program is distributed in the hope that it will be useful,         */
@@ -52,73 +52,7 @@
   +
   +----------------------------------------------------
   */
-int tcdTransform(
-		 tcdTRANSFORM  tType,  /* i: which transform to compute     */
-		 float        *params, /* i: transform parameters(direction)*/
-		 tcdComplex   *data,   /* i/o: data to transform- in place  */
-		 long          nAxes,  /* i: number of axes                 */
-		 long         *lAxes,  /* i: length of axes                 */
-		 long         *dOrigin /* i: origin of axes                 */
-		 )
-{
-  long nTotal, ii;
-  int status;
-  int *axe_len;   /* FFTW wants ints for this parameter */
-  fftwf_plan plan;
 
-
-  /* error checking */
-  status = tcdCheckData( data, nAxes, lAxes );
-  if ( status != tcdSUCCESS ) return( status );
-
-  if ( params == NULL ) return( tcdERROR_NULLPTR);
-
-  /* do transforms */
-  switch ( tType )
-    {
-    case tcdFFT:
-       axe_len = (int*)calloc(nAxes,sizeof(int));
-      for (ii=0;ii<nAxes;ii++) axe_len[ii] = lAxes[nAxes-ii-1];
-
-      if (params[0] == tcdFORWARD)
-	plan=fftwf_plan_dft(nAxes, axe_len, (void *)data, (void *)data,       
-			       FFTW_FORWARD, FFTW_ESTIMATE);
-      else
-	plan=fftwf_plan_dft(nAxes, axe_len, (void *)data, (void *)data,       
-				FFTW_BACKWARD, FFTW_ESTIMATE);
-
-      free(axe_len);
-
-      if (plan == NULL)
-	{
-	  return(tcdERROR);
-	}
-      fftwf_execute( plan); 
-
-            
-      /* Normalize */
-      if ( params[0] == (float )tcdFORWARD )
-	{
-	  nTotal=1;
-	  for (ii=0;ii<nAxes  ; ii++) nTotal *= lAxes[ii];
-	  for (ii=0; ii<nTotal; ii++) 
-	    {
-	      data[ii].r /= nTotal ; 
-	      data[ii].i /= nTotal; 
-	    }
-	}
-
-      /* destroy plan */
-      fftwf_destroy_plan(plan);
-      break;
-
-    default:
-      return( tcdERROR_NOTIMPLEMENTED );
-    }
-
-  return( tcdSUCCESS );
-
-}
   /* double precision */
 int tcdTransformD(
 		 tcdTRANSFORM  tType,  /* i: which transform to compute     */

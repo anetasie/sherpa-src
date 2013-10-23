@@ -341,11 +341,13 @@ c     --dtn
      +     ,ub)
       implicit none
       external fcn
-      double precision ub(n)
 c     --dtn
       integer m,n,ldfjac,iflag
       double precision epsfcn
       double precision x(n),fvec(m),fjac(ldfjac,n),wa(m)
+c     --dtn
+      double precision ub(n)
+c     --dtn
 c     **********
 c
 c     subroutine fdjac2
@@ -460,7 +462,7 @@ c
      *                 diag,mode,factor,nprint,info,nfev,fjac,ldfjac,
      *                 ipvt,qtf,wa1,wa2,wa3,wa4,
 c     --dtn
-     *     lb,ub,multicore,myfdjac)
+     *     lb,ub)
       implicit none
 c     --dtn
       integer m,n,maxfev,mode,nprint,info,nfev,ldfjac
@@ -471,9 +473,7 @@ c     --dtn
 c     --dtn
       double precision lb(n),ub(n)
 c     double preicion lowtri(n*(n+1)/2)
-      integer multicore
 c     external symmatmul
-      external myfdjac
 c     --dtn
       external fcn
 c     **********
@@ -707,11 +707,7 @@ c        calculate the jacobian matrix.
 c
          iflag = 2
 c     --dtn
-         if ( multicore .eq. 0 ) then
-            call fdjac2(fcn,m,n,x,fvec,fjac,ldfjac,iflag,epsfcn,wa4,ub)
-         else
-            call myfdjac(m,n,x,fvec,fjac,ub,iflag,epsfcn)
-         endif
+         call fdjac2(fcn,m,n,x,fvec,fjac,ldfjac,iflag,epsfcn,wa4,ub)
 c         call symmatmult(m,n,fjac,fjac,lowtri)
 c     --dtn
          nfev = nfev + n

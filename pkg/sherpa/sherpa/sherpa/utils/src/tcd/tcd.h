@@ -5,7 +5,7 @@
 /*                                                                          */
 /*  This program is free software; you can redistribute it and/or modify    */
 /*  it under the terms of the GNU General Public License as published by    */
-/*  the Free Software Foundation; either version 2 of the License, or       */
+/*  the Free Software Foundation; either version 3 of the License, or       */
 /*  (at your option) any later version.                                     */
 /*                                                                          */
 /*  This program is distributed in the hope that it will be useful,         */
@@ -212,15 +212,6 @@ typedef enum tcdConMethod tcdCONMETHOD;
 
 
 /* perform N-D transform of the initialized data array */
-
-extern int tcdTransform(
-			tcdTRANSFORM  tType,  /* i: transform type          */
-			float        *params, /* i: transform parameters    */
-			tcdComplex   *data,   /* i/o: initialize data array */
-			long          nAxes,  /* i: number of data axes     */
-			long         *lAxes,  /* i: length of data axes     */
-			long         *dOrigin /* i: origin of data axes     */
-			);
 
 /* double precision */
 extern int tcdTransformD(

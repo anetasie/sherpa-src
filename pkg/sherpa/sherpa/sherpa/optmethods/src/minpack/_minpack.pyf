@@ -10,16 +10,16 @@ python module lmdif__user__routines
             double precision dimension(m),intent(out) :: fvec
             integer intent(in,out) :: iflag
         end subroutine fcn
-        subroutine myfdjac(m,n,x,fvec,fjac,high,iflag,epsfcn)
-            integer depend(fvec),intent(hide) :: m=len(fvec)
-            integer depend(x),intent(hide) :: n=len(x)
-            double precision dimension(n),intent(in) :: x
-            double precision dimension(m),intent(in) :: fvec
-            double precision dimension(m,n),depend(m,n),intent(inout) :: fjac
-            double precision dimension(n),intent(in) :: high
-            integer intent(in,out) :: iflag
-            double precision intent(in) :: epsfcn
-        end subroutine myfdjac
+!!$        subroutine myfdjac(m,n,x,fvec,fjac,high,iflag,epsfcn)
+!!$            integer depend(fvec),intent(hide) :: m=len(fvec)
+!!$            integer depend(x),intent(hide) :: n=len(x)
+!!$            double precision dimension(n),intent(in) :: x
+!!$            double precision dimension(m),intent(in) :: fvec
+!!$            double precision dimension(m,n),depend(m,n),intent(inout) :: fjac
+!!$            double precision dimension(n),intent(in) :: high
+!!$            integer intent(in,out) :: iflag
+!!$            double precision intent(in) :: epsfcn
+!!$        end subroutine myfdjac
     end interface lmdif_user_interface
 end python module lmdif__user__routines
 python module _minpack
@@ -46,7 +46,7 @@ python module _minpack
           double precision dimension(n),depend(n),intent(inout) :: wa2
         end subroutine lmpar
 !
-        subroutine mylmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,diag,mode,factor,nprint,info,nfev,fjac,ldfjac,ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub,fval,multicore,myfdjac,covarerr)
+        subroutine mylmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,diag,mode,factor,nprint,info,nfev,fjac,ldfjac,ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub,fval,covarerr)
             use lmdif__user__routines
             external fcn
             integer intent(in) :: m
@@ -75,8 +75,8 @@ python module _minpack
             double precision dimension(n),intent(in) :: lb
             double precision dimension(n),intent(in) :: ub
             double precision intent(out) :: fval
-            integer intent(in) :: multicore
-            external myfdjac
+!!$            integer intent(in) :: multicore
+!!$            external myfdjac
 !            double precision dimension(n*(n+1)/2),depend(n),intent(hide) :: lowtri
 !           integer intent(out):: ifault
             double precision dimension(n),depend(n),intent(out) :: covarerr

@@ -1,0 +1,249 @@
+			Sherpa 4.3.0 Release Notes
+			       2010 SAO
+
+
+
+  o New functions calc_stat_info() and get_stat_info() have been added
+    to Sherpa. These implements functionality similar to the GOODNESS
+    command from Sherpa 3.4. Goodness-of-fit information usually found
+    in a Sherpa fit result is now also calculated separately. It is no
+    longer necessary to perform a new fit just to get goodness-of-fit
+    information.
+
+    Sherpa high level UI:
+      calc_stat_info()
+      get_stat_info()
+
+  o There are new plotting functions to plot individual model
+    components. Users can pass one or more Sherpa model components to
+    the plotting function to quickly view the contribution to the
+    model. Similarly, users can view 2D model components in DS9. The
+    function names follow the same convention that the names
+    get_model() and get_source() use. Having "source" in the function
+    name indicates the model component(s) alone, while "model"
+    indicates that the model component(s) will be convolved with any
+    assigned convolution models (e.g PSF or PHA response).
+
+    plot_model_component()
+    plot_source_component()
+
+    get_model_component_plot()
+    get_source_component_plot()
+
+    image_model_component()
+    image_source_component()
+
+    get_model_component_image()
+    get_source_component_image()
+
+    get_model_component()
+
+  o Model caching is now available for XSPEC and 1D analytic models.
+    This drop automatically turns on model caching for XSPEC and 1D
+    Sherpa analytical models. 2D Sherpa analytical models are *not*
+    cached by default due to the potential impact on memory usage.
+    Compared to fit results in previous releases, there should be no
+    change to any calculated value. The only difference that may be
+    seen is in reduced program execution time.
+
+  o New 1D integration helper function, "integrate1d". Users can now
+    use a helper function to define 1D numerical integration on a
+    particular arbitrary Sherpa model expression. This function is
+    used inside a Sherpa model definition as an explicit indication
+    that Sherpa should numerically integrate the expression in
+    parenthesis. The helper function numerically integrates the
+    expression as a whole, correctly, instead of each component
+    individually. Note that the model expression should not include
+    any XSPEC additive models, as those models perform integration on
+    themselves.
+
+  o The follow statistical PDF functions for multivariate normal and
+    multivariate student T distributions have been added to Sherpa
+    utils module. The functions are also accessible directly from the
+    high-level user interface.
+
+    multinormal_pdf()
+    multit_pdf()
+
+  o There is a new function in the high-level UI, get_bkg_scale().
+    This returns the background scale associated with a PHA data set,
+    that is used when subtracting background data, or when
+    simultaneously fitting source and background models in one fit to
+    PHA data. (Similarly, the DataPHA class has a new method
+    get_background_scale(), to get the background scale from the
+    Sherpa object that stores PHA data.) The background scale is the
+    value associated with the OGIP PHA header keyword BACKSCAL.
+
+    The background scale is also shown by the show_data() and
+    show_all() functions.
+
+  o The plot functions int_proj() and int_unc() now include dashed
+    lines indicating the best fit statistic and best fit parameter
+    value.
+
+  o New switch 'numcores', to control the number of cores used in
+    parallelized code, has been added to the following high level UI
+    functions:
+
+    conf/proj
+
+    int_proj/int_unc
+    get_int_proj/get_int_unc
+
+    reg_proj/reg_unc
+    get_reg_proj/get_reg_unc
+
+    plot_photon_flux/plot_energy_flux
+    get_photon_flux_hist/get_energy_flux_hist
+
+  o New high level UI functions to set x and y axis scales for Sherpa
+    plots. Accepts similar argument values to the generic plot()
+    function ("data", "model", "source", "delchi", etc).
+
+    set_xlog, set_ylog, set_xlinear, set_ylinear
+
+  o New argument for high level UI function list_models(). Valid
+    arguments are "all", "xspec", "1d", and "2d". Results are sorted.
+
+    e.g.
+    list_models()                       # default is "all"
+    list_models("xspec")                # all XSPEC models
+    list_models("2d")                   # Sherpa 2D analytical models
+    list_models("1d")                   # Sherpa 1D analytical models
+
+  o The Sherpa configuration file 'sherpa.rc' is updated with a new
+    section [parallel] that includes a switch 'numcores'. The default
+    value for 'numcores' is None. This indicates that all available
+    cores will be used for concurrent functions. The user is free to
+    specify the number of cores to use for all Sherpa concurrent
+    functions, as shown below:
+
+      [parallel]
+      numcores : 3
+
+  o The XSPEC function set_xsabund() is updated to accept user defined
+    files containing solar abundances.
+
+    e.g.
+    set_xsabund("myabund.dat")
+
+  o New XSPEC functions set_xsxset() and get_xsxset() are added to the
+    high level UI. These functions are associated with the XSPEC
+    function XSET for defining model environment variables.
+
+    e.g.
+    set_xsxset("NEIVERS", "2.0")
+    set_xsxset("NEIAPECROOT", "/home/brefsdal/apec")
+    set_model(xsvnei.nn)
+
+    get_xsxset("NEIAPECROOT")
+    '/home/brefsdal/apec'
+
+  o The Sherpa pickling function "save()" now includes XSPEC module
+    settings in the saved binary file. These settings are the
+    abundance, chatter level, cosmology, electron cross-section, and
+    model variables set via the XSPEC "xsxset()" function. The
+    Sherpa unpickle "restore()" function reads these settings back in,
+    and calls the appropriate XSPEC module functions to reset these
+    values. (The save() and restore() functions have been modified to
+    be backwards-compatible with CIAO 4.2 Sherpa pickle files.)
+
+  o The Sherpa save_all() function, which saves attributes of a
+    Sherpa session to a human-readable text file, has been modified.
+    The text file created by save_all() now includes:
+    * The iterative fitting method, if that has been set;
+    * Source model assignment via either set_source() or
+      set_full_model(), as appropriate;
+    * XSPEC module settings for abundances, chatter level, cosmology,
+      electron cross-section, and model settings via the xsxset()
+      function.
+    Text files created with the CIAO 4.2 version of save_all() can
+    still be executed in the CIAO 4.3 version of Sherpa.
+
+  o The dynamic grouping functions expose additional arguments (e.g.,
+    tabStops), that are used by the CIAO group module functions.
+
+  o Plot unit labels have been standardized. 
+
+  o There are new high-level UI functions to set plot x- and y-axis to
+    log or linear scale, without going through the plotting package
+    module.  These functions are set_xlog(), set_ylog(),
+    set_xlinear(), set_ylinear().
+
+  o When a Sherpa model is used as a PSF, all model parameters are
+    frozen by default.
+
+  o dataspace2d() and load_image() now support the Sherpa Data2DInt
+    type.
+
+  o If a best-fit parameter value rests on a boundary of parameter
+    space, a warning is printed after the fit is complete.  The
+    warning is also stored with the fit results after the fit.
+
+  o The covariance function is now more graceful about catching
+    SVD (singular value decomposition) errors, and allows a user's
+    script to run to completion. 
+
+  o When a set of PHA grouping flags is changed, the filters of both
+    source and background data sets are now cleared.
+
+  o Fix to correctly handle rectangular PSFs from file.
+
+  o XSPEC 12.6.0q libraries are now supported.
+
+
+Bugs:
+=====
+  o 10203 notice/ignore with multiple PHA datasets
+  o 10333 comments on register_user_model(), functionality addressed
+          with add_model()
+  o 10712 RFE on parameter and output of list_models()
+  o 11505 image_source is unfiltered, now symmetric to PHA version.
+  o 11848 load_bkg() uses source response.
+  o 11895 plot_source() setting limits, chips backend no longer 
+          calls pychips.limits()
+  o 11984 issues setting parameter limits, print out more significant
+          digits
+  o 12002 set_xsabund() using a file
+  o 12005 ratio line removed after log scale, fixed
+  o 12105 add bkg to show_all()
+  o 12115 BUG: contour_resid/data/... give axis units as mm!
+  o 12124 Margarita NelderMead issue
+  o 12162 Re: BUG: group_xxx failures/errors (seem to be 64-bit OS-X
+          specific?)
+  o 12173 parallel switch 'numcores' for confidence, confidence
+          plotting, and flux functions.
+  o 12220 Re: RFE: overplot components
+  o 12222 added new high level UI functions set_xlog, set_ylog,
+          set_xlinear, set_ylinear that switch all canned plots to the
+          respective transformation.
+  o 12259 Re: how do i get my line numbers back from exceptions
+  o 12261 Re: QUS: how do I start up a new ds9 instance from within
+          sherpa
+  o 12267 BUG: xspec model xsgrad has an
+  o 12268 XSpec read/write strings using XSET
+  o 12286 error msgs and additional example in calc_data_sum
+  o 12287 linking parameters can confuse model evaluation
+  o 12354 RFE: fit() when all parameters are frozen
+  o 12359 RFE: a get_model_component style routine
+  o 12361 RFE: minor update to modelflux .par file
+  o 12362 srcextent too (as well as modelflux, not modeltool)
+  o 12363 RFE: improve error messages from modelflux
+  o 12367 ModelWrapper.__setattr__ (?) has a bug in formatting an
+          error message
+  o 12400 better error message for table models
+  o 12405 fixed 1D PSF translation bug
+  o 12498 srcextent sizes change on non-centroid-centered images
+  o 12502 error msgs not shown for set_psf()
+  o 12506 CIAOX grouping error
+  o 12507 available io_pkgs
+  o 12638 CIAOX - parameter warning
+
+Caveats:
+========
+  o In CIAO 4.2, the function "plot_bkg_unconvolved()" was an alias to
+    the function "plot_bkg_source()".  As part of cleaning up the
+    Sherpa namespace, that alias has been removed.  There is NO loss
+    in functionality.  Users need to call "plot_bkg_source()" to plot
+    the background's source model, without folding it through the
+    background response.

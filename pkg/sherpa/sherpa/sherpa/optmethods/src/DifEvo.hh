@@ -62,31 +62,92 @@
 // Revision: 1.0
 //
 
-#include "RanOpt.hh"
+#include "sherpa/MersenneTwister.h"
+
+#include "Opt.hh"
 #include "Simplex.hh"
 
 namespace sherpa {
 
   template < typename Func, typename Data, typename Algo >
-  class DifEvo : public sherpa::RanOpt< Func, Data > {
-
-    typedef void (DifEvo<Func,Data,Algo>::*StrategyFuncPtr)( int,
-							    sherpa::Simplex&,
-							    const double* model_par,
-							    std::vector<double>& );
-
+  class DifEvo : public sherpa::Opt {
+    
   public:
+
+    typedef DifEvo<Func,Data,Algo> MyDifEvo;
+    typedef void (MyDifEvo::*StrategyFuncPtr)( int, double, double, int,
+					       const sherpa::Simplex&,
+					       const std::vector<double>&,
+					       MTRand&, std::vector<double>& );
 
     enum Strategy { Best1Exp, Rand1Exp, RandToBest1Exp, Best2Exp, Rand2Exp,
 		    Best1Bin, Rand1Bin, RandToBest1Bin, Best2Bin, Rand2Bin };
 
-    DifEvo( int numpar, double* par, const double* lo, const double* hi,
-	    Func func, Data xtra, double xprob, double scale, int strategy,
-	    int seed, int mfct=0 )
-      : RanOpt< Func, Data >( numpar, par, lo, hi, func, xtra, seed ), 
-	cross_over_probability( xprob ), scale_factor( scale ),
-	strategy_func_ptr( 0 ), local_opt( numpar, par, lo, hi, func, xtra,
-					   mfct ) {
+    DifEvo( Func func, Data xdata, int mfct=0 )
+      : Opt( ), usr_func( func ), usr_data( xdata ),
+	local_opt( func, xdata, mfct ), strategy_func_ptr( 0 ) { }
+	
+    int operator( )( int verbose, int maxnfev, double tol, int population_size,
+		     int seed, double cross_over_probability, 
+		     double scale_factor, int npar,
+		     const std::vector<double>& low,
+		     const std::vector<double>& high,
+		     std::vector<double>& par, int& nfev, double& fmin ) {
+
+      int ierr = EXIT_SUCCESS;
+
+      nfev = 0;
+      fmin = std::numeric_limits< double >::max( );
+      std::vector<double> mypar( npar + 1, 0.0 );
+      for ( int ii = 0; ii < npar; ++ii )
+	mypar[ ii ] = par[ ii ];
+
+      try {
+
+	const sherpa::Opt::mypair limits( low, high );
+	if ( sherpa::Opt::are_pars_outside_limits( npar, limits, par ) )
+	  throw sherpa::OptErr( sherpa::OptErr::OutOfBound );
+
+	ierr = difevo( verbose, maxnfev, tol, population_size, seed,
+		       cross_over_probability, scale_factor, npar, limits,
+		       mypar, nfev );
+
+      } catch( OptErr& oe ) {
+
+	if ( verbose )
+	  std::cerr << oe << '\n';
+	ierr = oe.err;
+
+      } catch( std::runtime_error& re ) {
+
+	if ( verbose )
+	  std::cerr << re.what( ) << '\n';
+	ierr = OptErr::Unknown;
+
+      } catch( std::exception& e ) {
+
+	if ( verbose )
+	  std::cerr << e.what( ) << '\n';
+	ierr = OptErr::Unknown;
+
+      }
+
+      for ( int ii = 0; ii < npar; ++ii )
+	par[ ii ] = mypar[ ii ];
+      fmin = mypar[ npar ];
+      return ierr;
+
+    }
+
+
+  private:
+    Func usr_func;
+    Data usr_data;
+    Algo local_opt;
+    StrategyFuncPtr strategy_func_ptr;
+
+    void choose_strategy( int strategy ) {
+
       switch ( strategy  ) {
       case Best1Exp:
 	// strategy DE0 not in the paper
@@ -131,6 +192,7 @@ namespace sherpa {
       default:
 	strategy_func_ptr = &DifEvo<Func,Data,Algo>::best1exp;
 	break;
+
       }
 
       //
@@ -152,50 +214,52 @@ namespace sherpa {
       //     vice versa
       //
    
-      return;
-
     }
-	
-    int operator( )( double* model_par, int verbose, int maxnfev, double tol, 
-		     int population_size, int& nfev, double& fstat ) {
 
-      nfev = 0;
+    int difevo( int verbose, int maxnfev, double tol, int population_size,
+		int seed, double cross_over_probability, double scale_factor,
+		int npar, const sherpa::Opt::mypair& limits,
+		std::vector<double>& par, int& nfev ) {
+      
+
       int ierr = EXIT_SUCCESS;
-      fstat = std::numeric_limits< double >::max( );
+      par[ npar ]  = std::numeric_limits< double >::max( );
       population_size = std::abs( population_size );
+
+      MTRand mt_rand( seed );
 
       //
       // For each row of the 2d-array population and children:
       // the columns [ 0, npar - 1 ] contain the parameters, and
       // the column npar contains the function values:
       // (*usrfunc)( population(ii,0), ... population(ii,npar-1) ) =
-      //                                                     population(ii,npar);
+      //                                                   population(ii,npar);
       //
-      // The array shall have dimension: population( population_size, npar + 1 )
+      // The array shall have dimension: population(population_size, npar + 1)
       //
       // Will use the class Simplex since it has all the the infrastructure
       // that is needed to check for convergence although it is not a simplex
       // in the classic sense.
       //
-      sherpa::Simplex population( population_size, NPAR + 1 );
+      const std::vector<double>& low = limits.first;
+      const std::vector<double>& high = limits.second;
+      sherpa::Simplex population( population_size, npar + 1 );
       for ( int ii = 0; ii < population_size; ++ii ) {
-	for ( int jj = 0; jj < NPAR; ++jj )
+	for ( int jj = 0; jj < npar; ++jj )
 	  population[ ii ][ jj ] =
-	    random_number_ee( Opt<Func,Data>::lo_bound[ jj ],
-			      Opt<Func,Data>::hi_bound[ jj ] );
-	population[ ii ][ NPAR ] =
-	  std::numeric_limits< double >::max( );
+	    low[ jj ] + ( high[ jj ] - low[ jj ] ) * mt_rand.randDblExc( );
+	population[ ii ][ npar ] = std::numeric_limits< double >::max( );
       }
 
       //
       // allocate an extra element to store the function value
       //
-      std::vector< double > trial_solution( NPAR + 1 );
-      std::vector< double > fct_vals( population_size );
-      double tol_sqr = tol * tol;
-      int simplex_tst = 0;
+      std::vector<double> trial_solution( npar + 1 );
+      const double tol_sqr = tol * tol;
+      const int simplex_tst = 0;
 
-      ierr = local_opt.minimize( model_par, tol, maxnfev - nfev, nfev, fstat );
+      ierr = local_opt.minimize( maxnfev - nfev, limits, tol, npar, par, 
+				 par[ npar ], nfev );
       if ( EXIT_SUCCESS != ierr )
 	return ierr;
 
@@ -205,50 +269,54 @@ namespace sherpa {
 	      ++candidate ) {
 
 	  population.copy_row( candidate, trial_solution );
-	  (this->*strategy_func_ptr)( candidate, population, model_par,
-				      trial_solution );
 
-	  ierr = local_opt.eval_user_func( maxnfev, &trial_solution[0],
-					   trial_solution[ NPAR ],
-					   nfev, ierr );
+	  for ( int strategy = 0; strategy < 10; ++strategy ) {
 
-	  if ( trial_solution[ NPAR ] <
-	       population[ candidate ][ NPAR ] ) {
-	    population.copy_row( trial_solution, candidate );
+	    choose_strategy( strategy );
 
-	    if ( trial_solution[ NPAR ] < fstat ) {
+	    (this->*strategy_func_ptr)( candidate, cross_over_probability,
+					scale_factor, npar, population, par,
+					mt_rand, trial_solution );
 
-	      ierr =
-		local_opt.minimize( &trial_solution[ 0 ], tol, maxnfev - nfev,
-				    nfev, trial_solution[ NPAR ] );
-	      if ( EXIT_SUCCESS != ierr )
-		return ierr;
+	    trial_solution[ npar ] = 
+	      local_opt.eval_func( maxnfev, limits, npar, trial_solution,
+				   nfev );
 
-	      fstat = trial_solution[ NPAR ];
-	      update_par( trial_solution, model_par );
+	    if ( trial_solution[ npar ] <
+		 population[ candidate ][ npar ] ) {
+	      population.copy_row( trial_solution, candidate );
 
-	    }  // if ( trial_solution[ NPAR ] < fstat ) {
+	      if ( trial_solution[ npar ] < par[ npar ] ) {
 
-	    population.sort( );
-	    if ( population.check_convergence( tol, tol_sqr, fct_vals,
-					       simplex_tst ) )
-	      return EXIT_SUCCESS;
+		ierr = local_opt.minimize( maxnfev - nfev, limits, tol, npar,
+					   trial_solution,
+					   trial_solution[ npar ], nfev );
+		if ( EXIT_SUCCESS != ierr )
+		  return ierr;
 
-	  } // if ( trial_solution[ NPAR ] < population( ...
+		sherpa::Array2d<double>::copy_vector( npar + 1, trial_solution,
+						      par );
+		if ( verbose > 1 )
+		  sherpa::Opt::print_par( std::cout, par );
 
-	}  // for ( int candidate=0; candidate < population_size && 
+	      }  // if ( trial_solution[ npar ] < par[ npar ] ) {
+
+	      population.sort( );
+	      if ( population.check_convergence( tol, tol_sqr, simplex_tst ) )
+		return EXIT_SUCCESS;
+
+	    }                  // if ( trial_solution[ npar ] < population( ...
+
+	  }              // for ( int strategy = 0; strategy < 10; ++strategy )
+
+	}              // for ( int candidate=0; candidate < population_size &&
 
       }                                            // for ( ; nfev < maxnfev; )
+
       return ierr;
 
-    }
+    }                                                                // difevo
 
-
-  private:
-
-    double cross_over_probability, scale_factor;
-    StrategyFuncPtr strategy_func_ptr;
-    Algo local_opt;
 
     //
     // EXPONENTIAL CROSSOVER
@@ -257,20 +325,18 @@ namespace sherpa {
     // Our oldest strategy but still not bad. However, we have found several
     // optimization problems where misconvergence occurs.
     //    
-    void best1exp( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution )  {
+    void best1exp( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution )  {
 
       int r1, r2;
-      select_samples( candidate, population.get_nrows( ), &r1, &r2 );
-
-      int n = RanOpt<Func,Data>::random_number( 0, NPAR - 1 );
-      for ( int ii = 0;
-	    RanOpt<Func,Data>::random_number( ) < cross_over_probability &&
-	      ii < NPAR; ++ii ) {
-	trial_solution[ n ] = model_par[ n ] +
-	  scale_factor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
-	n = ( n + 1 ) % NPAR;
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2 );
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; mt_rand.rand( ) < xprob && ii < npar; ++ii ) {
+	trial_solution[ n ] = par[ n ] +
+	  sfactor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
+	n = ( n + 1 ) % npar;
       }
 
       return;
@@ -282,20 +348,18 @@ namespace sherpa {
     // the "bestit[]"-schemes experience misconvergence. Try e.g.
     // F=0.7 and CR=0.5 as a first guess.
     //
-    void rand1exp( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void rand1exp( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution ) {
 
       int r1, r2, r3;
-      select_samples( candidate, population.get_nrows(), &r1, &r2, &r3 );
-      
-      int n = random_number( 0, NPAR - 1 );
-      for ( int ii = 0;
-	    RanOpt<Func,Data>::random_number( ) < cross_over_probability &&
-	      ii < NPAR; ++ii ) {
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2, &r3 );
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; mt_rand.rand( ) < xprob && ii < npar; ++ii ) {
 	trial_solution[ n ] = population[ r1 ][ n ] +
-	  + scale_factor * ( population[ r2 ][ n ] - population[ r3 ][ n ] );
-	n = (n + 1) % NPAR;
+	  + sfactor * ( population[ r2 ][ n ] - population[ r3 ][ n ] );
+	n = (n + 1) % npar;
       }
       
       return;
@@ -308,164 +372,159 @@ namespace sherpa {
     // CR=1. If you get misconvergence try to increase NP. If this doesn't
     // help you should play around with all three control variables.
     //
-    void randtobest1exp( int candidate, sherpa::Simplex& population,
-			 const double* model_par,
-			 std::vector< double >& trial_solution ) {
+    void randtobest1exp( int candidate, double xprob, double sfactor, int npar,
+			 const sherpa::Simplex& population,
+			 const std::vector<double>& par, MTRand& mt_rand,
+			 std::vector<double>& trial_solution ) {
 
       int r1, r2;  
-      select_samples( candidate, population.get_nrows(), &r1, &r2 );
-
-      int n = random_number( 0, NPAR - 1 );
-      for ( int ii = 0;
-	    RanOpt<Func,Data>::random_number( ) < cross_over_probability &&
-	      ii < NPAR; ++ii ) {
-	trial_solution[n] += scale_factor * ( model_par[ n ] -
-					      trial_solution[ n ] ) +
-	  scale_factor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
-	n = (n + 1) % NPAR;
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2 );
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; mt_rand.rand( ) < xprob && ii < npar; ++ii ) {
+	trial_solution[n] += sfactor * ( par[ n ] - trial_solution[ n ] ) +
+	  sfactor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
+	n = (n + 1) % npar;
       }
 
       return;
 
     }
 
-    void best2exp( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void best2exp( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution ) {
 
       int r1, r2, r3, r4;
-      select_samples( candidate, population.get_nrows(), &r1, &r2, &r3, &r4 );
-
-      int n = random_number( 0, NPAR - 1 );
-      for ( int ii = 0;
-	    RanOpt<Func,Data>::random_number( ) < cross_over_probability &&
-	      ii < NPAR; ++ii ) {
-	trial_solution[n] = model_par[ n ] + 
-	  scale_factor * ( population[ r1 ][ n ] + population[ r2 ][ n ] -
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2, &r3,
+		      &r4 );
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; mt_rand.rand( ) < xprob && ii < npar; ++ii ) {
+	trial_solution[n] = par[ n ] + 
+	  sfactor * ( population[ r1 ][ n ] + population[ r2 ][ n ] -
 			   - population[ r3 ][ n ] - population[ r4 ][ n ] );
-	n = (n + 1) % NPAR;
+	n = (n + 1) % npar;
       }
 
       return;
 
     }
 
-    void rand2exp( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void rand2exp( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution ) {
 
       int r1, r2, r3, r4, r5;
-      select_samples( candidate, population.get_nrows(),
+      select_samples( candidate, population.nrows( ), mt_rand,
 		      &r1, &r2, &r3, &r4, &r5 );
-
-      int n = random_number( 0, NPAR - 1 );
-      for ( int ii = 0;
-	    RanOpt<Func,Data>::random_number( ) < cross_over_probability && 
-	      ii < NPAR; ++ii ) {
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; mt_rand.rand( ) < xprob && ii < npar; ++ii ) {
 	trial_solution[n] = population[ r1 ][ n ] +
-	  scale_factor * ( population[ r2 ][ n ] + population[ r3 ][ n ] -
+	  sfactor * ( population[ r2 ][ n ] + population[ r3 ][ n ] -
 			   population[ r4 ][ n ] - population[ r5 ][ n ] );
-	n = (n + 1) % NPAR;
+	n = (n + 1) % npar;
       }
 
       return;
 
     }
 
-    void best1bin( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void best1bin( int candidate, double xprob, double sfactor, int npar,
+			  const sherpa::Simplex& population,
+			  const std::vector<double>& par, MTRand& mt_rand,
+			  std::vector<double>& trial_solution ) {
 
       int r1, r2;
-      select_samples( candidate, population.get_nrows(), &r1, &r2 );
-
-      int n = random_number( 0, NPAR - 1 );  
-      for ( int ii = 0; ii < NPAR; ++ii ) {
-	if ( RanOpt<Func,Data>::random_number( ) < cross_over_probability ||
-	     NPAR - 1 == ii )
-	  trial_solution[n] = model_par[ n ] +
-	    scale_factor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
-	n = (n + 1) % NPAR;
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2 );
+      int n = mt_rand.randInt( npar - 1 );  
+      for ( int ii = 0; ii < npar; ++ii ) {
+	if ( mt_rand.rand( ) < xprob || npar - 1 == ii )
+	  trial_solution[n] = par[ n ] +
+	    sfactor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
+	n = (n + 1) % npar;
       }
 
       return;
 
     }
 
-    void rand1bin( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void rand1bin( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution ) {
 
       int r1, r2, r3;
-      select_samples( candidate, population.get_nrows(), &r1, &r2, &r3 );
-
-      int n = random_number( 0, NPAR - 1 );  
-      for ( int ii = 0; ii < NPAR; ++ii ) {
-	if ( RanOpt<Func,Data>::random_number( ) < cross_over_probability ||
-	     NPAR - 1 == ii )
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2, &r3 );
+      int n = mt_rand.randInt( npar - 1 );  
+      for ( int ii = 0; ii < npar; ++ii ) {
+	if ( mt_rand.rand( ) < xprob || npar - 1 == ii )
 	  trial_solution[n] = population[ r1 ][ n ] +
-	    scale_factor * ( population[ r2 ][ n ] - population[ r3 ][ n ] );
-	n = (n + 1) % NPAR;
+	    sfactor * ( population[ r2 ][ n ] - population[ r3 ][ n ] );
+	n = (n + 1) % npar;
       }
 
       return;
 
     }
 
-    void randtobest1bin( int candidate, sherpa::Simplex& population,
-			 const double* model_par,
-			 std::vector< double >& trial_solution ) {
+    void randtobest1bin( int candidate, double xprob, double sfactor, int npar,
+			 const sherpa::Simplex& population,
+			 const std::vector<double>& par, MTRand& mt_rand,
+			 std::vector<double>& trial_solution ) {
 
       int r1, r2;
-      select_samples( candidate, population.get_nrows(), &r1, &r2 );
-
-      int n = random_number( 0, NPAR - 1 );  
-      for ( int ii = 0; ii < NPAR; ++ii ) {
-	if ( RanOpt<Func,Data>::random_number( ) < cross_over_probability || NPAR - 1 == ii )
-	  trial_solution[n] += scale_factor * (model_par[ n ] - trial_solution[ n ] ) +
-	    scale_factor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
-	n = (n + 1) % NPAR;
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2 );
+      int n = mt_rand.randInt( npar - 1 );  
+      for ( int ii = 0; ii < npar; ++ii ) {
+	if ( mt_rand.rand( ) < xprob || npar - 1 == ii )
+	  trial_solution[n] +=
+	    sfactor * (par[ n ] - trial_solution[ n ] ) +
+	    sfactor * ( population[ r1 ][ n ] - population[ r2 ][ n ] );
+	n = (n + 1) % npar;
       }
   
       return;
 
     }
 
-    void best2bin( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void best2bin( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution ) {
 
       int r1, r2, r3, r4;
-      select_samples( candidate, population.get_nrows(), &r1, &r2, &r3, &r4 );
-
-      int n = random_number( 0, NPAR - 1 );
-      for ( int ii = 0; ii < NPAR; ++ii ) {
-	if ( RanOpt<Func,Data>::random_number( ) < cross_over_probability || NPAR - 1 == ii )
-	  trial_solution[n] = model_par[ n ] +
-	    scale_factor * ( population[ r1 ][ n ] + population[ r2 ][ n ] -
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2, &r3,
+		      &r4 );
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; ii < npar; ++ii ) {
+	if ( mt_rand.rand( ) < xprob || npar - 1 == ii )
+	  trial_solution[n] = par[ n ] +
+	    sfactor * ( population[ r1 ][ n ] + population[ r2 ][ n ] -
 			     population[ r3 ][ n ] - population[ r4 ][ n ] );
-	n = (n + 1) % NPAR;
+	n = (n + 1) % npar;
       }
 
       return;
 
     }
 
-    void rand2bin( int candidate, sherpa::Simplex& population,
-		   const double* model_par,
-		   std::vector< double >& trial_solution ) {
+    void rand2bin( int candidate, double xprob, double sfactor, int npar,
+		   const sherpa::Simplex& population,
+		   const std::vector<double>& par, MTRand& mt_rand,
+		   std::vector<double>& trial_solution ) {
 
       int r1, r2, r3, r4, r5;
-      select_samples( candidate, population.get_nrows(), &r1, &r2, &r3, &r4, &r5 );
-
-      int n = random_number( 0, NPAR - 1 );
-      for ( int ii = 0; ii < NPAR; ++ii ) {
-	// perform NPAR binomial trials
-	if ( RanOpt<Func,Data>::random_number( ) < cross_over_probability || NPAR - 1 == ii )
+      select_samples( candidate, population.nrows( ), mt_rand, &r1, &r2, &r3,
+		      &r4, &r5 );
+      int n = mt_rand.randInt( npar - 1 );
+      for ( int ii = 0; ii < npar; ++ii ) {
+	// perform npar binomial trials
+	if ( mt_rand.rand( ) < xprob || npar - 1 == ii )
 	  trial_solution[n] = population[ r1 ][ n ] + 
-	    scale_factor * ( population[ r2 ][ n ] + population[ r3 ][ n ] -
-			     population[ r4 ][ n ] - population[ r5 ][ n ] );
-	n = (n + 1) % NPAR;
+	    sfactor * ( population[ r2 ][ n ] + population[ r3 ][ n ] -
+			population[ r4 ][ n ] - population[ r5 ][ n ] );
+	n = (n + 1) % npar;
       }
 
       return;
@@ -473,51 +532,44 @@ namespace sherpa {
     }
 
 
-    void select_samples( int candidate, int npop, int* r1, int* r2=0,
-			 int* r3=0, int* r4=0, int* r5=0 ) {
+    static void select_samples( int candidate, int npop, MTRand& mt_rand,
+				int* r1, int* r2=0, int* r3=0, int* r4=0,
+				int* r5=0 ) {
       if ( r1 ) {
 	do {
-	  *r1 = RanOpt<Func,Data>::random_number( 0, npop - 1 );
+	  *r1 = mt_rand.randInt( npop - 1 );
 	} while (*r1 == candidate);
       }
   
       if ( r2 ) {
 	do {
-	  *r2 = RanOpt<Func,Data>::random_number( 0, npop - 1 );
+	  *r2 = mt_rand.randInt( npop - 1 );
 	} while ( (*r2 == candidate) || (*r2 == *r1) );
       }
   
       if ( r3 ) {
 	do {
-	  *r3 = RanOpt<Func,Data>::random_number( 0, npop - 1 );
+	  *r3 = mt_rand.randInt( npop - 1 );
 	}
 	while ( (*r3 == candidate) || (*r3 == *r2) || (*r3 == *r1) );
       }
   
       if ( r4 ) {
 	do {
-	  *r4 = RanOpt<Func,Data>::random_number( 0, npop - 1 );
+	  *r4 = mt_rand.randInt( npop - 1 );
 	} while ( (*r4 == candidate) || (*r4 == *r3) || (*r4 == *r2) ||
 		  (*r4 == *r1) );
       }
   
       if ( r5 ) {
 	do {
-	  *r5 = RanOpt<Func,Data>::random_number( 0, npop - 1 );
+	  *r5 = mt_rand.randInt( npop - 1 );
 	} while ( (*r5 == candidate) || (*r5 == *r4) || (*r5 == *r3) ||
 		  (*r5 == *r2) || (*r5 == *r1) );
       }  
   
       return;
 
-    }
-
-
-    void update_par( const std::vector< double >& from, double* to ) const {
-
-      for ( int ii = 0; ii < NPAR; ++ii )
-	to[ ii ] = from[ ii ];
-      
     }
 
   };                                                            // class DifEvo

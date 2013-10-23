@@ -1,0 +1,35 @@
+{% extends "!layout.html" %}
+
+{% block rootrellink %}
+
+        <li><a href="{{ pathto('index') }}">home</a>|&nbsp;</li>
+        <li><a href="http://cxc.cfa.harvard.edu/sherpa">docs</a>|&nbsp;</li>
+        <li><a href="http://hea-www.harvard.edu/AstroStat/pyBLoCXS">pyblocxs</a>|&nbsp;</li>
+        <li><a href="http://python4astronomers.github.com">python4astronomers</a>|&nbsp;</li>
+        <li><a href="http://github.com/brefsdal/sherpa">git</a>|&nbsp;</li>
+        <li><a href="http://pysherpa.blogspot.com">blog</a> &raquo;</li>
+
+{% endblock %}
+
+{% block relbar1 %}
+
+<div style="background-color: white; text-align: left; padding: 10px 10px 15px 15px">
+<img src="_static/sherpa_logo.png" alt="sherpa logo" />
+</div>
+
+{{ super() }}
+{% endblock %}
+
+{% block footer %}
+{{ super() }}
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-27024519-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+{% endblock %}

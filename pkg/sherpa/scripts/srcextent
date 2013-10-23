@@ -6,7 +6,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -175,19 +175,33 @@ def get_fwhm(vals):
 
 
 def read_image(img):
-    ysize, xsize = img.get_dimarr()
-    y = img.get_image_values()
+    #ysize, xsize = img.get_dimarr()
+    #y = img.get_image_values()
+    y = pycrates.get_piximgvals(img).squeeze()
+    ysize, xsize = y.shape
+
     ax0 = numpy.arange(1,xsize+1, dtype=float)
     ax1 = numpy.arange(1,ysize+1, dtype=float)
     x0, x1 = numpy.meshgrid(ax0, ax1)
     x0 = x0.ravel()
     x1 = x1.ravel()
 
-    sky = img.get_transform("sky")
-    if sky is None:
-        sky = img.get_transform("SKY")
-    if sky is None:
+    skynames = ['SKY', 'sky', 'pos', 'POS']
+    names = img.get_axisnames()
+
+    # find the SKY name using the set intersection
+    inter = list(set(names) & set(skynames))
+
+    if not inter:
         raise AttributeError("sky coordinates not found")
+
+    sky = img.get_transform(inter[0])
+
+    # sky = img.get_transform("sky")
+    # if sky is None:
+    #     sky = img.get_transform("SKY")
+    # if sky is None:
+    #     raise AttributeError("sky coordinates not found")
 
     vals = sky.apply(numpy.array([x0,x1]).transpose())
     x0, x1 = vals.transpose()
@@ -205,20 +219,28 @@ def read_image(img):
 
 
 def calc_num_counts_tbl(file, reg):
-    tbl = pycrates.TABLECrate(file + reg)
-    if tbl.get_column("X") is None:
-        counts = 0
-    else:
-        counts = tbl.get_column("X").get_values().size
+    # tbl = pycrates.TABLECrate(file + reg)
+    # if tbl.get_column("X") is None:
+    #     counts = 0
+    # else:
+    #     counts = tbl.get_column("X").get_values().size
+
+    tbl = pycrates.read_file(file + reg)
+    counts = 0
+    if pycrates.col_exists(tbl, "X"):
+        counts = pycrates.get_colvals(tbl, "X").size
     return counts
 
 
 def calc_num_counts_img(file, reg):
-    img = pycrates.IMAGECrate(file + reg)
+
+    #img = pycrates.IMAGECrate(file + reg)
+    img = pycrates.read_file(file + reg)
 
     # FIXME What to do if the image is normalized PSF??
 
-    pix = img.get_image_values()
+    #pix = img.get_image_values()
+    pix = pycrates.get_piximgvals(img)
 
     if pix is None:
         return 0
@@ -321,27 +343,41 @@ def parse_ascii_regfile(regfile, _to_arcsecs=1.0):
 def parse_binary_regfile(regfile, _to_arcsecs=1.0):
 
     reg = pycrates.read_file(regfile)
-    if type(reg) != pycrates.TABLECrate:
+    if pycrates.get_crate_type(reg) != "Table":
         raise IOError('region file is not a table')
+
+    if not pycrates.col_exists(reg, "x"):
+        raise IOError('region file does not contain a SKY X coordinate')
+
+    if not pycrates.col_exists(reg, "y"):
+        raise IOError('region file does not contain a SKY Y coordinate')
+
+    if not pycrates.col_exists(reg, "r"):
+        raise IOError('region file does not contain a radius')
+
 
     xx = reg.get_column('x')
     yy = reg.get_column('y')
     rr = reg.get_column('r')
 
-    if xx is None:
-        raise IOError('region file does not contain a SKY X coordinate')
+    # if xx is None:
+    #     raise IOError('region file does not contain a SKY X coordinate')
 
-    if yy is None:
-        raise IOError('region file does not contain a SKY Y coordinate')
+    # if yy is None:
+    #     raise IOError('region file does not contain a SKY Y coordinate')
 
-    if rr is None:
-        raise IOError('region file does not contain a radius')
+    # if rr is None:
+    #     raise IOError('region file does not contain a radius')
 
     rr_unit = ("arcsec" in rr.unit)
 
-    xx = xx.get_values()
-    yy = yy.get_values()
-    rr = rr.get_values()
+    # xx = xx.get_values()
+    # yy = yy.get_values()
+    # rr = rr.get_values()
+
+    xx = xx.values
+    yy = yy.values
+    rr = rr.values
 
     while (not numpy.isscalar(xx) and len(xx) > 1):
         xx = xx[0]
@@ -439,7 +475,8 @@ class MHO(lev3_mho.MHO):
                 # convert user input from arcseconds to pixels
                 self.crude_src_size /= self._to_arcsecs
 
-        if tbl.get_column("X") is None:
+        #if tbl.get_column("X") is None:
+        if not pycrates.col_exists(tbl, "X"):
             return -1
 
         X = pycrates.get_colvals(tbl, "X")
@@ -501,20 +538,22 @@ class MHO(lev3_mho.MHO):
         obj = pycrates.read_file(file)
 
         # retrieve the WCS for pixel to arcsecond conversion
-        pos = obj.get_transform("EQPOS")
-        if pos is not None:
-            cdelt = pos.get_parameter_value("CDELT")
-            self._to_arcsecs = numpy.abs(cdelt[1]) * 3600.0
-            assert self._to_arcsecs > 0.0, "WCS - CDELT is malformed, cannot convert arcseconds to pixels"
-            self._units_size = 'arcsec'
-        else:
-            raise ValueError("WCS information not found in '%s', cannot convert arcseconds to pixels" % file)
+        #if "EQPOS" not in obj.get_axisnames():
+        #    raise ValueError("WCS information not found in '%s', cannot convert arcseconds to pixels" % file)
 
-        if type(obj) == pycrates.IMAGECrate:
+        pos = obj.get_transform("EQPOS")
+        cdelt = pos.get_parameter_value("CDELT")
+        self._to_arcsecs = numpy.abs(cdelt[1]) * 3600.0
+        assert self._to_arcsecs > 0.0, "WCS - CDELT is malformed, cannot convert arcseconds to pixels"
+        self._units_size = 'arcsec'
+
+        #if type(obj) == pycrates.IMAGECrate:
+        if pycrates.get_crate_type(obj) == "Image":
             if 0 != self.setup_image(obj, file, regfile):
                 return self.counts_error(file)
 
-        elif type(obj) == pycrates.TABLECrate:
+        #elif type(obj) == pycrates.TABLECrate:
+        elif pycrates.get_crate_type(obj) == "Table":
             if 0 != self.setup_table(obj, file, regfile):
                 return self.counts_error(file)
 
@@ -536,7 +575,8 @@ class MHO(lev3_mho.MHO):
                                                  pars[0], pars[1], pars[2])
 
         counts=None
-        if type(obj) == pycrates.IMAGECrate:
+        #if type(obj) == pycrates.IMAGECrate:
+        if pycrates.get_crate_type(obj) == "Image":
             counts = calc_num_counts_img(file, reg)
         else:
             counts = calc_num_counts_tbl(file, reg)
@@ -631,16 +671,24 @@ def set_column(tbl, col, colname, val, unit=None):
     if unit is not None and unit != '':
         col.unit = unit
 
-    if type(val) in (str, numpy.string_):
-        col.set_nsets(1)
-        col.load(val,False)
+    if numpy.isscalar(val):
+        col.values = numpy.array([val])
     else:
-        if numpy.isscalar(val):
-            col.set_nsets(1)
-        else:
-            col.set_nsets(len(val))    
-        col.set_values(numpy.asarray(val))
-    tbl.add_column(col)
+        col.values = numpy.asarray(val)
+
+    pycrates.add_col(tbl, col)
+
+    # if type(val) in (str, numpy.string_):
+    #     col.set_nsets(1)
+    #     col.load(val,False)
+    # else:
+    #     if numpy.isscalar(val):
+    #         col.set_nsets(1)
+    #     else:
+    #         col.set_nsets(len(val))    
+    #     col.set_values(numpy.asarray(val))
+    #tbl.add_column(col)
+
 
 
 def data_substring(x,y,size,size_lo,size_hi,pos,pos_lo,pos_hi, hdr_str, _units_size):
@@ -704,8 +752,9 @@ def format_data(id, psf, int_d, src_d, psf_d, extended, src_units_size, psf_unit
 def write_file(outfile, srcfile, psffile, extended, int_d, src_d, psf_d,
                src_units_size, psf_units_size):
 
-    tbl = pycrates.TABLECrate(outfile)
-
+    #tbl = pycrates.TABLECrate(outfile)
+    tbl = pycrates.TABLECrate()
+    tbl.name = "TABLE"
     hdr = ['filename', 'psf', 'extent_flag']
 
     d_keys = ['x','y',

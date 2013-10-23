@@ -4,7 +4,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -18,7 +18,8 @@
 //
 
 
-//#include <stdexcept>
+#include <iostream>
+#include <stdexcept>
 
 #include <sherpa/extension.hh>
 #include <sherpa/functor.hh>
@@ -26,14 +27,9 @@
 #include "DifEvo.hh"
 #include "NelderMead.hh"
 
-//#define haveClmdif 1
-
-#ifdef haveClmdif
-#include "minpack/levmar.hh"
+#include "minpack/LevMar.hh"
 static void lmdif_callback_func( int mfct, int npar, double* xpars,
-				 double* fvec, int& ierr,
-				 PyObject* py_fcn ) {
-
+				 double* fvec, int& ierr, PyObject* py_fcn ) {
 
   DoubleArray pars_array;
   npy_intp dims[1];
@@ -113,11 +109,14 @@ static PyObject* py_cpp_lmdif( PyObject* self, PyObject* args, Func func ) {
 
   try {
 
-    minpack::LevMar< Func, PyObject* > levmar( npar, &par[0], &lb[0], &ub[0],
-					       func, py_function, mfct );
-
-    info = levmar( &par[0], ftol, xtol, gtol, maxnfev, epsfcn, factor,
-		   verbose, nfev, fval, &covarerr[0] );
+    minpack::LevMar< Func, PyObject* > levmar( func, py_function, mfct );
+    std::vector<double> mylb( &lb[0], &lb[0] + npar );
+    std::vector<double> myub( &ub[0], &ub[0] + npar );
+    std::vector<double> mypar( &par[0], &par[0] + npar );
+    info = levmar( npar, ftol, xtol, gtol, maxnfev, epsfcn, factor, verbose,
+		   mylb, myub, mypar, nfev, fval, covarerr );
+    for ( int ii = 0; ii < npar; ++ii )
+      par[ ii ] = mypar[ ii ];
 
   } catch( sherpa::OptErr& oe ) {
     if ( NULL == PyErr_Occurred() )
@@ -158,7 +157,7 @@ static PyObject* py_lmdif( PyObject* self, PyObject* args ) {
 }
 //*****************************************************************************
 //
-// py_lmdif:  Python wrapper function for C++ function lmdif
+// py_cpp_lmdif:  Python wrapper function for C++ function lmdif
 //
 //*****************************************************************************
 
@@ -173,15 +172,14 @@ static PyObject* py_difevo_levmar( PyObject* self, PyObject* args,
 
   PyObject* py_function=NULL;
   DoubleArray par, step, lb, ub;
-  int verbose, maxnfev, seed, population_size, strategy, mfcts, nfev, err;
+  int verbose, maxnfev, seed, population_size, mfcts, nfev, ierr;
   double fval, tol, xprob, weighting_factor;
 
-  if ( !PyArg_ParseTuple( args, (char*) "iiiiidddO&O&O&Oi",
+  if ( !PyArg_ParseTuple( args, (char*) "iiiidddO&O&O&Oi",
 			  &verbose,
 			  &maxnfev,
 			  &seed,
 			  &population_size,
-			  &strategy,
 			  &tol,
 			  &xprob,
 			  &weighting_factor,
@@ -206,20 +204,17 @@ static PyObject* py_difevo_levmar( PyObject* self, PyObject* args,
     return NULL;
   }
 
-  if ( strategy < 0 || strategy > 9 ) {
-    PyErr_Format( PyExc_ValueError, (char*) "strategy(%d) must be within [0,9]",
-		  strategy );
-    return NULL;
-  }
-
   try {
 
     sherpa::DifEvo< Func, PyObject*, minpack::LevMar< Func, PyObject* > >
-      difevo( npar, &par[0], &lb[0], &ub[0], callback_func, py_function,
-	      xprob, weighting_factor, strategy, seed, mfcts );
-
-    err =
-      difevo( &par[0], verbose, maxnfev, tol, population_size, nfev, fval );
+      difevo( callback_func, py_function, mfcts );
+    std::vector<double> mylb( &lb[0], &lb[0] + npar );
+    std::vector<double> myub( &ub[0], &ub[0] + npar );
+    std::vector<double> mypar( &par[0], &par[0] + npar );
+    ierr = difevo( verbose, maxnfev, tol, population_size, seed, xprob,
+		  weighting_factor, npar, mylb, myub, mypar, nfev, fval );
+    for ( int ii = 0; ii < npar; ++ii )
+      par[ ii ] = mypar[ ii ];
 
   } catch( sherpa::OptErr& oe ) {
 
@@ -239,7 +234,7 @@ static PyObject* py_difevo_levmar( PyObject* self, PyObject* args,
   }
 
 
-  if ( err < 0 ) {
+  if ( ierr < 0 ) {
     // Make sure an exception is set
     if ( NULL == PyErr_Occurred() )
       PyErr_SetString( PyExc_RuntimeError, (char*)"function call failed" );
@@ -247,7 +242,7 @@ static PyObject* py_difevo_levmar( PyObject* self, PyObject* args,
   }
 
   return Py_BuildValue( (char*)"(Ndii)", par.return_new_ref(), fval, nfev,
-			err );
+			ierr );
 }
 static PyObject* py_difevo_lm( PyObject* self, PyObject* args ) {
 
@@ -264,17 +259,6 @@ static PyObject* py_difevo_lm( PyObject* self, PyObject* args ) {
 // py_difevo_lm:  Python wrapper function for C++ function difevo
 //
 //*****************************************************************************
-
-
-#else
-static PyObject* py_lmdif( PyObject* self, PyObject* args ) {
-  return NULL;
-}
-static PyObject* py_difevo_lm( PyObject* self, PyObject* args ) {
-  return NULL;
-}
-#endif
-
 
 
 static void sao_callback_func( int npar, double* xpars, double& fval,
@@ -321,15 +305,14 @@ static PyObject* py_difevo_neldermead( PyObject* self, PyObject* args,
 
   PyObject* py_function=NULL;
   DoubleArray par, step, lb, ub;
-  int verbose, maxnfev, seed, population_size, strategy, nfev, err;
+  int verbose, maxnfev, seed, population_size, nfev, ierr;
   double fval, tol, xprob, weighting_factor;
 
-  if ( !PyArg_ParseTuple( args, (char*) "iiiiidddO&O&O&O",
+  if ( !PyArg_ParseTuple( args, (char*) "iiiidddO&O&O&O",
 			  &verbose,
 			  &maxnfev,
 			  &seed,
 			  &population_size,
-			  &strategy,
 			  &tol,
 			  &xprob,
 			  &weighting_factor,
@@ -354,20 +337,18 @@ static PyObject* py_difevo_neldermead( PyObject* self, PyObject* args,
     return NULL;
   }
 
-  if ( strategy < 0 || strategy > 9 ) {
-    PyErr_Format( PyExc_ValueError, (char*) "strategy(%d) must be within [0,9]",
-		  strategy );
-    return NULL;
-  }
-
   try {
 
-    sherpa::DifEvo< Func, PyObject*, sherpa::NelderMead< Func, PyObject* > >
-      difevo( npar, &par[0], &lb[0], &ub[0], func, py_function,
-	      xprob, weighting_factor, strategy, seed );
 
-    err =
-      difevo( &par[0], verbose, maxnfev, tol, population_size, nfev, fval );
+    sherpa::DifEvo< Func, PyObject*, sherpa::NelderMead< Func, PyObject* > >
+      difevo( func, py_function );
+    std::vector<double> mylb( &lb[0], &lb[0] + npar );
+    std::vector<double> myub( &ub[0], &ub[0] + npar );
+    std::vector<double> mypar( &par[0], &par[0] + npar );
+    ierr = difevo( verbose, maxnfev, tol, population_size, seed, xprob,
+		   weighting_factor, npar, mylb, myub, mypar, nfev, fval );
+    for ( int ii = 0; ii < npar; ++ii )
+      par[ ii ] = mypar[ ii ];
 
   } catch( sherpa::OptErr& oe ) {
     if ( NULL == PyErr_Occurred() )
@@ -385,8 +366,7 @@ static PyObject* py_difevo_neldermead( PyObject* self, PyObject* args,
     return NULL;
   }
 
-
-  if ( err < 0 ) {
+  if ( ierr < 0 ) {
     // Make sure an exception is set
     if ( NULL == PyErr_Occurred() )
       PyErr_SetString( PyExc_RuntimeError, (char*)"function call failed" );
@@ -394,7 +374,7 @@ static PyObject* py_difevo_neldermead( PyObject* self, PyObject* args,
   }
 
   return Py_BuildValue( (char*)"(Ndii)", par.return_new_ref(), fval, nfev,
-			err );
+			ierr );
 }
 static PyObject* py_difevo_nm( PyObject* self, PyObject* args ) {
 
@@ -414,7 +394,7 @@ static PyObject* py_difevo_nm( PyObject* self, PyObject* args ) {
 
 //*****************************************************************************
 //
-// py_difevo_nm:  Python wrapper function for C++ function difevo
+// py_difevo:  Python wrapper function for C++ function difevo
 //
 //*****************************************************************************
 template< typename Func >
@@ -422,15 +402,14 @@ static PyObject* py_difevo( PyObject* self, PyObject* args, Func func ) {
 
   PyObject* py_function=NULL;
   DoubleArray par, step, lb, ub;
-  int verbose, maxnfev, seed, population_size, strategy, nfev, err;
+  int verbose, maxnfev, seed, population_size, nfev, ierr;
   double fval, tol, xprob, weighting_factor;
 
-  if ( !PyArg_ParseTuple( args, (char*) "iiiiidddO&O&O&O",
+  if ( !PyArg_ParseTuple( args, (char*) "iiiidddO&O&O&O",
 			  &verbose,
 			  &maxnfev,
 			  &seed,
 			  &population_size,
-			  &strategy,
 			  &tol,
 			  &xprob,
 			  &weighting_factor,
@@ -455,20 +434,17 @@ static PyObject* py_difevo( PyObject* self, PyObject* args, Func func ) {
     return NULL;
   }
 
-  if ( strategy < 0 || strategy > 9 ) {
-    PyErr_Format( PyExc_ValueError, (char*) "strategy(%d) must be within [0,9]",
-		  strategy );
-    return NULL;
-  }
-
   try {
 
     sherpa::DifEvo< Func, PyObject*, sherpa::OptFunc< Func, PyObject* > >
-      difevo( npar, &par[0], &lb[0], &ub[0], func, py_function,
-	      xprob, weighting_factor, strategy, seed );
-
-    err =
-      difevo( &par[0], verbose, maxnfev, tol, population_size, nfev, fval );
+      difevo( func, py_function );
+    std::vector<double> mylb( &lb[0], &lb[0] + npar );
+    std::vector<double> myub( &ub[0], &ub[0] + npar );
+    std::vector<double> mypar( &par[0], &par[0] + npar );
+    ierr = difevo( verbose, maxnfev, tol, population_size, seed, xprob,
+		   weighting_factor, npar, mylb, myub, mypar, nfev, fval );
+    for ( int ii = 0; ii < npar; ++ii )
+      par[ ii ] = mypar[ ii ];
 
   } catch( sherpa::OptErr& oe ) {
     if ( NULL == PyErr_Occurred() )
@@ -486,8 +462,7 @@ static PyObject* py_difevo( PyObject* self, PyObject* args, Func func ) {
     return NULL;
   }
 
-
-  if ( err < 0 ) {
+  if ( ierr < 0 ) {
     // Make sure an exception is set
     if ( NULL == PyErr_Occurred() )
       PyErr_SetString( PyExc_RuntimeError, (char*)"function call failed" );
@@ -495,7 +470,7 @@ static PyObject* py_difevo( PyObject* self, PyObject* args, Func func ) {
   }
 
   return Py_BuildValue( (char*)"(Ndii)", par.return_new_ref(), fval, nfev,
-			err );
+			ierr );
 }
 static PyObject* py_difevo( PyObject* self, PyObject* args ) {
 
@@ -508,10 +483,9 @@ static PyObject* py_difevo( PyObject* self, PyObject* args ) {
 }
 //*****************************************************************************
 //
-// py_difevo_nm:  Python wrapper function for C++ function difevo
+// py_difevo:  Python wrapper function for C++ function difevo
 //
 //*****************************************************************************
-
 
 
 //*****************************************************************************
@@ -526,7 +500,7 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
   PyObject* py_function=NULL;
   DoubleArray par, step, lb, ub;
   IntArray finalsimplex;
-  int verbose, maxnfev, nfev, initsimplex, err_status;
+  int verbose, maxnfev, nfev, initsimplex, ierr;
   double fval, tol;
 
   if ( !PyArg_ParseTuple( args, (char*) "iiiO&dO&O&O&O&O",
@@ -565,15 +539,17 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
 
   try {
 
-    sherpa::NelderMead< Func, PyObject* >
-      nm( npar, &par[0], &lb[0], &ub[0], callback_func, py_function );
-
-    std::vector< int > myfinalsimplex( &finalsimplex[0],
-				       &finalsimplex[0] + 
-				       finalsimplex.get_size( ) );
-
-    err_status = nm( &par[0], verbose, initsimplex, myfinalsimplex, tol,
-		     &step[0], maxnfev, nfev, fval );
+    sherpa::NelderMead< Func, PyObject* > nm( callback_func, py_function );
+    std::vector<int> myfinalsimplex( &finalsimplex[0], &finalsimplex[0] + 
+				     finalsimplex.get_size( ) );
+    std::vector<double> mystep( &step[0], &step[0] + step.get_size( ) );
+    std::vector<double> mylb( &lb[0], &lb[0] + npar );
+    std::vector<double> myub( &ub[0], &ub[0] + npar );
+    std::vector<double> mypar( &par[0], &par[0] + npar );
+    ierr = nm( verbose, maxnfev, tol, npar, initsimplex, myfinalsimplex, mylb,
+	       myub, mystep, mypar, nfev, fval );
+    for ( int ii = 0; ii < npar; ++ii )
+      par[ ii ] = mypar[ ii ];
 
   } catch( sherpa::OptErr& oe ) {
     if ( NULL == PyErr_Occurred() )
@@ -591,8 +567,7 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
     return NULL;
   }
 
-
-  if ( err_status < 0 ) {
+  if ( ierr < 0 ) {
     // Make sure an exception is set
     if ( NULL == PyErr_Occurred() )
       PyErr_SetString( PyExc_RuntimeError, (char*)"function call failed" );
@@ -600,7 +575,7 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
   }
 
   return Py_BuildValue( (char*)"(Ndii)", par.return_new_ref(), fval, nfev,
-			err_status );
+			ierr );
 
 }
 static PyObject* py_nm( PyObject* self, PyObject* args ) {
@@ -630,8 +605,8 @@ static PyMethodDef WrapperFcts[] = {
 
   FCTSPEC(difevo, py_difevo),
   FCTSPEC(nm_difevo, py_difevo_nm),
-  FCTSPEC(lm_difevo, py_difevo_lm),               // not for public consumption
-  FCTSPEC(clmdif, py_lmdif),                      // not for public consumption
+  FCTSPEC(lm_difevo, py_difevo_lm),
+  FCTSPEC(cpp_lmdif, py_lmdif),
   FCTSPEC(neldermead, py_nm),
   { NULL, NULL, 0, NULL }
 

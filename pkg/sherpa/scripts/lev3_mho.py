@@ -6,7 +6,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -578,8 +578,12 @@ class MHO(NoNewAttributesAfterInit):
     def mho_find_source_extent(self, evtfile, source_shape=True):
         adjustable_bin_factor = False
 
-        tbl = pycrates.TABLECrate(evtfile)
-        if tbl.get_column("X") is None:
+        #tbl = pycrates.TABLECrate(evtfile)
+        #if tbl.get_column("X") is None:
+        #    return self.counts_error(evtfile)
+
+        tbl = pycrates.read_file(evtfile)
+        if not pycrates.col_exists(tbl, "X"):
             return self.counts_error(evtfile)
 
         X = pycrates.get_colvals(tbl, "X")
@@ -638,11 +642,15 @@ class MHO(NoNewAttributesAfterInit):
         reg = "[sky=ellipse(%s,%s,%s,%s,%s)]" % (self.x0, self.y0,
                                                  pars[0], pars[1], pars[2])
 
-        tbl = pycrates.TABLECrate(evtfile + reg)
-        if tbl.get_column("X") is None:
-            counts = 0
-        else:
-            counts = tbl.get_column("X").get_values().size
+
+        #tbl = pycrates.TABLECrate(evtfile + reg)
+        #if tbl.get_column("X") is None:
+        #counts = tbl.get_column("X").get_values().size
+        
+        tbl = pycrates.read_file(evtfile + reg)
+        counts = 0
+        if pycrates.col_exists(tbl, "X"):
+            counts = pycrates.get_colvals(tbl, "X").size
 
         if counts < self.min_counts:
             print ("Error: less than %s counts detected in " % self.min_counts +

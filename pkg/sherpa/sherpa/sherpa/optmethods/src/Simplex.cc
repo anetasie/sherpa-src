@@ -1,7 +1,7 @@
 #include <cmath>
 #include <cstdio>
 
-#include <fcmp.h>
+#include "sherpa/fcmp.hh"
 
 #include "Simplex.hh"
 
@@ -9,16 +9,17 @@ using namespace sherpa;
 
 bool Simplex::are_fct_vals_close_enough( double tolerance ) const {
 
-  if ( 0 == _sao_fcmp( this->operator()( 0, npar ), 
-		       this->operator()( nrows-1, npar ),
-		       tolerance ) )
+  
+  const int npar = npars( );
+  if ( 0 == sao_fcmp( get( 0, npar ), get( nrows( ) - 1, npar ), tolerance ) )
     return true;
 
   return false;
 
 }
 
-double Simplex::calc_standard_deviation_square( int num, const double* ptr ) {
+double Simplex::calc_standard_deviation_square( int num,
+						const std::vector<double>& ptr ) {
 
   //
   // The standard deviation algorithm is due to Donald E. Knuth (1998).
@@ -40,7 +41,6 @@ double Simplex::calc_standard_deviation_square( int num, const double* ptr ) {
 }
 
 bool Simplex::check_convergence( double tolerance, double tol_sqr,
-				 std::vector< double >& fctvals,
 				 int finalsimplex ) {
 
   switch( finalsimplex ) {
@@ -52,7 +52,7 @@ bool Simplex::check_convergence( double tolerance, double tol_sqr,
     {
       if ( false == is_max_length_small_enough( tolerance ) )
 	return false;
-      bool stddev = is_stddev_small_enough( fctvals, tolerance, tol_sqr );
+      bool stddev = is_stddev_small_enough( tolerance, tol_sqr );
       bool fctval = are_fct_vals_close_enough( tolerance );
       return stddev && fctval;
     }
@@ -61,7 +61,7 @@ bool Simplex::check_convergence( double tolerance, double tol_sqr,
     {
       if ( false == is_max_length_small_enough( tolerance ) )
 	return false;
-      bool stddev = is_stddev_small_enough( fctvals, tolerance, tol_sqr );
+      bool stddev = is_stddev_small_enough( tolerance, tol_sqr );
       bool fctval = are_fct_vals_close_enough( tolerance );
       return stddev || fctval;
     }
@@ -74,24 +74,20 @@ bool Simplex::check_convergence( double tolerance, double tol_sqr,
 bool Simplex::is_max_length_small_enough( double tol )  const {
 
   const int index_smallest = 0;
-
+  const int npar = npars( );
   double maxof_x_i_minus_x_min = -1.0; // norm is always a positive number.
   for ( int ii = 0; ii <= npar; ++ii ) {
     double tmp = 0.0;
     if ( ii != index_smallest )
       for ( int jj = 0; jj < npar; ++jj )
-	tmp += ( this->operator( )( ii, jj ) -
-		 this->operator( )( index_smallest, jj ) ) *
-	  ( this->operator( )( ii, jj ) -
-	    this->operator( )( index_smallest, jj ) );
+	tmp += ( get( ii, jj ) - get( index_smallest, jj ) ) *
+	  ( get( ii, jj ) - get( index_smallest, jj ) );
 
     maxof_x_i_minus_x_min = std::max( maxof_x_i_minus_x_min, tmp );
   }
   double norm_min = 0.0;
   for ( int ii = 0; ii < npar; ++ii )
-    norm_min +=
-      this->operator( )( index_smallest, ii ) *
-      this->operator( )( index_smallest, ii );
+    norm_min += get( index_smallest, ii ) * get( index_smallest, ii );
   norm_min = norm_min > 1.0 ? norm_min : 1.0;
   if ( maxof_x_i_minus_x_min <= tol * norm_min )
     return true;
@@ -100,13 +96,12 @@ bool Simplex::is_max_length_small_enough( double tol )  const {
 
 }                                                 // is_max_length_small_enough
 
-bool Simplex::is_stddev_small_enough( std::vector< double >& fctvals,
-				      double tolerance, double tol_sqr ) {
+bool Simplex::is_stddev_small_enough( double tolerance, double tol_sqr ) {
 
-  this->copy_col( npar, fctvals );
-  double std_dev_sqr =
-    calc_standard_deviation_square( npar + 1 , &fctvals[0] );
-  if ( _sao_fcmp( std_dev_sqr, tol_sqr, tolerance ) <= 0 )
+  const int npar = npars( );
+  this->copy_col( npar, key );
+  double std_dev_sqr = calc_standard_deviation_square( ncols( ), key );
+  if ( sao_fcmp( std_dev_sqr, tol_sqr, tolerance ) <= 0 )
     return true;
 
   return false;
@@ -115,49 +110,53 @@ bool Simplex::is_stddev_small_enough( std::vector< double >& fctvals,
 
 void Simplex::print_simplex( ) const {
 
-  for ( int ii = 0; ii <= npar; ++ii )
-    print_vertex( ii );
+  const int npar = npars( );
+  for ( int ii = 0; ii <= npar; ++ii ) {
+    const std::vector<double>& vertex = this->operator[ ]( ii );
+    print_vertex( std::cout, npar, vertex );
+  }
 
 }                                                              // print_simplex
 
-void Simplex::print_vertex( int vertex ) const {
-
-  fprintf( stdout, "\tf" );
-  if ( 0 == vertex )
-    fprintf( stdout, "'" );
-  fprintf( stdout, "( %.10e", this->operator( )( vertex, 0 ) );
-  for ( int ii = 1; ii < npar; ++ii )
-    fprintf( stdout, ", %.10e", this->operator( )( vertex, ii ) );
-  fprintf( stdout, " ) = %.10e\n", this->operator( )( vertex, npar ) );
-
+//
+// This method is redundant, call Opt::print_par instead
+//
+void Simplex::print_vertex( std::ostream& os, size_t npar, 
+			    const std::vector<double>& vertex ) const {
+  os.precision( 6 );
+  os << "f( " << std::scientific << vertex[ 0 ];
+  for ( size_t ii = 1; ii < npar; ++ii )
+    os << ", " << std::scientific << vertex[ ii ];
+  os << " ) = " << vertex[ npar ] << '\n';
+  return;
 }                                                               // print_vertex
 
+//
+// This method should be deprecated now that Array2d has been
+// switched to use vector of vector, one should use one of stl
+// sort routines instead.
+//
 void Simplex::sort( ) {
 
-  // key should be stored as a member of the class to minimize de/alloc
-  std::vector< double > key( ncols );
-  // key should be stored as a member of the class to minimize de/alloc
+  const int mynrow = nrows( );
+  const int myncol = ncols( );
+  const int fvalindex = npars( );
 
-  const int fvalindex = ncols - 1;
+  for ( int jj = 1; jj < mynrow; ++jj ) {
 
-  for ( int jj = 1; jj < nrows; ++jj ) {
-
-    for ( int ii = 0; ii < ncols; ++ii )
-      key[ ii ] = this->operator( )( jj, ii );
+    for ( int ii = 0; ii < myncol; ++ii )
+      key[ ii ] = get( jj, ii );
 
     int ii = jj;
-    for ( ; ii > 0 &&
-	    this->operator( )( ii - 1, fvalindex ) > key[ fvalindex ];
-	  --ii ) {
+    for ( ; ii > 0 && get( ii - 1, fvalindex ) > key[ fvalindex ]; --ii ) {
 
-      for ( int kk = 0; kk < ncols; ++kk )
-	this->operator( )( ii, kk ) =
-	  this->operator( )( ii - 1, kk );
+      for ( int kk = 0; kk < myncol; ++kk )
+	set( ii, kk, get( ii - 1, kk ) );
 
     }
 
-    for ( int kk = 0; kk < ncols; ++kk )
-      this->operator( )( ii, kk ) = key[ kk ];
+    for ( int kk = 0; kk < myncol; ++kk )
+      set( ii, kk, key[ kk ] );
 
   }
 

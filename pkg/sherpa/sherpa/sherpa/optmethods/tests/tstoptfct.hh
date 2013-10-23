@@ -1,6 +1,26 @@
 #ifndef tstoptfct_hh
 #define tstoptfct_hh
 
+// 
+//  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+//
+//
+//  This program is free software; you can redistribute it and/or modify
+//  it under the terms of the GNU General Public License as published by
+//  the Free Software Foundation; either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License along
+//  with this program; if not, write to the Free Software Foundation, Inc.,
+//  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+//
+
+
 //
 // J. MORE', B. GARBOW & K. HILLSTROM,
 // "Algorithm 566: Fortran Subroutines for Testing Unconstrained 
@@ -11,6 +31,7 @@
 // http://www.uni-graz.at/imawww/kuntsevich/solvopt/results/moreset.html
 //
 // Jan 2008 D. T. Nguyen 
+//
 //
 
 #include <cmath>
@@ -54,7 +75,7 @@ namespace tstoptfct {
   }
   template< typename Real >
   void AckleyInit( int npar, int& mfct, Real& answer, Real* x,
-		 Real* lo, Real* hi ) {
+		   Real* lo, Real* hi ) {
 
     for ( int ii = 0; ii < npar; ++ii ) {
 
@@ -111,7 +132,7 @@ namespace tstoptfct {
 
     mfct = 15 * npar / 3;
     for ( int ii = 0; ii < npar; ++ii )
-      x[ ii ] = (Real) 1.0;
+      x[ ii ] = 1.0;
 
     for ( int ii = 0; ii < npar; ++ii )
       lo[ ii ] = -1.0e12;
@@ -136,11 +157,11 @@ namespace tstoptfct {
 	      Type xptr ) {
 
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      fvec[ 3*ii/2 ] = (Real) 1.5 - x[ ii ] * ( (Real) 1.0 - x[ ii + 1 ] );
-      fvec[ 3*ii/2 + 1 ] = (Real) 2.25 - x[ ii ] * 
-	( (Real) 1.0 - x[ ii + 1 ] * x[ ii + 1 ] );
-      fvec[ 3*ii/2 + 2 ] = (Real) 2.625  - x[ ii ] * 
-	( (Real) 1.0 - x[ ii + 1 ] * x[ ii + 1 ] * x[ ii + 1 ]);
+      fvec[ 3*ii/2 ] = 1.5 - x[ ii ] * ( 1.0 - x[ ii + 1 ] );
+      fvec[ 3*ii/2 + 1 ] = 2.25 - x[ ii ] * 
+	( 1.0 - x[ ii + 1 ] * x[ ii + 1 ] );
+      fvec[ 3*ii/2 + 2 ] = 2.625  - x[ ii ] * 
+	( 1.0 - x[ ii + 1 ] * x[ ii + 1 ] * x[ ii + 1 ]);
     }
 
   }
@@ -164,7 +185,7 @@ namespace tstoptfct {
 
     mfct = 3 * npar/2;
     for ( int ii = 0; ii < npar; ++ii )
-      x[ ii ] = (Real) 1.0;
+      x[ ii ] = 1.0;
 
     for ( int ii = 0; ii < npar; ++ii )
       lo[ ii ] = -1.0e6;
@@ -177,6 +198,43 @@ namespace tstoptfct {
   }
   //
   // f( 3, 0.5 ) = 0.0
+  //
+
+  template< typename Real, typename Type >
+  void Booth( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 2 != npar ) {
+    if ( npar % 2 )
+      throw std::runtime_error( "npar for the Booth func must be 2\n" );
+      return;
+    }
+
+    fval = pow( x[ 0 ] + 2 * x[ 1 ] - 7, 2.0 ) +
+      pow( 2 * x[ 0 ] + x[ 1 ] - 5, 2.0 );
+
+  }
+  template< typename Real >
+  void BoothInit( int npar, int& mfct, Real& answer, Real* x,
+		  Real* lo, Real* hi ) {
+  
+    if ( npar % 2 )
+      throw std::runtime_error( "npar for the Beale func must be even\n" );
+
+    mfct = 0;
+    for ( int ii = 0; ii < npar; ++ii )
+      x[ ii ] = -5.0 + ii;
+
+    for ( int ii = 0; ii < npar; ++ii )
+      lo[ ii ] = -1.0e1;
+
+    for ( int ii = 0; ii < npar; ++ii )
+      hi[ ii ] = 1.0e1;
+
+    answer = 0.0;
+
+  }
+  //
+  // f( 1, 3 ) = 0.0
   //
 
   template< typename Real, typename Type >
@@ -322,7 +380,7 @@ namespace tstoptfct {
     for ( int ii = 1; ii <= 10; ++ii ) {
       Real e0 = exp( -0.1 * ii * x[ 0 ] );
       Real e1 = exp( -0.1 * ii * x[ 1 ] );
-      Real e2 = exp( -0.1 * ii ) - exp( (Real) -ii );
+      Real e2 = exp( -0.1 * ii ) - exp( static_cast< Real >( - ii ) );
       Real tmp = e0 - e1 - e2 * x[ 2 ];
       fval += tmp * tmp;
     }
@@ -398,10 +456,10 @@ namespace tstoptfct {
     if ( 2 != npar )
       throw std::runtime_error( "npar for the Branin func must be 2\n" );
 
-    const Real pi = std::fabs( acos( - 1.0 ) );
-    fval = pow( 1.0 - 2.0 * x[ 1 ] + sin( 4.0 * pi * x[ 1 ] )/ 20.0 - x[ 0 ],
-		 2.0 ) + pow( x[ 1 ] - sin( 2.0 * pi * x[ 0 ] ) / 2.0, 2.0 );
-
+    double x0 = x[0];
+    double s  = x[1] - ( 5.1/(4.0*M_PI*M_PI) * x0 - 5.0/M_PI) * x0 - 6.0;
+    fval = s*s + 10*(1.0 - 1.0/(8.0*M_PI)) * cos(x0) + 10.0;
+    
   }
   template< typename Real >
   void BraninInit( int npar, int& mfct, Real& answer, Real* x,
@@ -410,16 +468,50 @@ namespace tstoptfct {
     if ( 2 != npar )
       throw std::runtime_error( "npar for the Branin func must be 2\n" );
 
+    lo[ 0 ] = -5.0; lo[ 1 ] = 0.0;
+    hi[ 0 ] = 10.0; hi[ 1 ] = 15.0;
+    for ( int ii = 0; ii < npar; ++ii ) {
+      double tmp = rand( ) / (RAND_MAX + 1.0);
+      x[ ii ] = lo[ ii ] + ( hi[ ii ] - lo[ ii ] ) * tmp;
+    }
+
+    answer = 0.397889;
+
+  }
+  //
+  // f( -3.142, 12.275 ) = f( 3.142, 2.275 ) = f( 9.425, 2.425 ) = 0.397889
+  //
+
+  template< typename Real, typename Type >
+  void Branin2( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Branin2 func must be 2\n" );
+
+    fval = pow( 1.0 - 2.0 * x[ 1 ] + sin( 4.0 * M_PI * x[ 1 ] ) / 20.0 -
+		x[ 0 ], 2.0 ) +
+      pow( x[ 1 ] - sin( 2.0 * M_PI * x[ 0 ] ) / 2.0, 2.0 );
+  }
+  template< typename Real >
+  void Branin2Init( int npar, int& mfct, Real& answer, Real* x,
+			      Real* lo, Real* hi ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Branin2 func must be 2\n" );
+
     for ( int ii = 0; ii < npar; ++ii ) {
       lo[ ii ] = -10.0;
       hi[ ii ] = 10.0;
-      x[ ii ] = 3.0;
+      double tmp = rand( ) / (RAND_MAX + 1.0);
+      x[ ii ] = lo[ ii ] + ( hi[ ii ] - lo[ ii ] ) * tmp;
     }
 
-    // Not sure if the following is correct ??????????????????
-    answer = 0.0;
+    answer = 0.397889;
 
   }
+  //
+  // f( -3.142, 12.275 ) = f( 3.142, 2.275 ) = f( 9.425, 2.425 ) = 0.397889
+  //
 
   template< typename Real, typename Type >
   void BrownAlmostLinear( int mfct, int npar, Real* x, Real* fvec,
@@ -466,18 +558,17 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 1.0;
+    answer = 1.0;
 
   }
-
 
   template< typename Real, typename Type >
   void BrownBadlyScaled( int mfct, int npar, Real* x, Real* fvec,
 			 int& ierr, Type xptr ) {
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      fvec[ ii ] = x[ ii ] - (Real) 1.0e6;
-      fvec[ ii + 1 ] = x[ ii + 1 ] - (Real) 2.0e-6;
-      fvec[ ii + 2 ] = x[ ii ] * x[ ii + 1 ] - (Real) 2.0;
+      fvec[ ii ] = x[ ii ] - 1.0e6;
+      fvec[ ii + 1 ] = x[ ii + 1 ] - 2.0e-6;
+      fvec[ ii + 2 ] = x[ ii ] * x[ ii + 1 ] - 2.0;
     }
 
   }
@@ -501,7 +592,7 @@ namespace tstoptfct {
 
     mfct = npar + npar/2;
     for ( int ii = 0; ii < npar; ++ii )
-      x[ ii ] = (Real) 1.0;
+      x[ ii ] = 1.0;
 
     for ( int ii = 0; ii < npar; ++ii )
       lo[ ii ] = -1.0e2;
@@ -522,8 +613,8 @@ namespace tstoptfct {
 
     for ( int ii = 0; ii < mfct; ++ii ) {
       Real ti = (ii+1)/5.0;
-      fvec[ ii ] = pow( x[0] + ti * x[1] - exp( ti ), (Real) 2.0 ) +
-	pow( x[2] + x[3]*sin(ti) - cos(ti), (Real) 2.0 );
+      fvec[ ii ] = pow( x[0] + ti * x[1] - exp( ti ), 2.0 ) +
+	pow( x[2] + x[3]*sin(ti) - cos(ti), 2.0 );
     }
 
   }
@@ -557,9 +648,8 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 85822.2;
+    answer = 85822.2;
   }
-
 
   template< typename Real, typename Type >
   void BroydenBanded( int mfct, int npar, Real* x, Real* fvec, int& ierr,
@@ -699,6 +789,34 @@ namespace tstoptfct {
   //
 
   template< typename Real, typename Type >
+  void Chichinadze( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Chichinadze func must be 2\n" );
+
+    fval = x[ 0 ] * x[ 0 ] - 12 * x[ 0 ] + 11 + 10 * cos( M_PI / 2.0 * x[ 0 ] )
+      + 8 * sin( 5 * M_PI * x[ 0 ] ) - exp( -(x[ 1 ] - 0.5) * 0.5) / sqrt(5.0);
+  }
+  template< typename Real >
+  void ChichinadzeInit( int npar, int& mfct, Real& answer, Real* x,
+			Real* lo, Real* hi ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Chichinadze func must be 2\n" );
+    lo[ 0 ] = 0.0;
+    lo[ 1 ] = 0.0;
+    hi[ 0 ] = 30.0;
+    hi[ 1 ] = 10.0;
+    x[ 0 ] = 25.0;
+    x[ 1 ] = 9.0;
+    answer = 43.3159;
+
+  }
+  //
+  // f( 5.90133, 0.5 ) = 43.3159
+  //
+
+  template< typename Real, typename Type >
   void Chebyquad( int mfct, int npar, Real* x, Real* fvec, int& ierr,
 		  Type xptr ) {
 
@@ -800,12 +918,44 @@ namespace tstoptfct {
 
   }
 
+  template< typename Real, typename Type >
+  void Colville( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 4 != npar )
+      throw std::runtime_error( "npar for the Colville func must be 4\n" );
+
+    fval = 100 * pow(x[0]-x[1]*x[1], 2) + pow(1-x[0], 2)
+      + 90 * pow(x[3] -x[2]*x[2], 2) + pow(1-x[2], 2)
+	   + 10.1 * (pow(x[1] -1, 2) +  pow(x[3] - 1, 2))
+	   + 19.8 * (x[1] - 1)*(x[3] - 1);
+
+  }
+  template< typename Real >
+  void ColvilleInit( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    if ( 4 != npar )
+      throw std::runtime_error( "npar for the Colville func must be 4\n" );
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      lo[ ii ] = 0.0;
+      hi[ ii ] = 10.0;
+      x[ ii ] = 8.5;
+    }
+
+    answer = 0.0;
+
+  }
+  //
+  // f( 1, 1, 1, 1 ) = 0.0
+  //
+
   //
   //     Deflected Corrugated Spring function
   //     dcs(5, 5, ..., 5) = -1 for any k and alpha=5 and npar
   //
   template< typename Real, typename Type >
-  void dcs( int npar, Real* x, Real* fval, int* ierr ) {
+  void dcs( int npar, Real* x, Real& fval, int* ierr ) {
 
   int k=5;
   Real alpha=5.0;
@@ -836,7 +986,7 @@ namespace tstoptfct {
   // decanom( 2, -3, ) = 0.0
   //
   template< typename Real, typename Type >
-  void decanom( int npar, Real* x, Real* fval, int* ierr ) {
+  void decanom( int npar, Real* x, Real& fval, int* ierr ) {
     
     double x0 = x[ 0 ];
     double x1 = x[ 1 ];
@@ -868,7 +1018,7 @@ namespace tstoptfct {
   // dodecal(1,2,3) = 0.
   //
   template< typename Real, typename Type >
-  void dodecal( int npar, Real* x, Real* fval, int& ierr ) {
+  void dodecal( int npar, Real* x, Real& fval, int& ierr ) {
     
     if ( 3 != npar ) {
       ierr = EXIT_FAILURE;
@@ -905,7 +1055,7 @@ namespace tstoptfct {
       Real xiiplus1  = ( ii == npar ) ? 0.0 :  x[ ii ];
 
       fvec[ ii - 1 ] = 2.0 * x[ ii - 1 ]  - xiiminus1 - xiiplus1 +
-	h*h * pow( x[ ii - 1 ] + ti + 1.0, (Real) 3.0 ) / 2.0;
+	h*h * pow( x[ ii - 1 ] + ti + 1.0, 3.0 ) / 2.0;
     }
 
   }
@@ -954,7 +1104,7 @@ namespace tstoptfct {
     for ( int j = 1; j <= npar; j++ ) {
       Real tj = j * h;
       Real oj = 1.0 - tj;
-      Real cj = h2 * pow( x[ j - 1 ] + tj + 1.0, (Real) 3.0 );
+      Real cj = h2 * pow( x[ j - 1 ] + tj + 1.0, 3.0 );
       for ( int i = 1; i <= npar; i++ ) {
 	Real ti = i * h;
 	Real oi = 1.0 - ti;
@@ -1053,7 +1203,7 @@ namespace tstoptfct {
   // factor1( 1, 2, 3, ..., npar ) = 0.0
   // 
   template< typename Real, typename Type >
-  void factor1( int npar, Real* x, Real* fval, int& ierr ) {
+  void factor1( int npar, Real* x, Real& fval, int& ierr ) {
 
     fval = 0.0;
     Real p=1.0, fact=1.0;
@@ -1085,12 +1235,10 @@ namespace tstoptfct {
 			 int& ierr, Type xptr ) {
 
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      fvec[ ii ] = (Real) - 13.0 + x[ ii ] + 
-	x[ ii + 1 ] *
-	(( (Real) 5.0 - x[ ii + 1 ] ) * x[ ii + 1 ] - (Real) 2.0 );
-      fvec[ ii + 1 ] = (Real) - 29.0 + x[ ii ] + 
-	 x[ ii + 1 ] *
-	(( x[ ii + 1 ] + (Real) 1.0 ) * x[ ii + 1 ] - (Real) 14.0 );
+      fvec[ ii ] = - 13.0 + x[ ii ] + 
+	x[ ii + 1 ] * (( 5.0 - x[ ii + 1 ] ) * x[ ii + 1 ] - 2.0 );
+      fvec[ ii + 1 ] = - 29.0 + x[ ii ] + 
+	 x[ ii + 1 ] * (( x[ ii + 1 ] + 1.0 ) * x[ ii + 1 ] - 14.0 );
     }
 
   }
@@ -1114,8 +1262,8 @@ namespace tstoptfct {
 
     mfct = npar;
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      x[ ii ] = (Real) 0.5;
-      x[ ii + 1 ] = (Real) -2.0;
+      x[ ii ] = 0.5;
+      x[ ii + 1 ] = -2.0;
     }
 
     for ( int ii = 0; ii < npar; ++ii )
@@ -1174,7 +1322,7 @@ namespace tstoptfct {
 		  0.0009 };
 
     for ( int i = 0; i < 15; i++ ) {
-      Real tmp2 = pow( ( 7.0 - i ) / 2.0 - x[ 2 ], (Real) 2.0 );
+      Real tmp2 = pow( ( 7.0 - i ) / 2.0 - x[ 2 ], 2.0 );
       fvec[ i ] = x[ 0 ] * exp( - x[ 1 ] * 0.5 * tmp2 ) - yi[ i ];
     }
 
@@ -1198,9 +1346,9 @@ namespace tstoptfct {
       throw std::runtime_error( "npar for the Gaussian func must be 3\n" );
 
     mfct = 15;
-    x[ 0 ] = (Real) 0.4;
-    x[ 1 ] = (Real) 1.0;
-    x[ 2 ] = (Real) 0.0;
+    x[ 0 ] = 0.4;
+    x[ 1 ] = 1.0;
+    x[ 2 ] = 0.0;
 
     for ( int ii = 0; ii < npar; ++ii )
       lo[ ii ] = -1.0e5;
@@ -1306,9 +1454,9 @@ namespace tstoptfct {
       throw std::runtime_error( "npar for the GulfResearchDevelopment func must be equal to 3\n" );
 
     mfct = npar;
-    x[ 0 ] = (Real) 5.0;
-    x[ 1 ] = (Real) 2.5;
-    x[ 2 ] = (Real) 0.15;
+    x[ 0 ] = 5.0;
+    x[ 1 ] = 2.5;
+    x[ 2 ] = 0.15;
 
     for ( int ii = 0; ii < npar; ++ii )
       lo[ ii ] = -1.0e3;
@@ -1397,6 +1545,57 @@ namespace tstoptfct {
   }
 
   template< typename Real, typename Type >
+  void Hartman6( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 6 != npar )
+      throw std::runtime_error( "npar for the Hartman6 func must be 6\n" );
+
+    static double a[4][6] = {
+      {10,  3,  17,   3.5,  1.7,  8.0},
+      {0.05,  10, 17, 0.1, 8,  14},
+      {3, 3.5, 1.7, 10, 17, 8},
+      {17, 8, 0.05, 10, 0.1, 14}
+    };
+
+    static double c[] = {1, 1.2, 3, 3.2};
+    static double p[4][6] = {
+      {0.1312, 0.1696, 0.5569, 0.0124, 0.8283, 0.5886},
+      {0.2329, 0.4135, 0.8307, 0.3736, 0.1004, 0.9991},
+      {0.2348, 0.1415, 0.3522, 0.2883, 0.3047, 0.6650},
+      {0.4047, 0.8828, 0.8732, 0.5743, 0.1091, 0.0381}
+    };
+
+    double s = 0.0;
+    for( int ii = 0; ii < 4; ++ii ) {
+      double t = 0.0;
+      for( int jj = 0; jj < npar; ++jj ) {
+	double t1 = x[ jj ]- p[ ii ][ jj ];
+	t += a[ ii ][ jj ] * ( t1 * t1 );
+      }
+      s += c[ ii ] * exp( - t  );
+    };
+    fval = -s;
+  }
+  template< typename Real >
+  void Hartman6Init( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    if ( 6 != npar )
+      throw std::runtime_error( "npar for the Hartman6 func must be 6\n" );
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      lo[ ii ] = 0.0;
+      hi[ ii ] = 1.0;
+      x[ ii ] = 0.5;
+    }
+    answer = -3.32;
+    
+  }
+  //
+  // f( 0.201, 0.150, 0.477, 0.275, 0.311, 0.657 ) = -3.32
+  //
+
+  template< typename Real, typename Type >
   void HelicalValley( int mfct, int npar, Real* x, Real* fvec, int& ierr,
 		      Type xptr ) {
 
@@ -1452,6 +1651,95 @@ namespace tstoptfct {
   // f( 1, 0, 0 ) = 0.0
   //
 
+
+  template< typename Real, typename Type >
+  void Himmelblau( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Himmelblau func must be 2\n" );
+
+    fval = sqr( x[ 0 ] * x[ 0 ]+x[ 1 ] - 11.0 ) +
+      sqr( x[ 0 ]+x[ 1 ]* x[ 1 ] - 7 );
+  }
+  template< typename Real >
+  void HimmelblauInit( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Himmelblau func must be 2\n" );
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      lo[ ii ] = -5.0;
+      hi[ ii ] = 5.0;
+      x[ ii ] = 0.0;
+    }
+    answer = -0.0;
+    
+  }
+  //
+  // f( 3, 2 ) = 0.0
+  //
+
+  template< typename Real, typename Type >
+  void Holzman1( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 3 != npar )
+      throw std::runtime_error( "npar for the Holzman1 func must be 3\n" );
+
+    fval = 0.0;
+    for ( int ii = 0; ii < 100; ++ii ) {
+      double ui = 25 + pow( -50.0 * log( 0.01 *( ii +1 ) ), 2.0/3.0 );
+      fval += -0.1 * ( ii + 1 ) +exp( 1.0 / x[ 0 ] *
+				      pow( ui - x[ 1 ], x[ 2 ] ) );
+    }
+    return fval;
+  }
+  template< typename Real >
+  void Holzman1Init( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    if ( 3 != npar )
+      throw std::runtime_error( "npar for the Holzman1 func must be 3\n" );
+
+    lo[ 0 ] = 0.1; hi[ 0 ] = 100.0;
+    lo[ 1 ] = 0.0; hi[ 1 ] = 25.6;
+    lo[ 2 ] = 0.0; hi[ 2 ] = 5.0;
+    for ( int ii = 0; ii < npar; ++ii )
+      x[ ii ] = 5.0;
+
+    answer = -0.0;
+    
+  }
+  //
+  // f( 50, 25, 1.5 ) = 0.0;
+  //
+
+  template< typename Real, typename Type >
+  void Holzman2( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    fval = 0.0;
+    for ( int ii = 0; ii < npar; ++ii ) {
+      fval += ii * pow( x[ ii ] , 4);
+    }
+    fval;
+
+  }
+  template< typename Real >
+  void Holzman2Init( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      x[ ii ] = 5.0;
+      lo[ ii ] = -10.0;
+      hi[ ii ] = 10.0;
+    }
+    answer = 0.0;
+
+  }
+  //
+  // f( 0, 0, ..., 0 ) = 0.0
+  //
+
   template< typename Real, typename Type >
   void JennrichSampson( int mfct, int npar, Real* x, Real* fvec, int& ierr,
 			Type xptr ) {
@@ -1483,8 +1771,8 @@ namespace tstoptfct {
 
     mfct = 10 * npar/2;
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      x[ ii ] = (Real) 0.3;
-      x[ ii + 1 ] = (Real) 0.4;
+      x[ ii ] = 0.3;
+      x[ ii + 1 ] = 0.4;
     }
 
     for ( int ii = 0; ii < npar; ++ii )
@@ -1508,7 +1796,7 @@ namespace tstoptfct {
   // judge(2.35,-0.319)=20.9805, the  local minimum
   //
   template< typename Real, typename Type >
-  void Judge( int npar, Real* x, Real* fval, int& ierr ) {
+  void Judge( int npar, Real* x, Real& fval, int& ierr ) {
     
     /*
     if ( 20 != npar ) {
@@ -1546,6 +1834,40 @@ namespace tstoptfct {
     answer = 16.0817307;
 
   }
+
+  template< typename Real, typename Type >
+  void Katsuuras( int npar, Real* x, Real& fval, int& ierr ) {
+    
+    int d = 32;
+
+    fval = 1.0;
+    for ( int ii = 0; ii < npar; ++ii ) {
+      double s = 0.0;
+      for ( int kk = 1; kk <= d; ++kk ) {
+	double pow2 = pow( 2, kk );
+	s += round(pow2 * x[ ii ]) / pow2;
+      }
+      fval *= 1.0 + ( ii + 1) * s;
+    }
+ 
+  }
+  template< typename Real >
+  void KatsuurasInit( int npar, Real& answer, Real* x, Real* lo,
+		      Real* hi, Real low=-1.0e3, Real high=1.0e3 ) {
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      lo[ ii ] = low;
+      hi[ ii ] = high;
+      double tmp = rand( ) / (RAND_MAX + 1.0);
+      x[ ii ] = low + ( hi[ ii ] - lo[ ii ] ) * tmp;
+    }
+
+    answer = 1.0;
+
+  }
+  //
+  // f( 0, 0, ..., 0 ) = 1.0
+  //
 
   template< typename Real, typename Type >
   void KowalikOsborne( int mfct, int npar, Real* x, Real* fvec,
@@ -1591,7 +1913,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 3.07505e-4;
+    answer = 3.07505e-4;
 
   }
   //
@@ -1608,119 +1930,6 @@ namespace tstoptfct {
   // These particular points appear to be "false" local minima on a flat
   // plateau, the fact caused by the finite accuracy of calculations.
   //
-
-  template< typename Real, typename Type >
-  void Meyer( int mfct, int npar, Real* x, Real* fvec, int& ierr,
-	      Type xptr ) {
-
-    Real yi[] = { 34780.0, 28610.0, 23650.0, 19630.0, 16370.0, 13720.0,
-		  11540.0, 9744.0, 8261.0, 7030.0, 6005.0, 5147.0, 4427.0,
-		  3820.0, 3307.0, 2872.0 };
-
-    int ii = 0;
-    for ( int jj = 0; jj < 16; jj++ )
-      fvec[ 16 * ii/3 + jj ] = x[ ii ] *
-	exp( x[ ii + 1 ] / ( 45.0 + 5.0 * (jj+1) + x[ ii + 2 ] ) ) - yi[ jj ];
-
-  }
-  template< typename Real, typename Type >
-  void Meyer( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
-
-    int mfct = 16;
-    std::vector< Real > fvec( mfct );
-    Meyer( mfct, npar, x, &fvec[0], ierr, 0 );
-    fval = 0.0;
-    for ( int ii = mfct - 1; ii >= 0; --ii )
-      fval += fvec[ii]*fvec[ii];
-
-  }
-  template< typename Real >
-  void MeyerInit( int npar, int& mfct, Real& answer, Real* x,
-		  Real* lo, Real* hi ) {
-  
-    if ( 3 != npar )
-      throw std::runtime_error( "npar for the Meyer func must be 3\n" );
-
-    mfct = 16 * npar / 3;
-    for ( int ii = 0; ii < npar; ii += 3 ) {
-      x[ ii ] = (Real) 0.02;
-      x[ ii + 1 ] = (Real) 4000.0;
-      x[ ii + 2 ] = (Real) 250.0;
-    }
-
-    for ( int ii = 0; ii < npar; ++ii )
-      lo[ ii ] = -1.0e3;
-
-    for ( int ii = 0; ii < npar; ++ii )
-      hi[ ii ] = 1.0e5;
-
-    answer = 87.9458;
-  }
-
-
-  template< typename Real, typename Type >
-  void McCormick( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
-
-    Real a = x[ 0 ] + x[ 1 ], b = x[ 0 ] - x[ 1 ];
-    fval = sin( a ) + b * b - 1.5 * x[ 0 ] + 2.5 * x[ 1 ] + 1.0;
-
-  }
-  template< typename Real >
-  void McCormickInit( int npar, int& mfct, Real& answer, Real* x,
-		      Real* lo, Real* hi ) {
-
-    if ( 2 != npar )
-      throw std::runtime_error( "npar for the McCormick func must be 2\n" );
-
-    x[ 0 ] = 0.0; x[ 1 ] = 0.0;
-    lo[ 0 ] = -1.5; lo[ 1 ] = -3.0;
-    hi[ 0 ] =  4.0; hi[ 1 ] =  4.0;
-    answer = -1.91;
-
-  }
-  //
-  // f ( -0.547197553, -1.54719756 ) = -1.91
-  //
-
-  template< typename Real, typename Type >
-  void Michalewicz( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
-
-    const Real pi = std::fabs( acos( - 1.0 ) );
-    fval = 0.0;
-    for ( int ii = 0; ii < npar; ++ii )
-      fval -= sin( x[ ii ] ) * 
-	pow( sin( (ii+1) * x[ ii ] * x[ ii ] / pi ), 20.0 );
-
-  }
-  template< typename Real >
-  void MichalewiczInit( int npar, int& mfct, Real& answer, Real* x,
-			Real* lo, Real* hi ) {
-
-    switch( npar ) {
-    case 2:
-      answer = - 1.8013;
-      break;
-    case 5:
-      answer = - 4.687658;
-      break;
-    case 10:
-      answer = - 9.66015;
-      break;
-    default:
-      printf( "MichalewiczInit(): npar=%d\t is not an option\n", npar );
-      return;
-    }
-
-    const Real pi = std::fabs( acos( - 1.0 ) );
-    for ( int ii = 0; ii < npar; ++ii ) {
-
-      lo[ ii ] = 0.0;
-      hi[ ii ] = pi;
-      x[ ii ] = pi / 2.0;
-
-    }
-
-  }
 
   template< typename Real, typename Type >
   void Levy( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
@@ -1813,7 +2022,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) ( mfct - npar );
+    answer = static_cast< Real >( mfct - npar );
   }
   //
   // f( -1, ... , -1) = m - n
@@ -1856,7 +2065,8 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) (mfct * ( mfct - 1.0 ) / 2.0 / ( 2.0 * mfct + 1.0 ));
+    answer =
+      static_cast< Real >( mfct * ( mfct - 1.0 ) / 2.0 / ( 2.0 * mfct + 1.0 ) );
 
   }
 
@@ -1902,38 +2112,123 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) ( ( mfct * ( mfct + 3 ) - 6.0 ) / 2.0 / 
-		       ( 2.0 * mfct - 3.0 ) );
+    answer = static_cast< Real >( ( mfct * ( mfct + 3 ) - 6.0 ) / 2.0 / 
+				  ( 2.0 * mfct - 3.0 ) );
 
   }
 
+  template< typename Real, typename Type >
+  void Meyer( int mfct, int npar, Real* x, Real* fvec, int& ierr,
+	      Type xptr ) {
 
-  // 
-  // quintic( 2, 2,..., 2, -0.402627941 ) = 0.0
-  // quintic( -1, -1,..., -1, -0.402627941 ) = 0.0
-  // or any permutation of (2, 2,..., 2, -1, -1, ..., -1, -0.402627941)
-  void quintic( int npar, double* x, double& fval, int& ierr ) {
+    Real yi[] = { 34780.0, 28610.0, 23650.0, 19630.0, 16370.0, 13720.0,
+		  11540.0, 9744.0, 8261.0, 7030.0, 6005.0, 5147.0, 4427.0,
+		  3820.0, 3307.0, 2872.0 };
 
+    int ii = 0;
+    for ( int jj = 0; jj < 16; jj++ )
+      fvec[ 16 * ii/3 + jj ] = x[ ii ] *
+	exp( x[ ii + 1 ] / ( 45.0 + 5.0 * (jj+1) + x[ ii + 2 ] ) ) - yi[ jj ];
+
+  }
+  template< typename Real, typename Type >
+  void Meyer( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    int mfct = 16;
+    std::vector< Real > fvec( mfct );
+    Meyer( mfct, npar, x, &fvec[0], ierr, 0 );
     fval = 0.0;
-    for ( int ii = 0; ii < npar; ++ii )
-      fval += std::fabs( ((((x[ii]-3)*x[ii]+4)*x[ii]+2)*x[ii]-10)*x[ii] - 4 );
+    for ( int ii = mfct - 1; ii >= 0; --ii )
+      fval += fvec[ii]*fvec[ii];
 
   }
   template< typename Real >
-  void quinticInit( int npar, Real& answer, Real* x, Real* lo,
-		    Real* hi, Real low=-1.0e3, Real high=1.0e3 ) {
+  void MeyerInit( int npar, int& mfct, Real& answer, Real* x,
+		  Real* lo, Real* hi ) {
+  
+    if ( 3 != npar )
+      throw std::runtime_error( "npar for the Meyer func must be 3\n" );
 
-    for ( int ii = 0; ii < npar; ++ii ) {
-      lo[ ii ] = low;
-      hi[ ii ] = high;
-      double tmp = rand( ) / (RAND_MAX + 1.0);
-      x[ ii ] = low + ( hi[ ii ] - lo[ ii ] ) * tmp;
+    mfct = 16 * npar / 3;
+    for ( int ii = 0; ii < npar; ii += 3 ) {
+      x[ ii ] = 0.02;
+      x[ ii + 1 ] = 4000.0;
+      x[ ii + 2 ] = 250.0;
     }
 
-    answer = 0.0;
+    for ( int ii = 0; ii < npar; ++ii )
+      lo[ ii ] = -1.0e3;
 
+    for ( int ii = 0; ii < npar; ++ii )
+      hi[ ii ] = 1.0e5;
+
+    answer = 87.9458;
   }
 
+
+  template< typename Real, typename Type >
+  void McCormick( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    Real a = x[ 0 ] + x[ 1 ], b = x[ 0 ] - x[ 1 ];
+    fval = sin( a ) + b * b - 1.5 * x[ 0 ] + 2.5 * x[ 1 ] + 1.0;
+
+  }
+  template< typename Real >
+  void McCormickInit( int npar, int& mfct, Real& answer, Real* x,
+		      Real* lo, Real* hi ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the McCormick func must be 2\n" );
+
+    x[ 0 ] = 0.0; x[ 1 ] = 0.0;
+    lo[ 0 ] = -1.5; lo[ 1 ] = -3.0;
+    hi[ 0 ] =  4.0; hi[ 1 ] =  4.0;
+    answer = -1.91;
+
+  }
+  //
+  // f ( -0.547197553, -1.54719756 ) = -1.91
+  //
+
+  template< typename Real, typename Type >
+  void Michalewicz( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    const Real pi = std::fabs( acos( - 1.0 ) );
+    fval = 0.0;
+    for ( int ii = 0; ii < npar; ++ii )
+      fval -= sin( x[ ii ] ) * 
+	pow( sin( (ii+1) * x[ ii ] * x[ ii ] / pi ), 20.0 );
+
+  }
+  template< typename Real >
+  void MichalewiczInit( int npar, int& mfct, Real& answer, Real* x,
+			Real* lo, Real* hi ) {
+
+    switch( npar ) {
+    case 2:
+      answer = - 1.8013;
+      break;
+    case 5:
+      answer = - 4.687658;
+      break;
+    case 10:
+      answer = - 9.66015;
+      break;
+    default:
+      printf( "MichalewiczInit(): npar=%d\t is not an option\n", npar );
+      return;
+    }
+
+    const Real pi = std::fabs( acos( - 1.0 ) );
+    for ( int ii = 0; ii < npar; ++ii ) {
+
+      lo[ ii ] = 0.0;
+      hi[ ii ] = pi;
+      x[ ii ] = pi / 2.0;
+
+    }
+
+  }
 
   template< typename Real, typename Type >
   void Osborne1( int mfct, int npar, Real* x, Real* fvec, int& ierr,
@@ -1982,7 +2277,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 5.46489e-5;
+    answer = 5.46489e-5;
 
   }
   //
@@ -2061,7 +2356,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e3;
 
-    answer = (Real) 4.01377e-2;
+    answer = 4.01377e-2;
   }
   //
   // f( 1.30997, 0.431459, 0.633631, 0.599303, 0.753915, 0.905575,
@@ -2147,7 +2442,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 9.37629e-6;
+    answer = 9.37629e-6;
 
   }
 
@@ -2208,7 +2503,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 9.37629e-6;
+    answer = 9.37629e-6;
 
   }
   //
@@ -2221,8 +2516,8 @@ namespace tstoptfct {
 			  int& ierr, Type xptr ) {
 
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      fvec[ ii ] = (Real)1.0e4 * x[ ii ] * x[ ii + 1 ] - 1;
-      fvec[ ii + 1 ] = exp( - x[ ii  ] ) + exp( - x[ ii + 1 ] ) - (Real)1.0001;
+      fvec[ ii ] = 1.0e4 * x[ ii ] * x[ ii + 1 ] - 1;
+      fvec[ ii + 1 ] = exp( - x[ ii  ] ) + exp( - x[ ii + 1 ] ) - 1.0001;
     }
 
   }
@@ -2246,8 +2541,8 @@ namespace tstoptfct {
 
     mfct = npar;
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      x[ ii ] = (Real) 0.0;
-      x[ ii + 1 ] = (Real) 1.0;
+      x[ ii ] = 0.0;
+      x[ ii + 1 ] = 1.0;
     }
 
     for ( int ii = 0; ii < npar; ++ii )
@@ -2275,8 +2570,8 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ii += 4 ) {
       fvec[ ii ] = x[ ii ] + 10.0 * x[ ii + 1 ];
       fvec[ ii + 1 ] = sqrt( 5.0 ) * ( x[ ii + 2 ] - x[ ii + 3 ] );
-      fvec[ ii + 2 ] = pow( x[ ii + 1 ] - 2.0 * x[ ii + 2 ], (Real) 2.0 );
-      fvec[ ii + 3 ] = sqrt( 10.0 ) * pow( x[ ii ] - x[ ii + 3 ], (Real) 2.0 );
+      fvec[ ii + 2 ] = pow( x[ ii + 1 ] - 2.0 * x[ ii + 2 ], 2.0 );
+      fvec[ ii + 3 ] = sqrt( 10.0 ) * pow( x[ ii ] - x[ ii + 3 ], 2.0 );
     }
 
   }
@@ -2319,6 +2614,32 @@ namespace tstoptfct {
   // f( origin ) = 0.0
   //
 
+  // 
+  // quintic( 2, 2,..., 2, -0.402627941 ) = 0.0
+  // quintic( -1, -1,..., -1, -0.402627941 ) = 0.0
+  // or any permutation of (2, 2,..., 2, -1, -1, ..., -1, -0.402627941)
+  void quintic( int npar, double* x, double& fval, int& ierr ) {
+
+    fval = 0.0;
+    for ( int ii = 0; ii < npar; ++ii )
+      fval += std::fabs( ((((x[ii]-3)*x[ii]+4)*x[ii]+2)*x[ii]-10)*x[ii] - 4 );
+
+  }
+  template< typename Real >
+  void quinticInit( int npar, Real& answer, Real* x, Real* lo,
+		    Real* hi, Real low=-1.0e3, Real high=1.0e3 ) {
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      lo[ ii ] = low;
+      hi[ ii ] = high;
+      double tmp = rand( ) / (RAND_MAX + 1.0);
+      x[ ii ] = low + ( hi[ ii ] - lo[ ii ] ) * tmp;
+    }
+
+    answer = 0.0;
+
+  }
+
   template< typename Real, typename Type >
   void Rastrigin( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
   
@@ -2356,8 +2677,8 @@ namespace tstoptfct {
   
     for ( int ii = 0; ii < npar; ii += 2 ) {
 
-      fvec[ ii ] = (Real) 1.0 - x[ ii ];
-      fvec[ ii + 1 ] = (Real) 10.0 * ( x[ ii + 1 ] - x[ ii ] * x[ ii ] );
+      fvec[ ii ] = 1.0 - x[ ii ];
+      fvec[ ii + 1 ] = 10.0 * ( x[ ii + 1 ] - x[ ii ] * x[ ii ] );
     
     }
 
@@ -2382,8 +2703,8 @@ namespace tstoptfct {
 
     mfct = npar;
     for ( int ii = 0; ii < npar; ii += 2 ) {
-      x[ ii ] = (Real) -1.2;
-      x[ ii + 1 ] = (Real) 1.0;
+      x[ ii ] = -1.2;
+      x[ ii + 1 ] = 1.0;
     }
 
     for ( int ii = 0; ii < npar; ++ii )
@@ -2411,7 +2732,7 @@ namespace tstoptfct {
   // seqp(0,0) = seqp(2,2) = 0, find the values such that x0+x1 = x0*x1
   //
   template< typename Real, typename Type >
-  void seqp( int npar, Real* x, Real* fval, int& ierr ) {
+  void seqp( int npar, Real* x, Real& fval, int& ierr ) {
     
     if ( 2 != npar ) {
       ierr = EXIT_FAILURE;
@@ -2681,6 +3002,69 @@ namespace tstoptfct {
   }
 
   template< typename Real, typename Type >
+  void Trecanni( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Trecanni func must be 2\n" );
+
+    fval = ( ( x[ 0 ]  +  4.0 ) * x[ 0 ] + 4.0 )  * sqr( x[ 0 ]  ) +
+      sqr( x[ 1 ] );
+
+  }
+  template< typename Real >
+  void TrecanniInit( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Trecanni func must be 2\n" );
+
+    for ( int ii = 0; ii < npar; ++ii ) {
+      lo[ ii ] = -5.0;
+      hi[ ii ] = 5.0;
+      double tmp = rand( ) / (RAND_MAX + 1.0);
+      x[ ii ] = lo[ ii ] + ( hi[ ii ] - lo[ ii ] ) * tmp;
+    }
+    answer = 0.0;
+
+  }
+  //
+  // f( 0, 0 ) = f( -2, 0 ) = 0.0
+  //
+
+  template< typename Real, typename Type >
+  void Trefethen4( int npar, Real* x, Real& fval, int& ierr, Type xptr ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Trefethen4 func must be 2\n" );
+
+    fval = ( ( x[ 0 ]  +  4.0 ) * x[ 0 ] + 4.0 )  * sqr( x[ 0 ]  ) +
+      sqr( x[ 1 ] );
+
+  }
+  template< typename Real >
+  void Trefethen4Init( int npar, int& mfct, Real& answer, Real* x,
+		     Real* lo, Real* hi ) {
+
+    if ( 2 != npar )
+      throw std::runtime_error( "npar for the Trefethen4 func must be 2\n" );
+
+
+    lo[ 0 ] = -6.5;
+    lo[ 1 ] = -4.5;
+    hi[ 0 ] = 6.5;
+    hi[ 1 ] = 4.5;
+    for ( int ii = 0; ii < npar; ++ii ) {
+      double tmp = rand( ) / (RAND_MAX + 1.0);
+      x[ ii ] = lo[ ii ] + ( hi[ ii ] - lo[ ii ] ) * tmp;
+    }
+    answer = -3.30686865;
+
+  }
+  //
+  // f( -0.0244031, 0.2106124 ) = -3.30686865
+  //
+
+  template< typename Real, typename Type >
   void Trigonometric( int mfct, int npar, Real* x, Real* fvec, int& ierr,
 		      Type xptr ) {
 
@@ -2830,7 +3214,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii )
       hi[ ii ] = 1.0e6;
 
-    answer = (Real) 2.28767e-3;
+    answer = 2.28767e-3;
   }
   //
   // f=2.28767...10^(-3)    if n=6

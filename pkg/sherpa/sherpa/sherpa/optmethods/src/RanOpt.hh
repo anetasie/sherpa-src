@@ -7,7 +7,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -21,49 +21,38 @@
 //
 
 
-#include "mt19937ar.h"
-
-#include "Opt.hh"
+#include "sherpa/MersenneTwister.h"
 
 namespace sherpa {
 
-  //
-  // The base class for the global optimization class.
-  //
-  template< typename Func, typename Data >
-  class RanOpt : public sherpa::Opt< Func, Data > {
+  /*
+  class MyMTRand : public MTRand {
 
   public:
 
-    RanOpt( int numpar, double* par, const double* lo, const double* hi,
-	    Func func, Data data, int seed )
-      : sherpa::Opt< Func, Data >( numpar, par, lo, hi, func, data ) {
-      
-	init_genrand( seed );
-	
-    }
-
-  protected:
+    MyMTRand( const uint32 oneSeed ) : MTRand( oneSeed ) { }
 
     // return a pseudo random number in the [ 0, 1 ] real-interval
-    double random_number( ) const { return genrand_real1( ); }
+    double random_number( ) { return rand( ); }
 
     // return a pseudo random number in the ( 0, 1 ) real-interval
-    double random_number_ee( ) const { return genrand_real3( ); }
+    double random_number_ee( ) { return randDblExc( ); }
 
-    // return a pseudo random number in the [ low, high ] integer-interval
-    int random_number( int low, int high ) const {
-      int answer = low + int( (high - low + 1) * random_number( ) );
-      return answer;
-    }
+    // return a pseudo random number in the [ 0, high ] integer-interval
+    MTRand::uint32 random_number( const MTRand::uint32 n ) { 
+      return randInt( n ); }
 
     // return a pseudo random number in the ( lo, high ) real-interval
-    double random_number_ee( double low, double high ) const { 
-      return low + ( high - low ) * random_number_ee( );
+    double random_number_ee( double low, double high ) { 
+      return low + ( high - low ) * randDblExc( );
     }
 
-  };                         // class RanOpt : public sherpa::Opt< Func, Data >
+    double gaussian_deviate( const double mean, const double stddev ) {
+      return randNorm( mean, stddev ); }
 
-}                                                                  // namespace
+  };
+  */
+
+}                                                           // namespace sherpa
 
 #endif

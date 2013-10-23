@@ -7,7 +7,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -21,7 +21,7 @@
 //
 
 
-#include<cstdlib>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -36,7 +36,7 @@ namespace sherpa {
 
   public:
 
-    enum Err { Input=1, OutOfBounds, MaxFev, UsrFunc };
+    enum Err { Success, Input, OutOfBound, MaxFev, UsrFunc, Unknown };
 
     OptErr( OptErr::Err e ) : err( e ) { }
 
@@ -46,11 +46,13 @@ namespace sherpa {
 
     std::ostream& print( std::ostream& os ) const {
 
-      char* msg[] = {
-	"Input Err",
-	"Par is out of bound",
+      const char* msg[] = {
+	"No error",
+	"Input error",
+	"Parameter is out of bound",
 	"Max number of function evaluation",
-	"User Function error"
+	"User Function error",
+	"Unknown error"
       };
 
       os << msg[ err ];
@@ -61,141 +63,168 @@ namespace sherpa {
 
   };
 
-  template< typename Func, typename Data >
   class Opt {
-
-    /*
-    friend std::ostream& operator << ( std::ostream& os, const Opt& opt ) {
-      return opt.print( os ); }
-    */
 
   public:
 
+    typedef std::vector<double> myvec;
+    typedef std::pair< const myvec, const myvec > mypair;
+
     virtual ~Opt( ) { }
     
-    Opt( int numpar, double* par, const double* lo, const double* hi,
-	 Func func, Data data ) 
-      : npar( numpar ), lo_bound( lo, lo + npar ), hi_bound( hi, hi + npar ),
-	usr_func( func ), usr_data( data ) {
+    Opt( ) { }
 
-      if ( true == are_pars_outside_limits( par ) )
-	throw sherpa::OptErr( OptErr::OutOfBounds );
-      
-    }
+    virtual double eval_func( int maxnfev, const Opt::mypair& limits, int npar,
+			      Opt::myvec& par, int& nfev ) {
+      std::cerr << "Opt::eval_func define me!\n";
+      return 0.0; }
 
-    std::ostream& print( std::ostream& os, double* par, double fstat=0,
-			 int nfev=-1 ) const {
-
-      if ( nfev > 0 )
-	os << "nfev=" << nfev << ": ";
-      print_par( os, par );
-      if ( nfev > 0 )
-	os << "=" << fstat << '\n';
-
-      return os;
-
-    }
-
-    std::ostream& print_par( std::ostream& os, double* par ) const {
-
-      os << "f( " << par[0];
-      for ( int ii = 1; ii < npar; ++ii )
-	os << ", " << par[ ii ];
-      os << ")";
-      return os;
-
-    }
-
-    virtual int eval_user_func( int maxnfev, double* mypar, double& fval,
-				int& nfev, int& ierr ) {
-      std::cerr << "Please define me!" << std::endl;
+    virtual int minimize( int maxnfev, const sherpa::Opt::mypair& limits,
+			  double tol, int npar, sherpa::Opt::myvec& par,
+			  double& fmin, int& nfev ) {
+      std::cerr << "Opt::minimize define me!\n";
       return EXIT_FAILURE;
     }
 
-  protected:
-
-    const int npar;
-    const std::vector< double > lo_bound;
-    const std::vector< double > hi_bound;
-    Func usr_func;
-    Data usr_data;
-
+    //
     // If lo <= xpar <= hi return false, else return true
-    bool are_pars_outside_limits( const double* pars ) const {
+    //
+    static bool are_pars_outside_limits( int npar, const mypair& limits,
+					 const myvec& par ) {
+      const myvec& low = limits.first;
+      const myvec& high = limits.second;
       for ( int ii = 0; ii < npar; ++ii )
-	if ( pars[ ii ] < lo_bound[ ii ] || pars[ ii ] > hi_bound[ ii ] )
+	if ( par[ ii ] < low[ ii ] || par[ ii ] > high[ ii ] )
 	  return true;
       return false;
 
     }
-      
-    double calc_standard_deviation_square( int num, const double* ptr ) const {
 
-      //
-      // The standard deviation algorithm is due to Donald E. Knuth (1998).
-      // The art of Computer Programming, volume2: Seminumerical Algorithms,
-      // 3rd edn., p 232
-      //
-      double mean = 0.0, stddev = 0.0;
-      for ( int ii = 0; ii < num; ++ii ) {
-	double delta = ptr[ ii ] - mean;
-	mean += delta / double( ii + 1 );
-	stddev += delta * ( ptr[ ii ] - mean );
-      }
+    static std::ostream& print_par( std::ostream& os, const myvec& par ) {
+      const size_t npar = par.size( ) - 1;
+      os.precision( 6 );
+      os << "f( " << std::scientific << par[ 0 ];
+      for ( size_t ii = 1; ii < npar; ++ii )
+	os << ", " << std::scientific << par[ ii ];
+      os << " ) = " << par[ npar ] << '\n';
+      return os;
+    }
 
-      if ( 1 != num )
-	stddev /= double( num - 1);
-
-      return stddev;
-
-    }                                         // calc_standard_deviation_square
+  private:
 
   };                                                               // class Opt
 
   template< typename Func, typename Data >
-  class OptFunc : public sherpa::Opt< Func, Data > {
+  class OptFunc : public Opt {
 
   public:
 
-    OptFunc( int numpar, double* par, const double* lo, const double* hi,
-	     Func func, Data data, int mfcts=0 ) : 
-      sherpa::Opt<Func,Data>( numpar, par, lo, hi, func, data ) { }
+    virtual ~OptFunc( ) { }
 
-    int eval_user_func( int maxnfev, double* mypar, double& fval,
-			int& nfev, int& ierr ) {
+    OptFunc( Func func, Data data, int mfct=0 ) :
+      usr_func( func ), usr_data( data ), mfcts( mfct ) { }
+
+
+    virtual double eval_func( int maxnfev, const Opt::mypair& limits, int npar,
+			      Opt::myvec& par, int& nfev ) {
       
-      if ( true ==
-	   Opt<Func,Data>::are_pars_outside_limits( mypar ) ) {
-	fval = std::numeric_limits< double >::max( );
-	return EXIT_SUCCESS;
+      if ( sherpa::Opt::are_pars_outside_limits( npar, limits, par ) ) {
+	par[ npar ] = std::numeric_limits< double >::max( );
+	return par[ npar ];
       }
 
       ++nfev;
       
-      Opt<Func,Data>::usr_func( Opt<Func,Data>::npar, mypar, fval, ierr,
-				Opt<Func,Data>::usr_data );
-      // this->print( std::cout, mypar, fval, Opt<Func,Data>::nfev );
-
+      int ierr = EXIT_SUCCESS;
+      usr_func( npar, &par[0], par[npar], ierr, usr_data );
       if ( EXIT_SUCCESS != ierr )
-	return ierr;
-      if ( nfev >= maxnfev ) {
-	ierr = sherpa::OptErr::MaxFev;
-      }
+	throw sherpa::OptErr( sherpa::OptErr::UsrFunc );
+      if ( nfev >= maxnfev )
+	throw sherpa::OptErr( sherpa::OptErr::MaxFev );
 
-      return ierr;
+      if ( nfev >= maxnfev )
+	ierr = sherpa::OptErr::MaxFev;
+
+      return par[ npar ];
 
     }                                                         // eval_user_func
 
-    virtual int minimize( double* model_par, double tol, int maxnfev,
-			  int& nfev, double& fmin ) {
+    int minimize( int maxnfev, const sherpa::Opt::mypair& limits,
+		  double tol, int npar, sherpa::Opt::myvec& par, double& fmin,
+		  int& nfev ) {
       int ierr = EXIT_SUCCESS;
-      return eval_user_func( maxnfev, model_par, fmin, nfev, ierr );
+      fmin = eval_func( maxnfev, limits, npar, par, nfev );
+      return ierr;
     }
+
+  protected:
+
+    Func get_func( ) { return usr_func; }
+    Data get_data( ) { return usr_data; }
+
+  private:
+
+    Func usr_func;
+    Data usr_data;
+    const int mfcts;
+
+    OptFunc& operator = (OptFunc const&); // declare but, purposely, not define
+    OptFunc( OptFunc const& );            // declare but, purposely, not define
 
   };                                                           // class OptFunc
 
-#define NPAR  sherpa::Opt<Func,Data>::npar
-
 }                                                           // namespace sherpa
 
-#endif
+#endif                                                        // #ifndef Opt_hh
+
+#ifdef testOpt
+#include "sherpa/functor.hh"
+#include "tests/tstoptfct.hh"
+
+template< typename Init, typename Func >
+void justdoit( Init init, Func fct, int npar, std::vector<double>& par ) {
+
+  int mfcts, maxnfev = 2, nfev = 0;
+  double answer, fmin;
+  std::vector< double > lo( npar ), hi( npar );
+  init( npar, mfcts, answer, &par[0], &lo[0], &hi[0] );
+
+  const sherpa::Opt::mypair limits( lo, hi );
+
+  sherpa::OptFunc< Func, void* > optfunc( fct, NULL );
+
+  try {
+
+    for ( int ii = 0; ii < maxnfev + 1; ++ii )
+      fmin = optfunc.eval_func( maxnfev, limits, npar, par, nfev );
+
+  } catch( sherpa::OptErr& oe ) {
+
+    std::cerr << oe << '\n';
+    std::cerr << "nfev = " << nfev << '\n';
+
+  }
+
+}
+
+int main( int argc, char* argv[] ) {
+
+  int npar = 2;
+  if ( argc == 2 )
+    npar = atoi( argv[1] );
+
+  std::vector<double> par( npar + 1, 0.0 );
+  sherpa::FctPtr< void, int, double*, double&, int&, void* >
+    fct( tstoptfct::Rosenbrock<double,void*> );
+
+  justdoit( sherpa::fct_ptr( tstoptfct::RosenbrockInit<double> ),
+	    fct, npar, par );
+
+  return 0;
+
+}
+
+#endif                                                        // #ifdef testOpt
+//
+// cp Opt.hh tmp.cc; g++ -I.. -I../../include/ -g -Wall -ansi -pedantic -O3 -DtestOpt tmp.cc; rm tmp.cc; myvalgrind a.out
+//

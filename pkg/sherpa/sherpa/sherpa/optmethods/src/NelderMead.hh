@@ -7,7 +7,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -46,11 +46,11 @@
 //   f , f , f    from the paper translate to following code
 //    1   n   n+1
 //
-//  f      ==>  simplex( index[Smallest], npar )
+//  f      ==>  simplex[ 0 ][ npar ]
 //   1
-//  f      ==>  simplex( index[NextLargest], npar )
+//  f      ==>  simplex[ npar - 1 ][ npar ]
 //   n
-//  f      ==>  simplex( index[Largest], npar )
+//  f      ==>  simplex[ npar ][ npar ]
 //   n+1
 //
 // Sep 2006 Original version written by D. T. Nguyen
@@ -60,243 +60,168 @@
 //          on a few problems sent in by the users.
 //
 
-#include "DirectSearch.hh"
+#include "Opt.hh"
+#include "Simplex.hh"
 #include "PyWrapper.hh"
 
 namespace sherpa {
 
   template< typename Func, typename Data >
-  class NelderMead : public sherpa::DirectSearch< Func, Data > {
+  class NelderMead : public sherpa::OptFunc< Func, Data > {
 
   public:
     
-    NelderMead( int numpar, double* par, const double* lo, const double* hi,
-		Func func, Data xtra, double shrinkcoef=0.5 )
-      : DirectSearch< Func, Data >( numpar, par, lo, hi, func, xtra ),
-	shrink_coef( shrinkcoef ), centroid( numpar + 1 ),
-	reflection( numpar + 1 ), expansion( numpar + 1 ),
-	contraction( numpar + 1 ) {
+    //
+    // The nearly universal choices used in the
+    // standard Nelder-Mead algorithm are:
+    //
+    // reflection(rho)=1.0, expansion(chi)=2.0, 
+    // contraction(gamma)=0.5, shrink(sigma)=0.5
+    //
+    NelderMead( Func func, Data xdata, int mfct=0, double contractcoef=0.5,
+		double expancoef=2.0, double refleccoef=1.0,
+		double shrinkcoef=0.5 )
+      : sherpa::OptFunc< Func, Data >( func, xdata, mfct ),
+	contraction_coef( contractcoef ), expansion_coef( expancoef ),
+	reflection_coef( refleccoef ), shrink_coef( shrinkcoef ),
+	rho_gamma( refleccoef * contractcoef ), 
+	rho_chi( refleccoef * expancoef ) {
 
-      check_shrink_coefficients( );
+      check_coefficients( );
+
+    }
+
+    int operator( )( int verbose, int maxnfev, double tol, int npar,
+		     int initsimplex, const std::vector<int>& finalsimplex,
+		     const std::vector<double>& low,
+		     const std::vector<double>& high,
+		     const std::vector<double>& step, 
+		     std::vector<double>& par, int& nfev, double& fmin ) {
+
+      int ierr = EXIT_SUCCESS;
+
+      nfev = 0;
+      fmin = std::numeric_limits< double >::max( );
+      const int npar1 = npar + 1;
+      std::vector<double> mypar( npar1, 0.0 );
+
+      try {
+
+	centroid.resize( npar1 );
+	contraction.resize( npar1 );
+	expansion.resize( npar1 );
+	reflection.resize( npar1 );
+	simplex.resize( npar1, npar1 );
+
+	for ( int ii = 0; ii < npar; ++ii )
+	  mypar[ ii ] = par[ ii ];
+
+	const sherpa::Opt::mypair limits( low, high );
+	if ( sherpa::Opt::are_pars_outside_limits( npar, limits, par ) )
+	  throw sherpa::OptErr( sherpa::OptErr::OutOfBound );
+
+	neldermead( verbose, maxnfev, tol, initsimplex, finalsimplex, limits,
+		    step, mypar, nfev );
+
+      } catch( sherpa::OptErr& oe ) {
+
+	if ( verbose )
+	  std::cerr << oe << '\n';
+	ierr = oe.err;
+
+      } catch( std::runtime_error& re ) {
+
+	if ( verbose )
+	  std::cerr << re.what( ) << '\n';
+	ierr = OptErr::Unknown;
+
+      } catch( std::exception& e ) {
+
+	if ( verbose )
+	  std::cerr << e.what( ) << '\n';
+	ierr = OptErr::Unknown;
+
+      }
+
+      for ( int ii = 0; ii < npar; ++ii )
+	par[ ii ] = mypar[ ii ];
+      fmin = mypar[ npar ];
+
+      return ierr;
 
     }
 
     // de
-    NelderMead( int numpar, double* par, const double* lo, const double* hi,
-		Func func, Data xtra, int mfct, double shrinkcoef=0.5 )
-      : DirectSearch< Func, Data >( numpar, par, lo, hi, func, xtra ),
-	shrink_coef( shrinkcoef ), centroid( numpar + 1 ),
-	reflection( numpar + 1 ), expansion( numpar + 1 ),
-	contraction( numpar + 1 ) {
+    int minimize( int maxnfev, const sherpa::Opt::mypair& limits, double tol,
+		  int npar, sherpa::Opt::myvec& par, double& fmin, int& nfev ) {
 
-      check_shrink_coefficients( );
-
-    }
-    int minimize( double* model_par, double tol, int maxnfev, int& nfev,
-		  double& fmin ) {
-
+      const std::vector<double>& low = limits.first;
+      const std::vector<double>& high = limits.second;
       int verbose=0, init_simplex=0;
       const int tmp[]={ 0, 1 };
       std::vector< int > final_simplex( tmp, tmp + sizeof(tmp) / sizeof(int) );
-      std::vector< double > step( NPAR );
+      std::vector< double > step( npar );
 
-      for ( int ii = 0; ii < NPAR; ++ii )
-	step[ ii ] = 1.2 * model_par[ ii ] + 1.2;
+      for ( int ii = 0; ii < npar; ++ii )
+	step[ ii ] = 1.25 * par[ ii ] + 1.1;
 
-      return this->operator( )( model_par, verbose, init_simplex,
-				final_simplex, tol, &step[0], maxnfev, nfev,
+      return this->operator( )( verbose, maxnfev, tol, npar, init_simplex,
+				final_simplex, low, high, step, par, nfev,
 				fmin );
     }
     // de
 
-    int operator( )( double* model_par, int verbose, int initsimplex,
-		     std::vector< int >& finalsimplex,
-		     double tolerance, const double* step,
-		     int maxnfev, int& nfev, double& fmin ) {
-
-      try {
-
-	nfev = 0;
-	int num_shrink = 0;
-
-	std::vector< double > funcvals( NPAR + 1 );
-	int err_status=EXIT_SUCCESS;
-	double tol_sqr = tolerance * tolerance;
-
-	DirectSearch<Func,Data>::init_simplex( initsimplex, model_par, step );
-	err_status =
-	  DirectSearch<Func,Data>::eval_init_simplex( maxnfev, model_par,
-						      nfev );
-	if ( EXIT_SUCCESS != err_status )
-	  return err_status;
-
-	for ( ; nfev < maxnfev; ) {
-
-	  // 1. Order the npar + 1 vertices to satisfy....
-	  SIMPLEX.sort( );
-	  fmin = SIMPLEX[ 0 ][ NPAR ];
-
-	  // Need to have order before deciding to quit,
-	  // cause the order_index[Smallest] must be known.
-	  if ( SIMPLEX.check_convergence( tolerance, tol_sqr, funcvals,
-					  finalsimplex[0] ) )
-	    break;
-
-	  if ( num_shrink >= 256 )
-	    break;
-
-	  if ( verbose ) {
-	    fprintf( stdout, "nfev=%d\tfmin=%.10e\n", nfev, fmin );
-	    if ( verbose > 2 )
-	      SIMPLEX.print_simplex( );
-	  }
-
-	  calculate_centroid( );
-		
-	  // 2. Reflect.
-	  reflect( verbose, maxnfev, nfev, err_status );
-	  if ( EXIT_SUCCESS != err_status )
-	    break;
-
-	  //
-	  // If f  <= f  < f  ,
-	  //     1     r    n
-	  if ( SIMPLEX[ 0 ][ NPAR ] <= reflection[ NPAR ] &&
-	       reflection[ NPAR ] < SIMPLEX[ NPAR-1 ][ NPAR ] ) {
-
-	    // accept the reflected point x and terminate iteration.
-	    SIMPLEX.copy_row( reflection, NPAR );
-	    if ( verbose > 1 )
-	      fprintf( stdout, "\t\taccept reflection point.\n" );
-
-	  } else if ( reflection[ NPAR ] < SIMPLEX[ 0 ][ NPAR ] ) {
-
-	    // 3. Expand. If f  < f  ,
-	    //                r    1  
-	    expand( verbose, maxnfev, nfev, err_status );
-	    if ( EXIT_SUCCESS != err_status )
-	      break;
-
-	  } else {
-
-	    //
-	    // 4. Contract. If f  >= f  perform a contraction between centroid
-	    //                  r     n
-	    // 
-	    // and the better of x    and x .
-	    //                    n+1      r
-	    //
-	    bool shrinkme = true;
-	    if ( reflection[ NPAR ] >= SIMPLEX[ NPAR-1 ][ NPAR ] ) {
-
-	      ++num_shrink;
-	      shrinkme = contract( verbose, maxnfev, nfev, err_status );
-	      if ( EXIT_SUCCESS != err_status )
-		break;
-
-	    }
-
-	    if ( shrinkme ) {
-	      // 5. Perform a shrink step.
-	      shrink( verbose, maxnfev, nfev, err_status );
-	      if ( EXIT_SUCCESS != err_status )
-		break;
-	    }
-
-	  }
-
-	}                                        // for ( ; nfev < maxnfev; ) {
-	
-	for ( int ii = 0; ii < NPAR; ++ii )
-	  model_par[ ii ] = SIMPLEX[ 0 ][ ii ];
-
-	fmin = SIMPLEX[ 0 ][ NPAR ];
-
-	std::vector< int >::iterator current = finalsimplex.begin() + 1;
-	std::vector< int >::iterator the_end = finalsimplex.end();
-
-	if ( current != the_end && nfev < maxnfev ) {
-      
-	  int mynfev=0;
-	  //double old_fmin = fmin;
-
-	  std::vector< int > myfinalsimplex( current, the_end );
-	  err_status = this->operator( )( model_par, verbose, initsimplex,
-					  myfinalsimplex, tolerance, step,
-					  maxnfev - nfev, mynfev,
-					  fmin );
-
-	  nfev += mynfev;
-	  if ( EXIT_SUCCESS != err_status )
-	    return err_status;
-
-
-// 	    printf( "operator(iter=%d): mynfev=%d,\tnfev=%d\tfmin=%.20e\n",
-// 	    iter, mynfev, nfev, fmin );
-// 	    printf("\told_fmin=%.20e\n\tnew_fmin=%.20e\n", old_fmin, fmin );
-
-
-	}
-
-	return err_status;
-
-
-      } catch( std::runtime_error& re ) {
-
-// 	if ( verbose )
-// 	  std::cerr << re.what( ) << '\n';
-
-	throw re;
-      } catch( std::exception& e ) {
-
-// 	if ( verbose )
-// 	  std::cerr << e.what( ) << '\n';
-
-	throw e;
-      }
-
-    }                                                            // operator( )
 
   private:
 
-    const double shrink_coef;
-
-    std::vector<double> centroid, reflection, expansion, contraction;
+    const double contraction_coef,expansion_coef,reflection_coef,shrink_coef;
+    const double rho_gamma, rho_chi;
+    std::vector<double> centroid, contraction, expansion, reflection;
+    sherpa::Simplex simplex;
 
     void calculate_centroid( )  {
 
-      for ( int ii = 0; ii < NPAR; ++ii ) {
+      const int npar = simplex.npars( );
+      for ( int ii = 0; ii < npar; ++ii ) {
 	centroid[ ii ] = 0.0;
-	for ( int jj = 0; jj < NPAR; ++jj ) {
-	  // The last vextex is to be avoided so ; jj <= NPAR; would be wrong!
-	  centroid[ ii ] += SIMPLEX[ jj ][ ii ];
+	for ( int jj = 0; jj < npar; ++jj ) {
+	  // The last vextex is to be avoided so ; jj <= npar; would be wrong!
+	  centroid[ ii ] += simplex[ jj ][ ii ];
 	}
-	centroid[ ii ] /= double( NPAR );
+	centroid[ ii ] /= double( npar );
 
       }
       
     }                                                     // calculate_centroid
-
 
     //
     // reflection_coef > 0, expansion_coef > 1,
     // expansion_coef > reflection_coef, 0 < contraction_coef < 1,
     // and 0 < shrinkage_coef < 1.
     //
-    void check_shrink_coefficients( ) const {
+    void check_coefficients( ) const {
       
+      if ( reflection_coef <= 0.0 )
+	throw std::runtime_error( "The reflection coefficient must be > 0" );
+      if ( expansion_coef <= 1.0 )
+	throw std::runtime_error( "The expansion coefficient must be > 1" );
+      if ( contraction_coef <= 0.0 || contraction_coef >= 1.0 )
+	throw std::runtime_error( "The contraction coefficient must be "
+				  "within (0,1)" );
       if ( shrink_coef <= 0.0 || shrink_coef >= 1.0 )
 	throw std::runtime_error( "The shrink coefficient must be "
 				  "within (0,1)" );
       
-    }                                              // check_shrink_coefficients
+    }                                                     // check_coefficients
 
     // 4.
     // return of true ==> perform step 5 (shrink) otherwise do not shrink 
-    bool contract( int verbose, int maxnfev, int& nfev, int& err_status ) {
+    bool contract( int verbose, int maxnfev, const sherpa::Opt::mypair& limits,
+		   int& nfev ) {
 
-      if ( SIMPLEX[ NPAR-1 ][ NPAR ] <= reflection[ NPAR ] &&
-	   reflection[ NPAR ] < SIMPLEX[ NPAR ][ NPAR ] ) {
+      const int npar = simplex.npars( );
+      if ( simplex[ npar - 1 ][ npar ] <= reflection[ npar ] &&
+	   reflection[ npar ] < simplex[ npar ][ npar ] ) {
 
 	//
 	// 4a. Outside.  If f  <= f  < f    (i.e., x  is stricly better then
@@ -312,22 +237,17 @@ namespace sherpa {
 	// and evaluate f  = f( x  ).
 	//               c       c
 
-	double rho_gamma = DirectSearch<Func,Data>::reflection_coef *
-	  DirectSearch<Func,Data>::contraction_coef;
-	err_status = move_vertex( maxnfev, rho_gamma, centroid, contraction,
-				  nfev );
+	move_vertex( rho_gamma, centroid, contraction, maxnfev, limits, nfev );
 	if ( verbose > 1 )
-	  fprintf( stdout, "\tOutside contraction\n" );
-	if ( EXIT_SUCCESS != err_status )
-	  return false;
+	  std::cout << "\tOutside contraction\n";
     
-	if ( contraction[ NPAR ] <= reflection[ NPAR ] ) {
+	if ( contraction[ npar ] <= reflection[ npar ] ) {
 
 	  // If f  <= f  , accept x  
 	  //     c     r           c
-	  SIMPLEX.copy_row( contraction, NPAR );
+	  simplex.copy_row( contraction, npar );
 	  if ( verbose > 1 )
-	    fprintf( stdout, "\t\taccept contraction point.\n" );
+	    std::cout << "\t\taccept contraction point.\n";
 	  // and terminate the iteration;
 	  return false;
 
@@ -335,7 +255,7 @@ namespace sherpa {
 	  // otherwise, go to step 5 (perform a shrink).
 	  return true;
 
-      } else if ( reflection[ NPAR ] >= SIMPLEX[ NPAR ][ NPAR ] ) {
+      } else if ( reflection[ npar ] >= simplex[ npar ][ npar ] ) {
 
 	//
 	// 4b. Inside. If f  >= f   , perform an inside contraction: calculate
@@ -348,24 +268,21 @@ namespace sherpa {
 	//               cc       cc
 	//
 
-	err_status =
-	  move_vertex( maxnfev, -DirectSearch<Func,Data>::contraction_coef,
-		       centroid, contraction, nfev );
+	move_vertex( - contraction_coef, centroid, contraction, maxnfev,
+		     limits, nfev );
 	if ( verbose > 1 )
-	  fprintf( stdout, "\tInside contraction\n" );
-	if ( EXIT_SUCCESS != err_status )
-	  return false;
+	  std::cout << "\tInside contraction\n";
 
-	if ( contraction[ NPAR ] < SIMPLEX[ NPAR ][ NPAR ] ) {
+	if ( contraction[ npar ] < simplex[ npar ][ npar ] ) {
 
 	  //
 	  // If f   < f   , accept x  
 	  //     cc    n+1          cc
 	  //
-	  SIMPLEX.copy_row( contraction, NPAR );
+	  simplex.copy_row( contraction, npar );
 	  // and terminate the iteration;
 	  if ( verbose > 1 )
-	    fprintf( stdout, "\t\taccept contraction point.\n" );
+	    std::cout << "\t\taccept contraction point.\n";
 	  return false;
 
 	} else
@@ -382,13 +299,52 @@ namespace sherpa {
 
     }                                                               // contract
 
+    //
+    // make sure the initial simplex vertices are within bounds.
+    //
+    void eval_init_simplex( int maxnfev, const sherpa::Opt::mypair& limits,
+			    int& nfev ) {
 
+      const int npar = simplex.npars( );
+      const std::vector<double>& low = limits.first;
+      const std::vector<double>& high = limits.second;
+      const std::vector<double>& par = simplex[ 0 ];
+      for ( int ii = 1; ii < npar; ++ii )
+
+	for ( int jj = 0; jj < npar; ++jj ) {
+      
+	  if ( simplex[ ii ][ jj ] < low[ jj ] )
+	    if ( high[ jj ] - low[ jj ] < 10.0 )
+	      simplex[ ii ][ jj ] = low[ jj ] +
+		( high[ jj ] - low[ jj ] ) / 4.0;
+	    else
+	      simplex[ ii ][ jj ] =
+		std::min( par[ ii ] + 0.01 * fabs( par[ ii ] ), high[ jj ] );
+	  
+	  if ( simplex[ ii ][ jj ] > high[ jj ] )
+	    if ( high[ jj ] - low[ jj ] < 10.0 )
+	      simplex[ ii ][ jj ] = low[ jj ] +
+		( high[ jj ] - low[ jj ] ) / 4.0;
+	    else
+	      simplex[ ii ][ jj ] = 
+		std::max( low[ jj ], par[ ii ] - 0.01 * fabs( par[ ii ] ) );
+	  
+	}
+
+      for ( int ii = 0; ii <= npar; ++ii ) {
+	std::vector< double >& rowii = simplex[ ii ];
+	sherpa::OptFunc< Func, Data >::eval_func( maxnfev, limits, npar,
+						  rowii, nfev );
+      }
+      
+    }                                                      // eval_init_simplex
 
     // 3.
-    void expand( int verbose, int maxnfev, int& nfev, int& err_status ) {
+    void expand( int verbose, int maxnfev, const sherpa::Opt::mypair& limits,
+		 int& nfev ) {
 
       if ( verbose > 1 )
-	fprintf( stdout, "\tExpand\n" );
+	std::cout << "\tExpand\n";
 
       //
       // calculate the expansion point x  :
@@ -400,36 +356,31 @@ namespace sherpa {
       // and evaluate f  = f( x )
       //               e       e
       //
-      double rho_chi = DirectSearch<Func,Data>::reflection_coef *
-	DirectSearch<Func,Data>::expansion_coef;
-      err_status = move_vertex( maxnfev, rho_chi, centroid, expansion, nfev );
-      if ( EXIT_SUCCESS != err_status )
-	return;
-  
-      if ( expansion[ NPAR ] < reflection[ NPAR ] ) {
+      move_vertex( rho_chi, centroid, expansion, maxnfev, limits, nfev );
+      const int npar = simplex.npars( );  
+      if ( expansion[ npar ] < reflection[ npar ] ) {
 
 	//
 	// If f  < f  , accept x  and terminate the iteration;
 	//     e    r           e
-	SIMPLEX.copy_row( expansion, NPAR );
+	simplex.copy_row( expansion, npar );
 	if ( verbose > 1 )
-	  fprintf( stdout, "\t\taccept expansion point.\n" );
+	  std::cout << "\t\taccept expansion point.\n";
 
       } else {
 
 	//
 	// otherwise, (if f  >= f  ), accept x  and terminate the iteration.
 	//                 e     r            r
-	SIMPLEX.copy_row( reflection, NPAR );
+	simplex.copy_row( reflection, npar );
 	if ( verbose > 1 )
-	  fprintf( stdout, "\t\taccept reflection point.\n" );
+	  std::cout << "\t\taccept reflection point.\n";
 
       }
 
       return;
 
     }                                                                // expand
-
 
     //
     // Move vertex to the position:
@@ -455,10 +406,9 @@ namespace sherpa {
     // x   = x - gamma ( x - x   ) = ( 1 - gamma ) x + gamma x            (2.7)
     //  cc                    n+1                             n+1
     //
-    int move_vertex( int maxnfev, double coef, 
-		     const std::vector< double >& xbar,
-		     std::vector< double >& new_vertex,
-		     int& nfev )  {
+    void move_vertex( double coef, const std::vector<double>& xbar,
+		      std::vector< double >& new_vertex, int maxnfev,
+		      const sherpa::Opt::mypair& limits, int& nfev ) {
 
       //                                _
       //           x     = ( 1 + coef ) x - coef x
@@ -469,26 +419,144 @@ namespace sherpa {
       //
       // respectively. Then evaluate the function at the new position
       //
-      sherpa::Array2d<double>::Row worst_vertex = SIMPLEX[ NPAR ];
-      const double* largest_vertex = &worst_vertex[0];
-      int err = EXIT_SUCCESS;
+      const int npar = simplex.npars( );
       double coef_plus_1 = 1.0 + coef;
-      for ( int ii = 0; ii < NPAR; ++ii )
-	new_vertex[ ii ] = coef_plus_1 * xbar[ ii ] -
-	  coef * largest_vertex[ ii ];
+      for ( int ii = 0; ii < npar; ++ii )
+	new_vertex[ ii ] = coef_plus_1 * xbar[ ii ] - 
+	  coef * simplex[ npar ][ ii ];
 
-      eval_user_func( maxnfev, &new_vertex[0], new_vertex[ NPAR ], nfev, err );
+      sherpa::OptFunc< Func, Data >::eval_func( maxnfev, limits, npar,
+						new_vertex, nfev );
 
-      return err;
+      return ;
 
     }                                                            // move_vertex
 
+    int neldermead( int verbose, int maxnfev, double tolerance,
+		    int initsimplex, const std::vector<int>& finalsimplex,
+		    const sherpa::Opt::mypair& limits,
+		    const std::vector<double>& step, 
+		    std::vector<double>& par, int& nfev ) {
+
+      try {
+
+	const int npar = simplex.npars( );
+
+	int num_shrink = 0;
+	int err_status=EXIT_SUCCESS;
+	double tol_sqr = tolerance * tolerance;
+
+	simplex.init_simplex( initsimplex, par, step );
+	eval_init_simplex( maxnfev, limits, nfev );
+
+	//
+	// infinite for loop!
+	//
+	for ( ; ; ) {
+
+	  // 1. Order the npar + 1 vertices to satisfy....
+	  simplex.sort( );
+	  par[ npar ] = simplex[ 0 ][ npar ];
+
+	  // Need to have order before deciding to quit,
+	  // cause the order_index[Smallest] must be known.
+	  if ( simplex.check_convergence( tolerance, tol_sqr,
+					  finalsimplex[0] ) )
+	    break;
+
+	  if ( num_shrink >= 256 )
+	    break;
+
+	  if ( verbose ) {
+	    std::cout << "fmin = " << par[ npar ] << '\n';
+	    if ( verbose > 2 )
+	      simplex.print_simplex( );
+	  }
+
+	  calculate_centroid( );
+		
+	  // 2. Reflect.
+	  reflect( verbose, maxnfev, limits, nfev );
+
+	  //
+	  // If f  <= f  < f  ,
+	  //     1     r    n
+	  if ( simplex[ 0 ][ npar ] <= reflection[ npar ] &&
+	       reflection[ npar ] < simplex[ npar-1 ][ npar ] ) {
+
+	    // accept the reflected point x and terminate iteration.
+	    simplex.copy_row( reflection, npar );
+	    if ( verbose > 1 )
+	      std::cout << "\t\taccept reflection point.\n";
+
+	  } else if ( reflection[ npar ] < simplex[ 0 ][ npar ] ) {
+
+	    // 3. Expand. If f  < f  ,
+	    //                r    1  
+	    expand( verbose, maxnfev, limits, nfev );
+
+	  } else {
+
+	    //
+	    // 4. Contract. If f  >= f  perform a contraction between centroid
+	    //                  r     n
+	    // 
+	    // and the better of x    and x .
+	    //                    n+1      r
+	    //
+	    bool shrinkme = true;
+	    if ( reflection[ npar ] >= simplex[ npar - 1 ][ npar ] ) {
+
+	      ++num_shrink;
+	      shrinkme = contract( verbose, maxnfev, limits, nfev );
+
+	    }
+
+	    if ( shrinkme ) {
+	      // 5. Perform a shrink step.
+	      shrink( verbose, maxnfev, limits, nfev );
+	    }
+
+	  }
+
+	}                                        // for ( ; nfev < maxnfev; ) {
+	
+	for ( int ii = 0; ii <= npar; ++ii )
+	  par[ ii ] = simplex[ 0 ][ ii ];
+	
+	const std::vector<int>::const_iterator current = finalsimplex.begin() + 1;
+	const std::vector<int>::const_iterator the_end = finalsimplex.end();
+	
+	if ( current != the_end ) {
+	  std::vector< int > myfinalsimplex( current, the_end );
+	  err_status = neldermead( verbose, maxnfev, tolerance, initsimplex,
+				   myfinalsimplex, limits, step, par, nfev );
+	}
+
+	return err_status;
+
+
+      } catch( std::runtime_error& re ) {
+
+// 	if ( verbose )
+// 	  std::cerr << re.what( ) << '\n';
+
+	throw re;
+      } catch( std::exception& e ) {
+
+// 	if ( verbose )
+// 	  std::cerr << e.what( ) << '\n';
+
+	throw e;
+      }
+
+    }                                                          // neldermead( )
 
     // 1.
-    void reflect( int verbose, int maxnfev, int& nfev, int& err_status ) {
+    void reflect( int verbose, int maxnfev, const sherpa::Opt::mypair& limits, int& nfev ) {
 
       if ( verbose > 1 )
-	fprintf( stdout, "\tReflect\n" );
+	std::cout << "\tReflect\n";
 
       //
       // Compute the reflection point x  from
@@ -505,161 +573,20 @@ namespace sherpa {
       // Evaluate f  = f( x  )
       //           r       r
       //
-      err_status =
-	move_vertex( maxnfev, DirectSearch<Func,Data>::reflection_coef,
-		     centroid, reflection, nfev );
+      move_vertex( reflection_coef, centroid, reflection, maxnfev, limits,
+		   nfev );
 
     }                                                                // reflect
 
-
-    int search( double* model_par, int verbose, int initsimplex,
-		int finalsimplex, double tolerance, const double* step,
-		int maxnfev, int& nfev, double& fmin )  {
-
-
-      try {
-
-	std::vector< double > funcvals( NPAR + 1 );
-
-	int err_status = EXIT_SUCCESS;
-	double tol_sqr = tolerance * tolerance;
-
-	nfev = 0;
-
-	DirectSearch<Func,Data>::init_simplex( initsimplex, step );
-	err_status =
-	  DirectSearch<Func,Data>::eval_init_simplex( maxnfev, nfev );
-	if ( EXIT_SUCCESS != err_status )
-	  return err_status;
-
-	for ( ; nfev < maxnfev; ) {
-
-	  // 1. Order the NPAR + 1 vertices to satisfy....
-	  SIMPLEX.sort( );
-	  fmin = SIMPLEX[ 0 ][ NPAR ];
-
-	  // Need to have order before deciding to quit,
-	  // cause the order_index[Smallest] must be known.
-	  if ( SIMPLEX.check_convergence( tolerance, tol_sqr, funcvals,
-					  finalsimplex ) )
-	    break;
-
-	  if ( verbose ) {
-	    fprintf( stdout, "nfev=%d\tfmin=%.10e\n", nfev, fmin );
-	    if ( verbose > 2 )
-	      SIMPLEX.print_simplex( );
-	  }
-
-	  calculate_centroid( NPAR );
-
-	  if ( verbose > 1 )
-	    fprintf( stdout, "\tReflect\n" );
-	  err_status =
-	    move_vertex( maxnfev, DirectSearch<Func,Data>::reflection_coef,
-			 centroid, reflection, nfev );
-	  if ( EXIT_SUCCESS != err_status )
-	    break;
-
-	  if ( reflection[ NPAR ] < SIMPLEX[ 0 ][ NPAR ] ) {
-
-	    //
-	    // reflection or expand
-	    //
-
-	    if ( verbose > 1 )
-	      fprintf( stdout, "\tExpand\n" );
-
-	    double rho_chi =
-	      DirectSearch<Func,Data>::reflection_coef *
-	      DirectSearch<Func,Data>::expansion_coef;
-	    err_status =
-	      move_vertex( maxnfev, rho_chi, centroid, expansion, nfev );
-	    if ( EXIT_SUCCESS != err_status )
-	      break;
-
-	    if ( expansion[ NPAR ] < reflection[ NPAR ] ) {
-	      if ( verbose > 1 )
-		fprintf( stdout, "\t\taccept expansion point.\n" );
-	      SIMPLEX.copy_row( expansion, NPAR );
-	    } else {
-	      if ( verbose > 1 )
-		fprintf( stdout, "\t\taccept reflection point.\n" );
-	      SIMPLEX.copy_row( reflection, NPAR );
-	    }
-
-	  } else {
-
-	    //
-	    // contract or shrink
-	    //
-
-	    int contract_shrink_me = false;
-
-	    for ( int ii = 0; ii <= NPAR; ++ii )
-	      if ( ii != NPAR )
-		if ( reflection[ NPAR ] < SIMPLEX[ ii ][ NPAR ] ) {
-		  SIMPLEX.copy_row( reflection, NPAR );
-		  contract_shrink_me = true;
-		}
-
-	    if ( false == contract_shrink_me ) {
-
-	      if ( reflection[ NPAR ] <= SIMPLEX[ NPAR ][ NPAR ] )
-		SIMPLEX.copy_row( reflection, NPAR );
-
-	      if ( verbose > 1 )
-		fprintf( stdout, "\tInside contraction\n" );
-
-	      // inside contraction
-	      err_status =
-		move_vertex( maxnfev,
-			     -DirectSearch<Func,Data>::contraction_coef,
-			     centroid, contraction, nfev );
-	      if ( EXIT_SUCCESS != err_status )
-		break;
-
-	      if ( contraction[ NPAR ] > SIMPLEX[ NPAR ][ NPAR ] ) {
-		shrink( verbose, maxnfev, nfev, err_status );
-		if ( EXIT_SUCCESS != err_status )
-		  break;
-
-	      } else {
-
-		if ( verbose > 1 )
-		  fprintf( stdout, "\t\taccept contraction point.\n" );
-
-		SIMPLEX.copy_row( contraction, NPAR );
-
-	      }
-
-	    }
-
-	  }      
-
-	}                                        // for ( ; nfev < maxnfev; ) {
-	
-	for ( int ii = 0; ii < NPAR; ++ii )
-	  model_par[ ii ] = SIMPLEX[ 0 ][ ii ];
-    
-	fmin = SIMPLEX[ 0 ][ NPAR ];
-
-	return err_status;
-
-      } catch( std::runtime_error& re ) {
-	throw re;
-      } catch( std::exception& e ) {
-	throw e;
-      }
-
-    }                                                                 // search
-
     // 5.
-    void shrink( int verbose, int maxnfev, int& nfev, int& err_status ) {
+    void shrink( int verbose, int maxnfev, const sherpa::Opt::mypair& limits,
+		 int& nfev ) {
 
       if ( verbose > 1 )
-	fprintf( stdout, "\tShrink\n" );
+	std::cout << "\tShrink\n";
 
-      for ( int ii = 1; ii <= NPAR; ++ii ) {
+      const int npar = simplex.npars( );
+      for ( int ii = 1; ii <= npar; ++ii ) {
 	
 	//
 	// Evaluate f at the n points v  = x  + sigma * ( x  - x  ),
@@ -667,18 +594,14 @@ namespace sherpa {
 	// i = 2, ..., n+1.  The (unordered) vertices of the simplex at
 	// the next iteration consist of x , v , ..., v
 	//                                1   2        n+1
-	for ( int jj = 0; jj < NPAR; ++jj )
-	  SIMPLEX[ ii ][ jj ] = shrink_coef * SIMPLEX[ ii ][ jj ] +
-	    ( 1.0 - shrink_coef ) * SIMPLEX[ 0 ][ jj ];
-	sherpa::Array2d<double>::Row rowii = SIMPLEX[ ii ];
-	eval_user_func( maxnfev, &rowii[0], SIMPLEX[ ii ][ NPAR ], nfev,
-			err_status );
-	if ( nfev >= maxnfev )
-	  err_status = OptErr::MaxFev;
-	if ( EXIT_SUCCESS != err_status )
-	  return;
+	for ( int jj = 0; jj < npar; ++jj )
+	  simplex[ ii ][ jj ] = shrink_coef * simplex[ ii ][ jj ] +
+	    ( 1.0 - shrink_coef ) * simplex[ 0 ][ jj ];
+	std::vector< double >& rowii = simplex[ ii ];
+	sherpa::OptFunc< Func, Data >::eval_func( maxnfev, limits, npar,
+						  rowii, nfev );
 
-      }                          // for ( int ii = 0; ii <= this->npar; ++ii )
+      }                                 // for ( int ii = 0; ii <= npar; ++ii )
 
     }                                                            // void shrink
 

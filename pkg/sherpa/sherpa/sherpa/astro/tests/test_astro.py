@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -45,7 +45,7 @@ class test_threads(SherpaTestCase):
         ui.clean()
         ui.set_model_autoassign_func(self.assign_model)
         self.locals = {}
-        os.chdir(os.path.join(self.datadir, 'ciao4.1', name))
+        os.chdir(os.path.join(self.datadir, 'ciao4.3', name))
         execfile(scriptname, {}, self.locals)
 
 
@@ -177,16 +177,16 @@ class test_threads(SherpaTestCase):
     @needs_data
     def test_fpsf2d(self):
         self.run_thread('fpsf')
-        self.assertEqualWithinTol(ui.get_fit_results().statval, 3967.91, 1e-4)
+        self.assertEqualWithinTol(ui.get_fit_results().statval, -4053.6635, 1e-4)
         # self.assertEqualWithinTol(self.locals['b1'].xlow.val, -4.70832, 1e-4)
         # self.assertEqualWithinTol(self.locals['b1'].xhi.val, 164.687, 1e-4)
         # self.assertEqualWithinTol(self.locals['b1'].ylow.val, 0.83626, 1e-4)
         # self.assertEqualWithinTol(self.locals['b1'].yhi.val, 142.603, 1e-4)
         # self.assertEqualWithinTol(self.locals['b1'].ampl.val, 0.956766, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].fwhm.val, 4.51059, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].xpos.val, 89.0606, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].ypos.val, 76.5964, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].ampl.val, 62.4856, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].fwhm.val, 6.420237, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].xpos.val, 88.940712, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].ypos.val, 76.577265, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].ampl.val, 36344.48324, 1e-4)
         #self.assertEqual(ui.get_fit_results().nfev,978)
         self.assertEqual(ui.get_fit_results().numpoints,4899)
         self.assertEqual(ui.get_fit_results().dof,4895)
@@ -409,6 +409,13 @@ class test_threads(SherpaTestCase):
         self.assertEqualWithinTol(ui.get_fit_results().statval, 607.09, 1e-4)
         self.assertEqual(ui.get_fit_results().numpoints, 3307)
         self.assertEqual(ui.get_fit_results().dof, 3302)
+
+    @needs_data
+    def test_setfullmodel(self):
+        self.run_thread('setfullmodel')
+
+
+
 
 
 if __name__ == '__main__':

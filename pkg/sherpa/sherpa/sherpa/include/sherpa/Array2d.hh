@@ -7,7 +7,7 @@
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation; either version 2 of the License, or
+//  the Free Software Foundation; either version 3 of the License, or
 //  (at your option) any later version.
 //
 //  This program is distributed in the hope that it will be useful,
@@ -27,9 +27,9 @@
 
 //
 // A simple 2d array class written for NelderMead/MultiDirSearch.
-//
-// For heavy duty numerical computations, the user is advised to
-// check out the following three packages:
+// Note Array2d as written, using vector of vector, does not guaranteed
+// contiguous data. Check out one of the followings if contiguous 
+// in memory is necessary:
 //
 //    http://math.nist.gov/tnt/index.html
 //    http://www.oonumerics.org/blitz/
@@ -38,146 +38,75 @@
 //
 namespace sherpa {
 
-  template < typename Real >
+  template < typename T >
   class Array2d {
 
     friend std::ostream& operator << ( std::ostream& os,
-				       const Array2d< Real >& a ) {
+				       const Array2d< T >& a ) {
       return a.print( os );
     }
 
   public:
 
-    class Row {
+    virtual ~Array2d( ) { }
 
-      Array2d& myarray2d;
-      int const row;
+    Array2d( int r=0, int c=0 ) : nrow( r ), ncol( c ),
+				  array( r, std::vector< T >( c ) ) { }
 
-    public:
-
-      Row( Array2d& array2d, int r ) : myarray2d( array2d ), row( r ) { }
-      Real& operator [ ] ( int col ) { return myarray2d( row, col ); }
-      const Real& operator [ ] ( int col ) const {
-	return myarray2d( row, col ); }
-
-    };
-
-    Array2d( int r=0, int c=0 ) : nrows( r ), ncols( c ), myvector( r * c ),
-				  row_index( r ) {
-      generate_row_index( r, c );
+    std::vector< T >& operator[] ( int arg ) { 
+      return array[ arg ];
+    }
+    const std::vector< T >& operator[] ( int arg ) const { 
+      return array[ arg ];
     }
 
-    Real& operator ( ) ( int r, int c ) { return myvector[ r * ncols + c ]; }
-    const Real& operator ( ) ( int r, int c ) const {
-      // return myvector[ r * ncols + c ];
-      return myvector[ row_index[ r ] + c ]; }
+    int ncols( ) const { return ncol; }
 
-    Row operator [ ] (int row) { return Row( *this, row ); }
-    const Row operator [ ] (int row) const { return Row( *this, row ); }
+    int nrows( ) const { return nrow; }
 
-    // Deep copy
-    void copy( const Array2d< Real >& arg ) {
+    static void copy_vector( int num, const std::vector< T >& from,
+			     std::vector< T >& to ) {
 
-      if ( nrows != arg.get_nrows( ) || ncols != arg.get_ncols( ) )
-	resizeme( arg.get_nrows( ), arg.get_ncols( ) );
-
-      for ( int ii = 0; ii < nrows; ++ii )
-	for ( int jj = 0; jj < ncols; ++jj )
-	  this->operator( )( ii, jj ) = arg( ii, jj );
+      for ( int ii = 0; ii < num; ++ii )
+	to[ ii ] = from[ ii ];
 
     }
-
-    // copy the c-th col of the Array2d to the pointer 'cpto'
-    void copy_col( int c, Real* cpto ) {
-
-      if ( c < 0 || c >= ncols )
-	throw std::runtime_error( "index out of bounds" );
-      for ( int ii = 0; ii < nrows; ++ii )
-	cpto[ ii ] = this->operator[]( ii )[ c ];
-
-    }
-    void copy_col( int c, std::vector< Real >& cpto ) {
-      copy_col( c, &cpto[ 0 ] );
-    }
-
-    // copy from the pointer 'cpfrom' to the c-th col of the array
-    void copy_col( const Real* cpfrom, int c ) {
-
-      if ( c < 0 || c >= ncols )
-	throw std::runtime_error( "index out of bounds" );
-      for ( int ii = 0; ii < nrows; ++ii )
-	this->operator[]( ii )[ c ] = cpfrom[ ii ];
-
-    }
-    void copy_col( const std::vector< Real >& cpfrom, int c ) {
-      copy_col( &cpfrom[ 0 ], c );
-    }
-
-    // copy the r-th row of the Array2d to the pointer 'cpto'
-    void copy_row( int r, Real* cpto ) {
-
-      if ( r < 0 || r >= nrows )
-	throw std::runtime_error( "index out of bounds" );
-      for ( int ii = 0; ii < ncols; ++ii )
-	cpto[ ii ] = this->operator[]( r )[ ii ];
-
-    }
-    void copy_row( int r, std::vector< Real >& cpto ) {
-      copy_row( r, &cpto[ 0 ] );
-    }
-
-    // Copy from the pointer 'cpfrom' to the r-th row of the array
-    void copy_row( const Real* cpfrom, int r ) {
-
-      if ( r < 0 || r >= nrows )
-	throw std::runtime_error( "index out of bounds" );
-      for ( int ii = 0; ii < ncols; ++ii )
-	this->operator[]( r )[ ii ] = cpfrom[ ii ];
-
-    }
-    void copy_row( const std::vector< Real >& cpfrom, int r ) {
-      copy_row( &cpfrom[ 0 ], r );
-    }
-
-    int get_ncols( void ) const { return ncols; }
-    int get_nrows( void ) const { return nrows; }
 
     std::ostream& print( std::ostream& os ) const {
 
-      for ( int ii = 0; ii < nrows; ++ii ) {
-	os << this->operator( )( ii, 0 );
-	for ( int jj = 1; jj < ncols; ++jj )
-	  os << ' ' << this->operator( )( ii, jj );
-	if ( nrows - 1 != ii )
+      for ( int ii = 0; ii < nrow; ++ii ) {
+	os << array[ ii ][ 0 ];
+	for ( int jj = 1; jj < ncol; ++jj )
+	  os << ' ' << array[ ii ][ jj ];
+	if ( nrow - 1 != ii )
 	  os << '\n';
       }
       return os;
     }
 
+    // resize the two dimentional array
+    virtual void resize( int r, int c ) {
+      array.resize( r );
+      for( int ii = 0; ii < r; ++ii ) 
+	array[ ii ].resize( c );
+      nrow = r;
+      ncol = c;
+    }
+
   protected:
 
-    int nrows;
-    int ncols;
-    std::vector< Real > myvector;
-    std::vector< int > row_index;
+    T& get( int r, int c ) { return array[ r ][ c ]; }
+    const T& get( int r, int c ) const { return array[ r ][ c ]; }
 
-    void resizeme( int nrow, int ncol ) {
-      nrows = nrow;
-      ncols = ncol;
-      myvector.resize( nrows * ncols );
-      generate_row_index( nrow, ncol );
-    }
-
-    void generate_row_index( int nrow, int ncol ) {
-      row_index.resize( nrow );
-      for ( int ii = 0; ii < nrow; ++ii )
-	row_index[ ii ] = ii * ncol;
-    }
+    void set( int r, int c, const T& val ) { array[ r ][ c ] = val; }
 
   private:
-    // purposedly declare but do not define
-    Array2d& operator = (Array2d const&);
-    Array2d( Array2d const& );
+
+    int nrow, ncol;
+    std::vector< std::vector< T > > array;
+
+    Array2d& operator = (Array2d const&); // declare but, purposely, not define
+    Array2d( Array2d const& );            // declare but, purposely, not define
 
   };
 
@@ -189,7 +118,10 @@ namespace sherpa {
 
 #include <iostream>
 
+#ifdef testArrayNd
 #include "ArrayNd.hh"
+#include "Array.h"
+#endif
 #include "StopWatch.hh"
 
 template < typename Type >
@@ -283,35 +215,6 @@ void timeclassic( int r, int c ) {
 
 }
 
-void timeparen( int r, int c ) {
-
-  StopWatch stopwatch( "sherpa::Array2d using operator(i,j)" );
-
-  sherpa::Array2d< double > uu( r, c ), laplacian( r, c );
-
-  for ( int ii = 0; ii < r; ++ii ) {
-    for ( int jj = 0; jj < c; ++jj )
-      uu( ii, jj ) = ii * ii + jj * jj;
-  }
-
-  for( int kk=0; kk < 10; kk++ ) {
-    for( int ii = 1; ii < r - 1; ii++ ) {
-      for( int jj = 1; jj < c - 1; jj++ ) {
-        laplacian( ii, jj ) = - uu( ii - 1, jj ) - uu( ii, jj - 1 ) +
-          4.0 * uu( ii, jj ) - uu( ii, jj + 1 ) - uu( ii + 1, jj );
-      }
-    }
-  }
-
-  double sum = 0.0;
-  for ( int ii = 1; ii < r - 1; ++ii )
-    for ( int jj = 1; jj < c - 1; jj++ )
-      sum += laplacian( ii, jj );
-
-  fprintf( stdout, "%.12f\t", sum );
-
-}
-
 void timebracket( int r, int c ) {
 
   sherpa::Array2d< double > uu( r, c ), laplacian( r, c );
@@ -325,34 +228,41 @@ void timebracket( int r, int c ) {
 
 }
 
+#ifdef testArrayNd
 void timemulti_array( int r, int c ) {
 
   std::vector<size_t> dims( 2, r );
-  multi_array< double, 2 > laplacian( dims ), uu( dims );
+  MultiArray::multi_array< double, 2 > laplacian( dims ), uu( dims );
 
-  timeme( uu, laplacian, r, c, "Multi_Array[][]" );
+  timeme( uu, laplacian, r, c, "multi_array[][]" );
 
 }
 
 void timeArray( int r, int c ) {
 
   std::vector<size_t> dims( 2, r );
-  Array< double, 2 > laplacian( dims ), uu( dims );
+  MyArray::Array< double, 2 > laplacian( dims ), uu( dims );
 
   timeme( uu, laplacian, r, c, "Array[][]" );
 
 }
 
-
-
 void timeBavestrelliArray( int r, int c ) {
 
   bavestrelli::Array<double, 2> laplacian( bavestrelli::ArraySizes(r)(c) ),
-    uu(  bavestrelli::ArraySizes(r)(c) );
+    uu( bavestrelli::ArraySizes(r)(c) );
 
   timeme( uu, laplacian, r, c, "bavestrelli::Array[][]" );
 
 }
+void timeJBArray( int r, int c ) {
+
+  Array::array2<double> uu(r,c), laplacian(r,c);
+
+  timeme( uu, laplacian, r, c, "jb::Array[][]" );
+
+}
+#endif
 
 template< typename A, typename B >
 void cmpme( A& a, B& b, int r, int c ) {
@@ -400,12 +310,13 @@ int main( int argc, char* argv[] ) {
 
 
   timeclassic( row, col );
-  timeparen( row, col );
   timebracket( row, col );
-  //timemulti_array( row, col );
-  //timeArray( row, col );
+#ifdef testArrayNd
+  timemulti_array( row, col );
+  timeArray( row, col );
   timeBavestrelliArray( row, col );
-
+  timeJBArray( row, col );
+#endif
   return 0;
 
 }
@@ -414,4 +325,4 @@ int main( int argc, char* argv[] ) {
 
 //
 //cp Array2d.hh tmp.cc; g++ -Wall -ansi -pedantic -O3 -DtestArray2d -DNDEBUG tmp.cc; a.out
-//
+//cp Array2d.hh tmp.cc; g++ -Wall -ansi -pedantic -O3 -DtestArrayNd -DtestArray2d -DNDEBUG tmp.cc; a.out
