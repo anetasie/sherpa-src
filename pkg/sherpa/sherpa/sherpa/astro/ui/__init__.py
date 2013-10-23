@@ -58,5 +58,7 @@ if hasattr(sherpa.astro, 'xspec'):
 
 __all__.extend(_session._export_names(globals()))
 
+__all__.append('_session')
+
 
 __all__ = tuple(__all__)

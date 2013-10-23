@@ -21,6 +21,7 @@
 Objects and utilities used by multiple Sherpa subpackages
 """
 
+import math
 import operator
 import inspect
 from itertools import izip
@@ -35,6 +36,7 @@ import numpy.fft
 from sherpa.utils._utils import *
 from sherpa.utils._psf import extract_kernel, normalize, set_origin, \
     pad_bounding_box
+from functools import wraps
 
 import logging
 warning = logging.getLogger("sherpa").warning
@@ -83,13 +85,15 @@ __all__ = ('NoNewAttributesAfterInit', 'SherpaTest', 'SherpaTestCase',
            'guess_amplitude', 'guess_amplitude2d', 'guess_amplitude_at_ref',
            'guess_bounds', 'guess_fwhm', 'guess_position', 'guess_radius',
            'guess_reference', 'histogram1d', 'histogram2d', 'igam', 'igamc',
-           'incbet', 'interpolate', 'is_binary_file', 'Knuth_close', 'lgam',
-           'linear_interp', 'nearest_interp', 'needs_data', 'neville', 'neville2d',
+           'incbet', 'interpolate', 'is_binary_file', 'Knuth_close',
+           'lgam', 'linear_interp', 'nearest_interp',
+           'needs_data', 'neville', 'neville2d',
            'new_muller', 'normalize', 'numpy_convolve',
            'pad_bounding_box', 'parallel_map', 'param_apply_limits',
            'parse_expr', 'poisson_noise', 'print_fields', 'rebin',
            'sao_arange', 'sao_fcmp', 'set_origin', 'sum_intervals', 'zeroin',
-           'multinormal_pdf', 'multit_pdf', 'get_error_estimates', 'quantile')
+           'multinormal_pdf', 'multit_pdf', 'get_error_estimates', 'quantile',
+           'TraceCalls')
 
 _guess_ampl_scale = 1.e+3
 
@@ -106,6 +110,40 @@ SherpaInt = numpy.intp
 SherpaUInt = numpy.uintp
 SherpaFloat = numpy.float_
 
+################################################################################
+class TraceCalls(object):
+    """ Use as a decorator on functions that should be traced. Several
+        functions can be decorated - they will all be indented according
+        to their call depth.
+    """
+    def __init__(self, stream=sys.stdout, indent_step=2, show_ret=False):
+        self.stream = stream
+        self.indent_step = indent_step
+        self.show_ret = show_ret
+
+        # This is a class attribute since we want to share the indentation
+        # level between different traced functions, in case they call
+        # each other.
+        TraceCalls.cur_indent = 0
+
+    def __call__(self, fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            indent = ' ' * TraceCalls.cur_indent
+            argstr = ', '.join(
+                [repr(a) for a in args] +
+                ["%s=%s" % (a, repr(b)) for a, b in kwargs.items()])
+            self.stream.write('%s%s(%s)\n' % (indent, fn.__name__, argstr))
+
+            TraceCalls.cur_indent += self.indent_step
+            ret = fn(*args, **kwargs)
+            TraceCalls.cur_indent -= self.indent_step
+
+            if self.show_ret:
+                self.stream.write('%s--> %s\n' % (indent, ret))
+            return ret
+        return wrapper
+################################################################################
 
 class NoNewAttributesAfterInit(object):
     """
@@ -301,12 +339,15 @@ def export_method(meth, name=None, modname=None):
     returned function to an appropriate name in the calling scope.
 
     """
-    
+
     if type(meth) is not instancemethod:
         return meth
 
     if name is None:
-        name = meth.func_name
+        if meth.func_name == 'log_decorator':
+		name = meth._original.func_name
+	else:
+        	name = meth.func_name
 
     if name == meth.func_name:
         old_name = '_old_' + name
@@ -314,10 +355,17 @@ def export_method(meth, name=None, modname=None):
         old_name = meth.func_name
 
     # Make an argument list string, removing 'self'
-    argspec = inspect.getargspec(meth)
+    if meth.func_name == 'log_decorator': # needed for making loggable decorator work (Omar)
+	argspec = inspect.getargspec(meth._original)
+	defaults = meth._original.func_defaults
+	doc = meth._original.func_doc
+    else:
+	argspec = inspect.getargspec(meth)
+	defaults = meth.func_defaults
+	doc = meth.func_doc
     argspec[0].pop(0)
     argspec = inspect.formatargspec(argspec[0], argspec[1], argspec[2])
-
+    
     # Create a wrapper function with no default arguments
     g = {old_name: meth}
     if modname is not None:
@@ -328,10 +376,11 @@ def export_method(meth, name=None, modname=None):
     # Create another new function from the one we just made, this time
     # adding the default arguments and doc string from the original method
     new_meth = g[name]
+	
     new_meth = function(new_meth.func_code, new_meth.func_globals,
-                        new_meth.func_name, meth.func_defaults,
+                        new_meth.func_name, defaults,
                         new_meth.func_closure)
-    new_meth.func_doc = meth.func_doc
+    new_meth.func_doc = doc
 
     return new_meth
 
@@ -2362,4 +2411,3 @@ def zeroin( fcn, xa, xb, fa=None, fb=None, args=(), maxfev=32, tol=1.0e-2 ):
 
 
 ############################### Root of all evil ##############################
-

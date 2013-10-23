@@ -25,7 +25,11 @@ from sherpa.fit import Fit
 from sherpa.optmethods import NelderMead, LevMar
 from sherpa.estmethods import Covariance
 from sherpa.sim.mh import MetropolisMH, rmvt, CovarError, Walk, LimitError
-from sherpa.astro.io import read_table_blocks
+read_table_blocks = None
+try:
+    from sherpa.astro.io import read_table_blocks
+except:
+    read_table_blocks = None
 
 logger = logging.getLogger("sherpa")
 info = logger.info

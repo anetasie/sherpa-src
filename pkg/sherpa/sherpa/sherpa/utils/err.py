@@ -30,14 +30,17 @@ __all__ = ( 'EstErr', 'FitErr', 'SherpaErr', 'ArgumentErr',
 class SherpaErr( Exception ):
     "Base class for all Sherpa exceptions"
 
-    def __init__( self, dict, key, *args ):
-
-        if dict.has_key( key ):
-            errmsg = dict[ key ] % args
+    def __init__( self, dict, *args ): 
+        if (len(args)==0):
+            errmsg = "Generic Error"
         else:
-            errmsg = "unknown key '%s'" % key
+            key = args[0] 
+	    if dict.has_key( key ):
+                 errmsg = dict[ key ] % args[1:]
+            else: 
+                 errmsg = key 
+	Exception.__init__(self, errmsg)
 
-        Exception.__init__(self, errmsg)
 
 
 class ArgumentErr(ValueError, SherpaErr):
@@ -209,6 +212,7 @@ class DataErr(SherpaErr):
              'nobkg' : "data set '%s' does not have any associated backgrounds",
              'noarf' : "data set '%s' does not have an associated ARF",
              'bad' : "unknown %s: '%s'",
+	     'badchoices' : "unknown %s: '%s'\nValid options: %s",
              'idsnotarray' : "%s ids '%s' does not appear to be an array",
              'badids' : "%s is not a valid %s id in %s",
              'noenergybins' : "%s does not specify energy bins",
@@ -340,6 +344,7 @@ class StatErr(SherpaErr):
     
     dict = { 'nostat' : "User statistic '%s' has no %s function",
              'badstat' : '%s not applicable using current statistic: %s',
+	     'chi2noerr': 'If you select chi2 as the statistic, all datasets must provide a staterror column',
              }
 
     def __init__(self, key, *args):
@@ -366,7 +371,7 @@ class DS9Err(SherpaErr):
 class ConfidenceErr(SherpaErr):
 
     dict = { 'badarg' : "%s must be %s",
-             'badlimits' : 'Malformed parameter limits',
+             'badlimits' : 'Bad parameter limits',
              'needlist' : 'Please provide a list of %s',
              'frozen' : 'Frozen parameter %s cannot be used for %s',
              'thawed' : 'Thawed parameter %s not found in %s',

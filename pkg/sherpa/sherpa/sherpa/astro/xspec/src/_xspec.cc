@@ -250,6 +250,7 @@ int _sherpa_init_xspec_library()
   
   // Stream buffer for redirected stdout
   std::streambuf* cout_sbuf = NULL;
+  std::ofstream fout;
 
   try {
 
@@ -276,46 +277,39 @@ int _sherpa_init_xspec_library()
 
     
     cout_sbuf = std::cout.rdbuf();
-    std::ofstream fout("/dev/null");
-    if (cout_sbuf != NULL && fout != NULL)
+    fout.open("/dev/null");
+    if (cout_sbuf != NULL && fout.is_open())
       std::cout.rdbuf(fout.rdbuf()); // temporary redirect stdout to /dev/null
     
-
-    try {
-      // Initialize XSPEC model library
-      FNINIT();
-    }
-    catch (const std::ios_base::failure& e) {
-      ;
-      // ios badbit errors can be set e.g., by reaching end of file
-      // (line with \n only).  This kind of exception is being raised
-      // only Mountain Lion, but with no practical effect on XSPEC
-      // module usage as far as I can see.  So after XSPEC initialization,
-      // swallow exceptions of this type and move on. Other kinds of 
-      // exceptions should still be raised. SMD 11/19/12
-    }
-
+    // Initialize XSPEC model library
+    FNINIT();
     
     // Get back original std::cout
-    if (cout_sbuf != NULL)
+    if (cout_sbuf != NULL) {
+      std::cout.clear();
       std::cout.rdbuf(cout_sbuf); 
-    
+    }
+    fout.clear();
+    fout.close();
 
     // Try to minimize model chatter for normal operation.
     FPCHAT( 0 );
 
     // Set cosmology initial values to XSPEC initial values
-    csmph0( 50.0 );
-    csmpq0( 0.5 );
-    csmpl0( 0.0 );
+    csmph0( 70.0 );
+    csmpq0( 0.0 );
+    csmpl0( 0.73 );
 
   } catch(...) {
 
     
     // Get back original std::cout
-    if (cout_sbuf != NULL)
+    if (cout_sbuf != NULL) {
+      std::cout.clear();
       std::cout.rdbuf(cout_sbuf);
-    
+    }
+    fout.clear();
+    fout.close();
 
     // Raise appropriate error message that XSPEC initialization failed.
     PyErr_SetString( PyExc_ImportError,

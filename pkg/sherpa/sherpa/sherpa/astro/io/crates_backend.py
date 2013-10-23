@@ -947,7 +947,11 @@ def get_pha_data(arg, make_copy=True, use_background=False):
 
     datasets = []
 
-    if phadataset.is_pha_type1():
+    # Calling phadataset.is_pha_type1() is unreliable when
+    # both TYPE:I and TYPE:II keywords are in the header.
+    # Here, I instead test for a column, SPEC_NUM, that can
+    # *only* be present in Type II. SMD 05/15/13
+    if _try_col(pha, 'SPEC_NUM') is None:
         data = {}
 
         # Keywords

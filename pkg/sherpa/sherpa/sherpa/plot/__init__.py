@@ -35,7 +35,7 @@ from sherpa.utils import NoNewAttributesAfterInit, erf, SherpaFloat, \
 from sherpa.utils.err import PlotErr, StatErr, ConfidenceErr
 from sherpa.estmethods import Covariance
 from sherpa.optmethods import LevMar, NelderMead
-from sherpa.stats import Likelihood, LeastSq
+from sherpa.stats import Likelihood, LeastSq, Chi2XspecVar
 from sherpa import get_config
 from ConfigParser import ConfigParser
 
@@ -597,9 +597,9 @@ class DataPlot(Plot):
 
         #if self.yerr is None and stat is not None:
         if stat is not None:
-            msg = ("unable to calculate errors using current statistic: %s"
-                   % stat.name)
+            msg = ("calculated chi2xspecvar errors for plot only; errors not used in fits with %s" % stat.name)
             if stat.name in _stats_noerr:
+                self.yerr = data.get_yerr(True, Chi2XspecVar.calc_staterror)
                 warning(msg)
             else:
                 try:
@@ -1043,8 +1043,8 @@ class ResidPlot(ModelPlot):
         self.y = self._calc_resid(y)
 #        if self.yerr is None:
         if stat.name in _stats_noerr:
-            warning("unable to calculate errors using current" +
-                    " statistic: %s" % stat.name)
+            self.yerr = data.get_yerr(True, Chi2XspecVar.calc_staterror)
+            warning("calculated chi2xspecvar errors for plot only; errors not used in fits with %s" % stat.name)
         else:
             self.yerr = data.get_yerr(True,stat.calc_staterror)
 
@@ -1094,8 +1094,9 @@ class RatioPlot(ModelPlot):
         self.y = self._calc_ratio(y)
         #if self.yerr is None:
         if stat.name in _stats_noerr:
-            warning("unable to calculate errors using current" +
-                    " statistic: %s" % stat.name)
+            self.yerr = data.get_yerr(True, Chi2XspecVar.calc_staterror)
+            self.yerr = self.yerr/y[1]
+            warning("calculated chi2xspecvar errors for plot only; errors not used in fits with %s" % stat.name)
         else:
             staterr = data.get_yerr(True,stat.calc_staterror)
             self.yerr = staterr/y[1]

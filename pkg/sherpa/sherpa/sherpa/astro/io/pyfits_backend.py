@@ -558,8 +558,14 @@ def get_rmf_data(arg, make_copy=False):
                                         dtype=SherpaUInt)
         data['n_chan']   = _require_vec(hdu, 'N_CHAN', fix_type=True,
                                         dtype=SherpaUInt)
-        data['matrix']   = _require_col(hdu, 'MATRIX', fix_type=True,
-                                        dtype=SherpaFloat)
+        # Read MATRIX as-is -- we will flatten it below, because
+        # we need to remove all rows corresponding to n_grp[row] == 0
+        data['matrix']   = None
+        if 'MATRIX' not in hdu.columns.names:
+            pass
+        else:
+            data['matrix']   = hdu.data.field('MATRIX')
+
         data['header']     = _get_meta_data(hdu)
         data['header'].pop('DETCHANS')
 
@@ -591,6 +597,32 @@ def get_rmf_data(arg, make_copy=False):
     finally:
         rmf.close()
 
+    ### For every row i of the response matrix, such that
+    ### n_grp[i] == 0, we need to remove that row from the
+    ### n_chan, f_chan, and matrix arrays we are constructing
+    ### to be passed up to the DataRMF data structure.
+ 
+    ### This is trivial for n_chan and f_chan.  For the matrix
+    ### array this can be more work -- can't just remove all
+    ### zeroes, because some rows where n_grp[row] > 0 might
+    ### still have zeroes in the matrix.  I add new code first
+    ### to deal with the matrix, then simpler code to remove zeroes
+    ### from n_chan and f_chan.
+
+    # Read in MATRIX column with structure as-is -- i.e., as an array of 
+    # arrays.  Then flatten it, but include only those arrays that come from
+    # rows where n_grp[row] > 0.  Zero elements can only be included from
+    # rows where n_grp[row] > 0.  SMD 05/23/13
+
+    if not isinstance(data['matrix'], _VLF):
+        data['matrix'] = None
+        raise IOErr('badfile', filename, " MATRIX column not a variable length field")
+
+    good = (data['n_grp'] > 0)
+    data['matrix'] = data['matrix'][good]
+    data['matrix'] = numpy.concatenate([numpy.asarray(row) for row in data['matrix']])
+    data['matrix'] = data['matrix'].astype(SherpaFloat)
+
     #Flatten f_chan and n_chan vectors into 1D arrays as crates does
     # according to group
     if( (data['f_chan'].ndim > 1) and ( data['n_chan'].ndim > 1) ):
@@ -604,12 +636,11 @@ def get_rmf_data(arg, make_copy=False):
         data['n_chan'] = numpy.asarray(n_chan, SherpaUInt)
     else:
         if( len(data['n_grp']) == len(data['f_chan']) ):
-            # filter out channels from 0 groups.
+            # filter out groups with zeroes.
             good = (data['n_grp'] > 0)
             data['f_chan'] = data['f_chan'][good]
             data['n_chan'] = data['n_chan'][good]
-
-
+    
     return data, filename
 
 

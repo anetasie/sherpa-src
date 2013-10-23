@@ -21,7 +21,9 @@
 from sherpa.utils import SherpaTest, SherpaTestCase, needs_data
 from sherpa.models import ArithmeticModel, Parameter
 import sherpa.ui as ui
-import numpy
+import numpy, logging, os
+
+logger = logging.getLogger("sherpa")
 
 class UserModel(ArithmeticModel):
 
@@ -35,6 +37,39 @@ class UserModel(ArithmeticModel):
     def calc(self, p, x, *args, **kwargs):
         return p[0]*x+p[1]
 
+class test_new_templates_ui(SherpaTestCase):
+    def assign_model(self, name, obj):
+        self.locals[name] = obj
+
+    def run_thread(self, name, scriptname='fit.py'):
+        ui.clean()
+        ui.set_model_autoassign_func(self.assign_model)
+        self.locals = {}
+        os.chdir(os.path.join(self.datadir, 'ciao4.3', name))
+        execfile(scriptname, {}, self.locals)
+
+    def setUp(self):
+        logger.setLevel(logging.ERROR)
+
+    @needs_data
+    def test_fit_template(self):
+	self.run_thread('fit_template')
+        self.assertEquals(2750, ui.get_fit_results().parvals[0])
+
+    @needs_data
+    def test_load_template_with_interpolation(self):
+	self.run_thread('load_template_with_interpolation')
+	try:
+		self.assertEqualWithinTol(2023.46, ui.get_fit_results().parvals[0], 0.00001)
+		self.assertEqualWithinTol(2743.47, ui.get_fit_results().parvals[1], 0.00001)
+	except:
+		self.assertEqualWithinTol(2743.47, ui.get_fit_results().parvals[0], 0.00001)
+		self.assertEqualWithinTol(2023.46, ui.get_fit_results().parvals[1], 0.00001)
+
+    @needs_data
+    def test_load_template_interpolator(self):
+	self.run_thread('load_template_interpolator')
+        self.assertEqualWithinTol(2743.91, ui.get_fit_results().parvals[0], 0.01)
 
 
 class test_ui(SherpaTestCase):
@@ -85,8 +120,36 @@ class test_ui(SherpaTestCase):
         ui.load_psf('psf1', 'gauss2d.g1')
         ui.set_full_model('psf1(gauss2d.g2)+const2d.c1')
         ui.get_model()
-        ui.get_source()
+#        ui.get_source()
 
+    # Bug 12644
+    @needs_data
+    def test_source_methods_with_full_model(self):
+        from sherpa.utils.err import IdentifierErr
+        
+        ui.load_data('full', self.ascii)
+        ui.set_full_model('full', 'powlaw1d.p1')
+        
+        # Test Case 1
+        try:
+            ui.get_source('full')
+        except IdentifierErr as e:
+            self.assertEquals("Convolved model\n'p1'\n is set for dataset full. You should use get_model instead.", str(e))
+        try:
+            ui.plot_source('full')
+        except IdentifierErr as e:
+            self.assertEquals("Convolved model\n'p1'\n is set for dataset full. You should use plot_model instead.", str(e))
+        
+        # Test Case 2
+        ui.set_source('full', 'powlaw1d.p2')
+        ui.get_source('full')
+        
+        # Test Case 3
+        ui.load_data('not_full', self.ascii)
+        try:
+            ui.get_source('not_full')
+        except IdentifierErr as e:
+            self.assertEquals('source not_full has not been set, consider using set_source() or set_model()', str(e))
 
 
 class test_psf_ui(SherpaTestCase):

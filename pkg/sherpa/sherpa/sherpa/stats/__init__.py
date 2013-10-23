@@ -25,7 +25,7 @@ import sherpa.stats._statfcts
 
 __all__ = ('Stat', 'Cash', 'CStat', 'LeastSq',
            'Chi2Gehrels', 'Chi2ConstVar', 'Chi2DataVar', 'Chi2ModVar',
-           'Chi2XspecVar')
+           'Chi2XspecVar', 'Chi2')
 
 
 from sherpa import get_config
@@ -104,7 +104,7 @@ class Chi2(Stat):
 
     @staticmethod
     def calc_staterror(data):
-        return numpy.zeros_like(data)
+         raise StatErr('chi2noerr')
 
     @staticmethod
     def calc_stat(data, model, staterror, syserror=None, weight=None):

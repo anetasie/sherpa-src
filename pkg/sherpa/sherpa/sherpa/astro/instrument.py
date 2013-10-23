@@ -18,10 +18,16 @@
 #
 
 import numpy
-from sherpa.utils.err import InstrumentErr, DataErr, PSFErr
+import sherpa
+from sherpa.utils.err import InstrumentErr, DataErr, PSFErr, ArgumentTypeErr
 from sherpa.models.model import ArithmeticFunctionModel, NestedModel, \
     ArithmeticModel, CompositeModel, Model
-from sherpa.astro.io.wcs import WCS
+WCS = None
+try:
+    from sherpa.astro.io.wcs import WCS
+except:
+    WCS = None
+
 from sherpa.instrument import PSFModel as _PSFModel
 from sherpa.utils import NoNewAttributesAfterInit
 from sherpa.data import BaseData, Data1D
@@ -538,9 +544,16 @@ class ARF1D(NoNewAttributesAfterInit):
     def __repr__(self):
         return repr(self._arf)
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         arf = self._arf
         pha = self._pha
+
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
+		
 
         # Automatically add exposure time to source model
         if pha is not None and pha.exposure is not None:
@@ -600,10 +613,16 @@ class RMF1D(NoNewAttributesAfterInit):
     def __repr__(self):
         return repr(self._rmf)
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         arf = self._arf
         rmf = self._rmf
         pha = self._pha
+
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
 
         # Automatically add exposure time to source model for RMF-only analysis
         if type(model) not in (ARFModel,ARFModelPHA,ARFModelNoPHA):
@@ -633,9 +652,15 @@ class Response1D(NoNewAttributesAfterInit):
 
         NoNewAttributesAfterInit.__init__(self)
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         pha = self.pha
         arf, rmf = pha.get_response()
+
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
 
         # Automatically add exposure time to source model
         if pha.exposure is not None:
@@ -833,8 +858,14 @@ class MultiResponseSumModel(CompositeModel, ArithmeticModel):
 
 class MultipleResponse1D(Response1D):
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         pha = self.pha
+
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
 
         pha.notice_response(False)
 
@@ -934,10 +965,16 @@ class PileupResponse1D(NoNewAttributesAfterInit):
         self.pileup_model = pileup_model
         NoNewAttributesAfterInit.__init__(self)
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         pha = self.pha
         # clear out any previous response filter
         pha.notice_response(False)
+
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
 
         arf, rmf = pha.get_response()
         err_msg = None
@@ -1001,9 +1038,10 @@ class PSFModel(_PSFModel):
             if (subkernel and sky is not None and
                 lo is not None and hi is not None):
 
-                sky = WCS(sky.name, sky.type, sky.crval,
-                          sky.crpix - lo, sky.cdelt, sky.crota,
-                          sky.epoch, sky.equinox)
+                if (WCS != None):
+                    sky = WCS(sky.name, sky.type, sky.crval,
+                              sky.crpix - lo, sky.cdelt, sky.crota,
+                              sky.epoch, sky.equinox)
 
                 # FIXME: Support for WCS only (non-Chandra) coordinate
                 # transformations?

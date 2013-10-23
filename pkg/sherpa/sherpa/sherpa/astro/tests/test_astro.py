@@ -29,6 +29,14 @@ logger = logging.getLogger('sherpa')
 class test_threads(SherpaTestCase):
 
     def setUp(self):
+        self.is_crates_io = False
+        try:
+            import sherpa.astro.io
+            if ("sherpa.astro.io.crates_backend" ==
+                sherpa.astro.io.backend.__name__):
+                self.is_crates_io = True
+        except:
+            self.is_crates_io = False
         self.startdir = os.getcwd()
         self.old_state = ui._session.__dict__.copy()
         self.old_level = logger.getEffectiveLevel()
@@ -174,17 +182,24 @@ class test_threads(SherpaTestCase):
 
     @needs_data
     def test_radpro_dm(self):
-        self.run_thread('radpro_dm')
-        self.assertEqualWithinTol(ui.get_fit_results().statval, 217.450, 1e-4)
-        self.assertEqualWithinTol(ui.get_fit_results().rstat, 6.21287, 1e-4)
-        self.assertEqualWithinTol(ui.get_fit_results().qval, 0.0, 1e-4)
-        self.assertEqualWithinTol(self.locals['src'].r0.val, 125.829, 1e-4)
-        self.assertEqualWithinTol(self.locals['src'].beta.val, 4.1633, 1e-4)
-        self.assertEqualWithinTol(self.locals['src'].xpos.val, 0.0, 1e-4)
-        self.assertEqualWithinTol(self.locals['src'].ampl.val, 4.42821, 1e-4)
-        self.assertEqual(ui.get_fit_results().nfev,92)
-        self.assertEqual(ui.get_fit_results().numpoints,38)
-        self.assertEqual(ui.get_fit_results().dof,35)
+        # This test is completely redundant to test_radpro above.
+        # The only difference is that here I test if using DM syntax
+        # in the file name returns the correct arrays from CRATES.
+        # Since any other I/O backend would not understand DM syntax,
+        # I make this test a no-op unless CRATES is used as the I/O
+        # backend.  SMD 05/23/13
+        if (True == self.is_crates_io):
+            self.run_thread('radpro_dm')
+            self.assertEqualWithinTol(ui.get_fit_results().statval, 217.450, 1e-4)
+            self.assertEqualWithinTol(ui.get_fit_results().rstat, 6.21287, 1e-4)
+            self.assertEqualWithinTol(ui.get_fit_results().qval, 0.0, 1e-4)
+            self.assertEqualWithinTol(self.locals['src'].r0.val, 125.829, 1e-4)
+            self.assertEqualWithinTol(self.locals['src'].beta.val, 4.1633, 1e-4)
+            self.assertEqualWithinTol(self.locals['src'].xpos.val, 0.0, 1e-4)
+            self.assertEqualWithinTol(self.locals['src'].ampl.val, 4.42821, 1e-4)
+            self.assertEqual(ui.get_fit_results().nfev,92)
+            self.assertEqual(ui.get_fit_results().numpoints,38)
+            self.assertEqual(ui.get_fit_results().dof,35)
 
     @needs_data
     def test_psf2d(self):
@@ -433,9 +448,27 @@ class test_threads(SherpaTestCase):
     def test_setfullmodel(self):
         self.run_thread('setfullmodel')
 
+    @needs_data
+    def test_bug13537(self):
+        self.run_thread('bug13537')
 
-
-
+    @needs_data
+    def test_xmm2(self):
+        self.run_thread('xmm2')
+        self.assertEqualWithinTol(ui.get_data().channel[0], 1.0, 1e-4)
+        self.assertEqual(ui.get_rmf().detchans, 800)
+        self.assertEqual(len(ui.get_rmf().energ_lo), 2400)
+        self.assertEqual(len(ui.get_rmf().energ_hi), 2400)
+        self.assertEqual(len(ui.get_rmf().n_grp), 2400)
+        self.assertEqual(len(ui.get_rmf().f_chan), 2394)
+        self.assertEqual(len(ui.get_rmf().n_chan), 2394)
+        self.assertEqual(len(ui.get_rmf().matrix), 1281216)
+        self.assertEqual(ui.get_rmf().offset, 0)
+        self.assertEqual(len(ui.get_rmf().e_min), 800)
+        self.assertEqual(len(ui.get_rmf().e_max), 800)
+        self.assertEqual(len(ui.get_arf().energ_lo), 2400)
+        self.assertEqual(len(ui.get_arf().energ_hi), 2400)
+        self.assertEqual(len(ui.get_arf().specresp), 2400)
 
 if __name__ == '__main__':
 

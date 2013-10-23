@@ -28,7 +28,8 @@ import sherpa.astro.models._modelfcts
 __all__ = ('Atten', 'BBody', 'BBodyFreq', 'Beta1D', 'BPL1D', 'Dered', 'Edge',
            'LineBroad', 'Lorentz1D', 'NormBeta1D', 'Schechter',
            'Beta2D', 'DeVaucouleurs2D', 'HubbleReynolds', 'Lorentz2D',
-           'JDPileup', 'MultiResponseSumModel', 'Sersic2D')
+           'JDPileup', 'MultiResponseSumModel', 'Sersic2D', 'Disk2D', 
+           'Shell2D')
 
 
 class Atten(ArithmeticModel):
@@ -337,7 +338,7 @@ class Beta2D(ArithmeticModel):
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999,
                                frozen=True)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians', True)
         self.ampl = Parameter(name, 'ampl', 1)
         self.alpha = Parameter(name, 'alpha', 1, -10, 10)
@@ -375,7 +376,7 @@ class DeVaucouleurs2D(ArithmeticModel):
         self.xpos = Parameter(name, 'xpos', 0)
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians')
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name,
@@ -412,7 +413,7 @@ class HubbleReynolds(ArithmeticModel):
         self.xpos = Parameter(name, 'xpos', 0)
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians')
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name,
@@ -450,7 +451,7 @@ class Lorentz2D(ArithmeticModel):
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999,
                                frozen=True)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians',frozen=True)
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name,
@@ -544,7 +545,7 @@ class Sersic2D(ArithmeticModel):
         self.xpos = Parameter(name, 'xpos', 0)
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians')
         self.ampl = Parameter(name, 'ampl', 1)
         self.n = Parameter(name,'n', 1, .1, 10, 0.01, 100, frozen=True )
@@ -573,3 +574,52 @@ class Sersic2D(ArithmeticModel):
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.sersic(*args, **kwargs)
+
+### disk2d and shell2d models 
+### Contributed by Christoph Deil of the HESS project
+### Added to CIAO 4.6 for Dec. 2013 release SMD
+
+class Disk2D(ArithmeticModel):
+    def __init__(self, name='disk2d'):
+        self.xpos = Parameter(name, 'xpos', 0) # p[0]
+        self.ypos = Parameter(name, 'ypos', 0) # p[1]
+        self.ampl = Parameter(name, 'ampl', 1) # p[2]
+        self.r0 = Parameter(name, 'r0', 1, 0) # p[3]
+        ArithmeticModel.__init__(self, name, (self.xpos, self.ypos, self.ampl, self.r0))
+ 
+    def calc(self, p, x, y, *args, **kwargs):
+        # Compute radii
+        r2 = (x - p[0]) ** 2 + (y - p[1]) ** 2
+ 
+        # Return ampl when r2 <= r0 else return 0
+        return numpy.select([r2 <= p[3] ** 2], [p[2]])
+
+class Shell2D(ArithmeticModel):
+    def __init__(self, name='shell2d'):
+        self.xpos = Parameter(name, 'xpos', 0) # p[0]
+        self.ypos = Parameter(name, 'ypos', 0) # p[1]
+        self.ampl = Parameter(name, 'ampl', 1) # p[2]
+        self.r0 = Parameter(name, 'r0', 1, 0) # p[3]
+        self.width = Parameter(name, 'width', 0.1, 0)
+        ArithmeticModel.__init__(self, name, (self.xpos, self.ypos, self.ampl, self.r0, self.width))
+ 
+    def calc(self, p, x, y, *args, **kwargs):
+        """Homogeneously emitting spherical shell,
+        projected along the z-direction
+        (this is not 100% correct for very large shells on the sky)."""
+        (xpos, ypos, ampl, r_0, width) = p
+        
+        r2 = (x - xpos) * (x - xpos) + (y - ypos) * (y - ypos)
+        r_out = r_0 + width
+        r_in2, r_out2 = r_0 * r_0, r_out * r_out
+        # r_in3, r_out3 = r_in * r_in2, r_out * r_out2
+        # We only call abs() in sqrt() to avoid warning messages.
+        sphere_out = numpy.sqrt(numpy.abs(r_out2 - r2))
+        sphere_in = numpy.sqrt(numpy.abs(r_in2 - r2))
+        # Note: for r > r_out 'numpy.select' fills automatically zeros!
+        non_normalized = numpy.select([r2 <= r_in2, r2 <= r_out2],
+                                      [sphere_out - sphere_in, sphere_out])
+        # Computed with Mathematica:
+        integral = 2 * numpy.pi / 3 * (r_out ** 3 - r_0 ** 3)
+        # integral = 1
+        return ampl * integral * non_normalized

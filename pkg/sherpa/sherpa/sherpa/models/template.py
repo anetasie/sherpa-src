@@ -21,15 +21,16 @@
 from parameter import Parameter, tinyval
 from model import ArithmeticModel, modelCacher1d, CompositeModel, \
     ArithmeticFunctionModel
-import numpy
+from basic import TableModel
+import numpy, operator
 import sherpa.utils.kdtree
 
 
-__all__ = ('create_template_model', 'TemplateModel')
+__all__ = ('create_template_model', 'TemplateModel', 'KNNInterpolator')
 
 
 
-def create_template_model(modelname, names, parvals, templates):
+def create_template_model(modelname, names, parvals, templates, template_interpolator_name=None):
     """
     Create a TemplateModel model class from template input
 
@@ -60,7 +61,37 @@ def create_template_model(modelname, names, parvals, templates):
         pars.append(par)
 
     # Create the templates table from input
-    return TemplateModel(modelname, pars, parvals, templates)
+    tm = TemplateModel(modelname, pars, parvals, templates)
+    if template_interpolator_name is not None:
+	if interpolators.has_key(template_interpolator_name):
+		interp = interpolators[template_interpolator_name]
+		args = interp[1]
+		args['template_model'] = tm
+		args['name'] = modelname
+		return interp[0](**args)
+    else:
+	return tm
+
+
+class InterpolatingTemplateModel(ArithmeticModel):
+    def __init__(self, name, template_model):
+        self.template_model = template_model
+        for par in template_model.pars:
+            self.__dict__[par.name] = par
+	ArithmeticModel.__init__(self, name, template_model.pars)
+
+    def fold(self, data):
+        for template in self.template_model.templates:
+            template.fold(data)
+
+    @modelCacher1d
+    def calc(self, p, x0, x1=None, *args, **kwargs):        interpolated_template = self.interpolate(p, x0)        return interpolated_template(x0, x1, args, kwargs)
+
+class KNNInterpolator(InterpolatingTemplateModel):
+    def __init__(self, name, template_model, k=None, order=2):        self._distances = {}        if k is None:            self.k = 2*template_model.parvals[0].size        else:            self.k = k        self.order = order
+	InterpolatingTemplateModel.__init__(self, name, template_model)
+
+    def _calc_distances(self, point):        self._distances = {}        for i, t_point in enumerate(self.template_model.parvals):            self._distances[i] = numpy.linalg.norm(point - t_point, self.order)        self._distances = sorted(self._distances.iteritems(), key=operator.itemgetter(1))        def interpolate(self, point, x_out):        self._calc_distances(point)        if self._distances[0][1]==0:            return self.template_model.templates[self._distances[0][0]]        k_distances = self._distances[:self.k]        weights = [(idx, 1/numpy.array(distance)) for idx, distance in k_distances]        sum_weights = sum([1/weight for idx, weight in k_distances])        y_out = numpy.zeros(len(x_out))        for idx, weight in weights:            y_out += self.template_model.templates[idx].calc((weight,), x_out)        y_out /= sum_weights        tm = TableModel('interpolated')        tm.load(x_out, y_out)        return tm
 
 
 class TemplateModel(ArithmeticModel):
@@ -129,3 +160,9 @@ class TemplateModel(ArithmeticModel):
 
         # return interpolated the spectrum according to the input grid (x0, [x1])
         return table_model(x0, x1, *args, **kwargs)
+
+
+
+interpolators = {
+	'default' : (KNNInterpolator, {'k':2, 'order':2})
+}

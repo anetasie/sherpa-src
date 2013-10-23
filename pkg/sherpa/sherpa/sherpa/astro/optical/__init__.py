@@ -466,14 +466,14 @@ class CCM(ArithmeticModel):
 
         # Infrared wavelengths
         xp = numpy.zeros_like(x)
-        ir_slice = numpy.concatenate((numpy.where(x >= 0.3)[0], numpy.where(x <= 1.1)[0]), 0)
+        ir_slice = numpy.where((x >= 0.3) & (x <= 1.1))[0]
         if (len(ir_slice) > 0):
             xp[ir_slice] = numpy.power(x[ir_slice], 1.61)
             a[ir_slice] = 0.574 * xp[ir_slice]
             b[ir_slice] = -0.527 * xp[ir_slice]
 
         # Optical
-        opt_slice = numpy.concatenate((numpy.where(x > 1.1)[0], numpy.where(x <= 3.3)[0]), 0)
+        opt_slice = numpy.where((x > 1.1) & (x <= 3.3))[0]
         if (len(opt_slice) > 0):
             y[opt_slice] = x[opt_slice] - 1.82
 
@@ -482,12 +482,12 @@ class CCM(ArithmeticModel):
             b[opt_slice] = 0.0 + 1.41338 * y[opt_slice] + 2.28305 * y[opt_slice] * y[opt_slice] + 1.07233 * numpy.power(y[opt_slice],3) - 5.38434 * numpy.power(y[opt_slice],4) - 0.62551 * numpy.power(y[opt_slice],5) + 5.30260 * numpy.power(y[opt_slice],6) - 2.09002 * numpy.power(y[opt_slice],7)
 
         # Near-UV
-        nuv_slice = numpy.concatenate((numpy.where(x > 3.3)[0], numpy.where(x <= 8.0)[0]), 0)
+        nuv_slice = numpy.where((x > 3.3) & (x <= 8.0))[0]
         if (len(nuv_slice) > 0):
             a[nuv_slice] = 0.0
             b[nuv_slice] = 0.0
 
-            nuv_slice2 = numpy.concatenate((numpy.where(x >= 5.9)[0], numpy.where(x <= 8.0)[0]), 0)
+            nuv_slice2 = numpy.where((x >= 5.9) & (x <= 8.0))[0]
             if (len(nuv_slice2) > 0):
                 y[nuv_slice2] = x[nuv_slice2] - 5.9
                 y2[nuv_slice2] = y[nuv_slice2] * y[nuv_slice2]
@@ -501,14 +501,14 @@ class CCM(ArithmeticModel):
             b[nuv_slice] = b[nuv_slice] - 3.090 + 1.825 * x[nuv_slice] + 1.206 / (0.263 + numpy.power((x[nuv_slice]-4.62),2))
 
         # Far-UV
-        fuv_slice = numpy.concatenate((numpy.where(x > 8.0)[0], numpy.where(x <= 20.0)[0]), 0)
+        fuv_slice = numpy.where((x > 8.0) & (x <= 20.0))[0]
         if (len(fuv_slice) > 0):
             y[fuv_slice] = x[fuv_slice] - 8.0
             y2[fuv_slice] = y[fuv_slice] * y[fuv_slice]
             y3[fuv_slice] = y2[fuv_slice] * y[fuv_slice]
 
             a[fuv_slice] = -1.073 - 0.628 * y[fuv_slice] + 0.137 * y2[fuv_slice] - 0.070 * y3[fuv_slice]
-            b = 13.670 + 4.257 * y[fuv_slice] - 0.420 * y2[fuv_slice] + 0.374 * y3[fuv_slice]
+            b[fuv_slice] = 13.670 + 4.257 * y[fuv_slice] - 0.420 * y2[fuv_slice] + 0.374 * y3[fuv_slice]
 
         # Final extinction curve
         aext = p[1] * a + b
@@ -789,7 +789,7 @@ class LMC(ArithmeticModel):
 
         # Infrared - extend optical results linearly to 0 at 1/lambda = 0
         slice1 = numpy.where(x <= 1.83)[0]
-        slice2 = numpy.concatenate((numpy.where(x > 1.83)[0], numpy.where(x <= 2.75)[0]), 0)
+        slice2 = numpy.where((x > 1.83) & (x <= 2.75))[0]
         slice3 = numpy.where(x > 2.75)[0]
         x = numpy.where(x > 10.96, 10.96, x)
 
@@ -915,10 +915,10 @@ class Seaton(ArithmeticModel):
         extmag = numpy.zeros_like(x)
 
         ir_slice = numpy.where(x <= 1.0)[0]
-        opt_slice = numpy.concatenate((numpy.where(x > 1.0)[0], numpy.where(x < 2.7)[0]), 0)
-        uv1_slice = numpy.concatenate((numpy.where(x >= 2.7)[0], numpy.where(x < 3.65)[0]), 0)
-        uv2_slice = numpy.concatenate((numpy.where(x >= 3.65)[0], numpy.where(x < 7.14)[0]), 0)
-        uv3_slice = numpy.concatenate((numpy.where(x >= 7.14)[0], numpy.where(x <= 10.0)[0]), 0)
+        opt_slice = numpy.where((x > 1.0) & (x <2.7))[0]
+        uv1_slice = numpy.where((x >= 2.7) &  (x < 3.65))[0]
+        uv2_slice = numpy.where((x >= 3.65) & (x < 7.14))[0]
+        uv3_slice = numpy.where((x >= 7.14) &  (x <= 10.0))[0]
         uv_extra_slice = numpy.where(x > 10.0)[0]
 
         # Infrared - extend optical results linearly to 0 at 1/lambda = 0

@@ -121,6 +121,7 @@ def calc_sample_flux( id, lo, hi, session, fit, data, samples, modelcomponent,
         logger = logging.getLogger( "sherpa" )
         orig_log_level = logger.level
 
+        mystat = []
         for nn in xrange( size ):
             logger.setLevel( logging.ERROR )
             session.set_source( id, orig_source )
@@ -131,10 +132,15 @@ def calc_sample_flux( id, lo, hi, session, fit, data, samples, modelcomponent,
                 session.set_par( thawedpars[ ii ].fullname, val )
             session.set_source( id, modelcomponent )
             iflx[ nn ] = session.calc_energy_flux( lo, hi )
+            #####################################
+            session.set_full_model( id, orig_model )
+            mystat.append( session.calc_stat( ) )
+            #####################################
         oflxiflx = [ oflx, iflx ]
 
         myconfidence = ( 1.0 - confidence / 100.0 ) / 2.0
-        result =[]
+        result = []
+
         for x in oflxiflx:
             sf = numpy.sort(x)
             median = numpy.median( sf )
@@ -145,7 +151,15 @@ def calc_sample_flux( id, lo, hi, session, fit, data, samples, modelcomponent,
         print_sample_result( 'original model flux', result[ 0 ] )
         print_sample_result( 'model component flux', result[ 1 ] )
 
+        sampletmp = numpy.zeros( (samples.shape[0], 1 ), dtype=samples.dtype )
+        samples = numpy.concatenate( (samples,sampletmp), axis=1 )
+
+        for index in xrange( size ):
+            samples[ index ][ -1 ] = mystat[ index ]
+
+        samples = numpy.delete( samples, (size), axis=0 )
         result.append( samples )
+
         return result
 
     finally:
@@ -156,3 +170,4 @@ def calc_sample_flux( id, lo, hi, session, fit, data, samples, modelcomponent,
         logger.setLevel( logging.ERROR )
         session.set_source( id, orig_source )
         logger.setLevel( orig_log_level )
+

@@ -25,6 +25,7 @@ from sherpa.utils.err import PSFErr
 from sherpa.utils._psf import *
 import numpy
 import logging
+import sherpa
 info = logging.getLogger(__name__).info
 
 
@@ -213,12 +214,19 @@ class ConvolutionKernel(Model):
         return "Convolution Kernel:\n"+self.kernel.__str__()
 
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         if self.kernel is None:
             raise PSFErr('notset')
         kernel = self.kernel
         if isinstance(kernel, Data):
             kernel = numpy.asarray(kernel.get_dep())
+
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
+
         return ConvolutionModel(kernel, model, self)
 
 
@@ -544,12 +552,19 @@ class PSFModel(Model):
         return s
 
 
-    def __call__(self, model):
+    def __call__(self, model, session=None):
         if self.kernel is None:
             raise PSFErr('notset')
         kernel = self.kernel
         if isinstance(kernel, Data):
             kernel = numpy.asarray(kernel.get_dep())
+	
+	if isinstance(model, basestring):
+		if session is None:
+			model = sherpa.astro.ui._session._eval_model_expression(model)
+		else:
+			model = session._eval_model_expression(model)
+
         return ConvolutionModel(kernel, model, self)
 
 

@@ -195,9 +195,11 @@ if platform.system() == 'Darwin':
             if conf['fortran_library_dir'] not in dirs:
                 dirs.append(conf['fortran_library_dir'])
         else:
-            # Try a likely path if fortran_library_dir points nowhere
+            # Try likely paths if fortran_library_dir points nowhere
             if '/sw/lib' not in dirs:
                 dirs.append('/sw/lib')
+            if '/opt/local/lib' not in dirs:
+                dirs.append('/opt/local/lib') 
         return dirs
 
     GnuFCompiler.get_libraries = get_libraries_gnuf
@@ -253,7 +255,7 @@ else:
 ###############################################################################
 
 # Include directory for Sherpa headers
-sherpa_inc = ['sherpa/include']
+sherpa_inc = ['sherpa/include', 'sherpa/utils/src']
 
 header_deps = {
     'myArray': (),
@@ -635,9 +637,9 @@ if conf['xspec_library_dir'] is not None:
 #
 ###############################################################################
 
-# CIAO 4.5 release, Sherpa package 1
+# CIAO 4.6 release, Sherpa package 1
 setup(name='sherpa',
-      version='4.5.1',
+      version='4.6.1',
       author='Smithsonian Astrophysical Observatory / Chandra X-Ray Center',
       author_email='cxchelp@head.cfa.harvard.edu',
       url='http://cxc.harvard.edu/sherpa/',
@@ -686,6 +688,6 @@ setup(name='sherpa',
       libraries=clibs,
       ext_modules=extension_modules,
       data_files=[('sherpa', ['sherpa/sherpa.rc']),
-                  ('sherpa', ['sherpa/ipythonrc-sherpa']),
-                  ('sherpa', ['sherpa/ipythonrc-sherpa-user'])],
+                  ('sherpa', ['sherpa/00-sherpa_startup.py']),
+                  ('sherpa', ['sherpa/ipython_config.py'])],
       )

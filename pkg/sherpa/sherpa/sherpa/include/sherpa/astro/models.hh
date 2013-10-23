@@ -862,7 +862,7 @@ namespace sherpa { namespace astro { namespace models {
       angle1 = PI / 2.0;
     }
 
-    val = p[2] * ( angle2 - angle1 ) / PI;
+    val = -1.0 * p[2] * ( angle2 - angle1 ) / PI;
 
     return EXIT_SUCCESS;
 

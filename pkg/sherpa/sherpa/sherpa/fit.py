@@ -144,7 +144,16 @@ class FitResults(NoNewAttributesAfterInit):
         self.modelvals    = _vals
         self.methodname   = type(fit.method).__name__.lower()
         self.itermethodname = fit._iterfit.itermethod_opts['name']
-        self.statname     = type(fit.stat).__name__.lower()
+        statname     = type(fit.stat).__name__.lower()
+	if isinstance(fit.stat, Chi2) and not isinstance(fit.stat, LeastSq):
+		isSimulFit = isinstance(fit.data, DataSimulFit)
+           	if isSimulFit:
+			is_error_set = [d.staterror is not None for d in fit.data.datasets]
+			if all(is_error_set):
+                		statname = 'chi2'
+		elif fit.data.staterror is not None:
+            		statname = 'chi2'
+	self.statname = statname
         self.datasets     = None # To be filled by calling function
         self.param_warnings = param_warnings
         NoNewAttributesAfterInit.__init__(self)
@@ -771,7 +780,18 @@ class Fit(NoNewAttributesAfterInit):
                 qval = igamc(dof/2., stat/2.)
             rstat = stat/dof
 
-        return StatInfoResults(self.stat.name, stat, numpoints, model,
+	name = self.stat.name
+
+	if isinstance(self.stat, Chi2) and not isinstance(self.stat, LeastSq):
+		isSimulFit = isinstance(self.data, DataSimulFit)
+           	if isSimulFit:
+			is_error_set = [d.staterror is not None for d in self.data.datasets]
+			if all(is_error_set):
+                		name = 'chi2'
+		elif self.data.staterror is not None:
+            		name = 'chi2'
+
+        return StatInfoResults(name, stat, numpoints, model,
                                dof, qval, rstat)
 
 

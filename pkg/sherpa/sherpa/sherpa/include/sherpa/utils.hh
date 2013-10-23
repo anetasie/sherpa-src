@@ -34,6 +34,7 @@
 
 #include <sherpa/constants.hh>
 #include <sherpa/myArray.hh>
+#include "gsl/fcmp.h" 
 
 #define ACOS(x)			std::acos(x)
 #define ASIN(x)			std::asin(x)

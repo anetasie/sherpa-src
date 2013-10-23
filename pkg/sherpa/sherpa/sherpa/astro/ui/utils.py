@@ -29,16 +29,16 @@ from sherpa.data import Data1D
 import sherpa.astro.all
 import sherpa.astro.plot
 
+from sherpa.ui.utils import loggable
+
 warning = logging.getLogger(__name__).warning
 info = logging.getLogger(__name__).info
 
 
-
-__all__ = ('Session',)
+__all__ = ('Session')
 
 
 class Session(sherpa.ui.utils.Session):
-
 
     ###########################################################################
     # Standard methods
@@ -475,6 +475,7 @@ class Session(sherpa.ui.utils.Session):
     # Data
     ###########################################################################
 
+    #@loggable(with_id=True, with_name='load_data')
     def dataspace1d(self, start, stop, step=1, numbins=None,
                     id=None, bkg_id=None, dstype=sherpa.data.Data1DInt):
         """
@@ -643,6 +644,7 @@ class Session(sherpa.ui.utils.Session):
             dataset = sherpa.io.read_arrays(*args)
         return dataset
 
+    #@loggable(with_id=True, with_keyword='arg', with_name='load_data')
     def load_arrays(self, id, *args):
         """
         load_arrays
@@ -714,6 +716,7 @@ class Session(sherpa.ui.utils.Session):
         """
         return sherpa.astro.io.read_table(filename, ncols, colkeys, dstype)
 
+    #@loggable(with_id=True, with_keyword='arg', with_name='load_data')
     def load_table(self, id, filename=None, ncols=2, colkeys=None,
                    dstype=Data1D):
         """
@@ -803,6 +806,7 @@ class Session(sherpa.ui.utils.Session):
         return sherpa.astro.io.read_ascii(filename, ncols, colkeys, dstype,
                                           sep=sep, comment=comment)
     
+    #@loggable(with_id=True, with_keyword='arg', with_name='load_data')
     def load_ascii(self, id, filename=None, ncols=2, colkeys=None,
                    dstype=Data1D, sep=' ', comment='#'):
         """
@@ -893,6 +897,7 @@ class Session(sherpa.ui.utils.Session):
 
         return data
 
+    #@loggable(with_id=True, with_keyword='arg', with_name='load_data')
     def load_data(self, id, filename=None, *args, **kwargs):
         """
         load_data
@@ -972,6 +977,7 @@ class Session(sherpa.ui.utils.Session):
         """
         return sherpa.astro.io.read_image(arg, coord, dstype)
 
+    #@loggable(with_id=True, with_keyword='arg', with_name='load_data')
     def load_image(self, id, arg=None, coord='logical',
                      dstype=sherpa.astro.data.DataIMG):
         """
@@ -1071,6 +1077,7 @@ class Session(sherpa.ui.utils.Session):
         return sherpa.astro.io.read_pha(arg, use_errors, True)
 
 
+    #@loggable(with_id=True, with_keyword='arg', with_name='load_data')
     def load_pha(self, id, arg=None, use_errors=False):
         """
         load_pha
@@ -2356,7 +2363,38 @@ class Session(sherpa.ui.utils.Session):
 
         sherpa.astro.io.write_arrays(filename, args, fields, **kwargs)
 
-
+# To fix bug report 13536, save many kinds of data to ASCII by default,
+# and let user override if they want FITS (or vice-versa).  The new defaults 
+# as of CIAO 4.6 are:
+#
+# ascii = False (i.e., write to FITS):
+#
+# save_pha
+# save_image
+# save_table
+#
+# ascii = True (i.e., write to ASCII):
+# 
+# save_arrays
+# save_source
+# save_model
+# save_resid
+# save_delchi
+# save_filter
+# save_staterror
+# save_syserror
+# save_error
+# save_grouping
+# save_quality
+# save_data
+#
+# My logic is that in the former group, you are focused on writing to a
+# specific kind of file (PHA, image or table) so use FITS by default.
+# In the latter group, you are not focused on file type, but on some
+# data or model attribute you want to write out and read into some other
+# program with ease.  ASCII is probably better for that.
+# SMD 05/15/13
+#
     def save_arrays(self, filename, args, fields=None, ascii=True,
                     clobber=False):
         """
@@ -2557,7 +2595,7 @@ class Session(sherpa.ui.utils.Session):
         self._save_type('resid', id, filename, ascii=ascii, clobber=clobber,
                         bkg_id=bkg_id)
 
-    def save_delchi(self, id, filename=None, bkg_id=None, ascii=False,
+    def save_delchi(self, id, filename=None, bkg_id=None, ascii=True,
                     clobber=False):
         """
         save_delchi
@@ -2611,7 +2649,7 @@ class Session(sherpa.ui.utils.Session):
                         bkg_id=bkg_id)
 
 
-    def save_filter(self, id, filename=None, bkg_id=None, ascii=False,
+    def save_filter(self, id, filename=None, bkg_id=None, ascii=True,
                     clobber=False):
         """
         save_filter
@@ -2678,7 +2716,7 @@ class Session(sherpa.ui.utils.Session):
                          ascii, clobber)
 
 
-    def save_staterror(self, id, filename=None, bkg_id=None, ascii=False,
+    def save_staterror(self, id, filename=None, bkg_id=None, ascii=True,
                     clobber=False):
         """
         save_staterror
@@ -2740,7 +2778,7 @@ class Session(sherpa.ui.utils.Session):
                          ascii, clobber)
 
 
-    def save_syserror(self, id, filename=None, bkg_id=None, ascii=False,
+    def save_syserror(self, id, filename=None, bkg_id=None, ascii=True,
                     clobber=False):
         """
         save_syserror
@@ -2802,7 +2840,7 @@ class Session(sherpa.ui.utils.Session):
                          ascii, clobber)
 
 
-    def save_error(self, id, filename=None, bkg_id=None, ascii=False,
+    def save_error(self, id, filename=None, bkg_id=None, ascii=True,
                     clobber=False):
         """
         save_error
@@ -2916,7 +2954,7 @@ class Session(sherpa.ui.utils.Session):
         sherpa.astro.io.write_pha(filename, d, ascii, clobber)
 
 
-    def save_grouping(self, id, filename=None, bkg_id=None, ascii=False, clobber=False):
+    def save_grouping(self, id, filename=None, bkg_id=None, ascii=True, clobber=False):
         """
         save_grouping
 
@@ -2973,7 +3011,7 @@ class Session(sherpa.ui.utils.Session):
                                      ['CHANNEL', 'GROUPS'], ascii, clobber)
 
 
-    def save_quality(self, id, filename=None, bkg_id=None, ascii=False, clobber=False):
+    def save_quality(self, id, filename=None, bkg_id=None, ascii=True, clobber=False):
         """
         save_quality
 
@@ -3124,7 +3162,7 @@ class Session(sherpa.ui.utils.Session):
                                     ascii, clobber)
 
 
-    def save_data(self, id, filename=None, bkg_id=None, ascii=False, clobber=False):
+    def save_data(self, id, filename=None, bkg_id=None, ascii=True, clobber=False):
         """
         save_data
 
@@ -3268,6 +3306,7 @@ class Session(sherpa.ui.utils.Session):
     #        raise ArgumentTypeError('response identifiers must be integers ' +
     #                                'or strings')
 
+    #@loggable(with_id=True)
     def get_arf(self, id=None, resp_id=None, bkg_id=None):
         """
         get_arf
@@ -3388,6 +3427,7 @@ class Session(sherpa.ui.utils.Session):
         """
         return sherpa.astro.instrument.ARF1D(sherpa.astro.io.read_arf(arg))
 
+    #@loggable(with_id=True, with_keyword='arg')
     def load_arf(self, id, arg=None, resp_id=None, bkg_id=None):
         """
         load_arf
@@ -3454,6 +3494,7 @@ class Session(sherpa.ui.utils.Session):
         resp_id = self._get_pha_data(id).primary_response_id
         return self.get_arf(id, resp_id, bkg_id)
 
+    #@loggable(with_id=True, with_keyword='arg')
     def load_bkg_arf(self, id, arg=None):
         """
         load_bkg_arf
@@ -3533,6 +3574,7 @@ class Session(sherpa.ui.utils.Session):
             resp_id = resp_ids.pop(0)
             self.load_arf(id, filename, resp_id)
 
+    #@loggable(with_id=True)
     def get_rmf(self, id=None, resp_id=None, bkg_id=None):
         """
         get_rmf
@@ -3653,6 +3695,7 @@ class Session(sherpa.ui.utils.Session):
         """
         return sherpa.astro.instrument.RMF1D(sherpa.astro.io.read_rmf(arg))
 
+    #@loggable(with_id=True, with_keyword='arg')
     def load_rmf(self, id, arg=None, resp_id=None, bkg_id=None):
         """
         load_rmf
@@ -3719,6 +3762,7 @@ class Session(sherpa.ui.utils.Session):
         resp_id = self._get_pha_data(id).primary_response_id
         return self.get_rmf(id, resp_id, bkg_id)
 
+    #@loggable(with_id=True, with_keyword='arg')
     def load_bkg_rmf(self, id, arg=None):
         """
         load_bkg_rmf
@@ -3944,7 +3988,7 @@ class Session(sherpa.ui.utils.Session):
         #return data.response_ids
         return data._responses.keys()
 
-
+    #@loggable(with_id=True, with_keyword='quantity')
     def set_analysis(self, id, quantity=None, type='rate', factor=0):
         """
         set_analysis
@@ -4047,7 +4091,7 @@ class Session(sherpa.ui.utils.Session):
         """
         return self._get_pha_data(id).get_analysis()
 
-
+    #@loggable(with_id=True, with_keyword='coord')
     def set_coord(self, id, coord=None):
         """
         set_coord
@@ -4090,6 +4134,9 @@ class Session(sherpa.ui.utils.Session):
         ids = self.list_data_ids()
         if id is not None:
             ids = [id]
+
+	if(len(ids)==0):
+	    raise IdentifierErr('nodatasets')
 
         for id in ids:
            self._get_img_data(id).set_coord(coord)
@@ -4474,7 +4521,7 @@ class Session(sherpa.ui.utils.Session):
             self.ignore2d_id(id, regions)
 
 
-
+    #@loggable(with_id=True, with_keyword='arg')
     def load_bkg(self, id, arg=None, use_errors=False, bkg_id=None):
         """
         load_bkg
@@ -4519,7 +4566,7 @@ class Session(sherpa.ui.utils.Session):
         else:
             self.set_bkg(id, bkgsets, bkg_id)
 
-
+    #@loggable(with_id=True)
     def group(self, id=None, bkg_id=None):
         """
         group
@@ -4557,7 +4604,7 @@ class Session(sherpa.ui.utils.Session):
             for bid in data.background_ids:
                 try:
                     self.group(id, bid)
-                except e:
+                except DataErr, e:
                     info(str(e))
 
             # Now check if data is already grouped, and send error message
@@ -4732,7 +4779,7 @@ class Session(sherpa.ui.utils.Session):
 
         return data.quality
 
-
+    #@loggable(with_id=True)
     def ungroup(self, id=None, bkg_id=None):
         """
         ungroup
@@ -4770,7 +4817,7 @@ class Session(sherpa.ui.utils.Session):
             for bid in data.background_ids:
                 try:
                     self.ungroup(id, bid)
-                except e:
+                except DataErr, e:
                     info(str(e))
 
             # Now check if data is already ungrouped, and send error message
@@ -4785,7 +4832,7 @@ class Session(sherpa.ui.utils.Session):
         # If we get here, checks showed data grouped, so set ungroup flag
         data.ungroup()
 
-
+    #@loggable(with_id=True, with_keyword='num')
     def group_bins(self, id, num=None, bkg_id=None, tabStops=None):
         """
         group_bins
@@ -4826,7 +4873,7 @@ class Session(sherpa.ui.utils.Session):
             data = self.get_bkg(id, bkg_id)
         data.group_bins(num, tabStops)
 
-
+    #@loggable(with_id=True, with_keyword='num')
     def group_width(self, id, num=None, bkg_id=None, tabStops=None):
         """
         group_width
@@ -4867,7 +4914,7 @@ class Session(sherpa.ui.utils.Session):
             data = self.get_bkg(id, bkg_id)
         data.group_width(num, tabStops)
 
-
+    #@loggable(with_id=True, with_keyword='num')
     def group_counts(self, id, num=None, bkg_id=None,
                      maxLength=None, tabStops=None):
         """
@@ -4912,7 +4959,7 @@ class Session(sherpa.ui.utils.Session):
             data = self.get_bkg(id, bkg_id)
         data.group_counts(num, maxLength, tabStops)
 
-
+    #@loggable(with_id=True, with_keyword='snr')
     def group_snr(self, id, snr=None, bkg_id=None,
                         maxLength=None, tabStops=None, errorCol=None):
         """
@@ -4960,7 +5007,7 @@ class Session(sherpa.ui.utils.Session):
             data = self.get_bkg(id, bkg_id)
         data.group_snr(snr, maxLength, tabStops, errorCol)
 
-
+    #@loggable(with_id=True, with_keyword='min')
     def group_adapt(self, id, min=None, bkg_id=None,
                      maxLength=None, tabStops=None):
         """
@@ -5005,7 +5052,7 @@ class Session(sherpa.ui.utils.Session):
             data = self.get_bkg(id, bkg_id)
         data.group_adapt(min, maxLength, tabStops)
 
-
+    #@loggable(with_id=True, with_keyword='min')
     def group_adapt_snr(self, id, min=None, bkg_id=None,
                         maxLength=None, tabStops=None, errorCol=None):
         """
@@ -5054,7 +5101,7 @@ class Session(sherpa.ui.utils.Session):
             data = self.get_bkg(id, bkg_id)
         data.group_adapt_snr(min, maxLength, tabStops, errorCol)
 
-
+    #@loggable(with_id=True)
     def subtract(self, id=None):
         """
         subtract
@@ -5085,6 +5132,7 @@ class Session(sherpa.ui.utils.Session):
             raise DataErr('subtractset', 'data set', str(self._fix_id(id)), 'True')
         self._get_pha_data(id).subtract()
 
+    #@loggable(with_id=True)
     def unsubtract(self, id=None):
         """
         unsubtract
@@ -5169,6 +5217,9 @@ class Session(sherpa.ui.utils.Session):
         if self._data.has_key(id):
             d = self._get_pha_data(id)
         else:
+            # Make empty header OGIP compliant
+            # And add appropriate values to header from input values
+            d.header = dict(HDUCLASS="OGIP", HDUCLAS1="SPECTRUM", HDUCLAS2="TOTAL", HDUCLAS3="TYPE:I", HDUCLAS4="COUNT", HDUVERS="1.1.0")
             self.set_data(id, d)
 
         if rmf is None:
@@ -5268,7 +5319,7 @@ class Session(sherpa.ui.utils.Session):
     ###########################################################################
     # PSF
     ###########################################################################
-
+    #@loggable
     def load_psf(self, modelname, filename_or_model, *args, **kwargs):    
         kernel = filename_or_model
         if isinstance(filename_or_model, basestring):
@@ -5282,6 +5333,8 @@ class Session(sherpa.ui.utils.Session):
                     raise
 
         psf = sherpa.astro.instrument.PSFModel(modelname, kernel)
+	if isinstance(kernel, sherpa.models.Model): 
+	    self.freeze(kernel)
         self._add_model_component(psf)
         self._psf_models.append(psf)
 
@@ -5292,7 +5345,7 @@ class Session(sherpa.ui.utils.Session):
     ###########################################################################
     # Models
     ###########################################################################
-
+    #@loggable(with_id=True, with_keyword='model')
     def set_full_model(self, id, model=None):
         sherpa.ui.utils.Session.set_full_model(self, id, model)
 
@@ -5361,7 +5414,7 @@ class Session(sherpa.ui.utils.Session):
 
         return model
 
-
+    #@loggable(with_id=True)
     def get_response(self, id=None, bkg_id=None):
         """
         get_response
@@ -5430,6 +5483,7 @@ class Session(sherpa.ui.utils.Session):
         return self._get_item(id, self._pileup_models, 'pileup model',
                               'has not been set')
 
+    #@loggable(with_id=True, with_keyword='model')
     def set_pileup_model(self, id, model=None):
         """
         set_pileup_model
@@ -5561,7 +5615,7 @@ class Session(sherpa.ui.utils.Session):
                 model = resp(src)
         return model
 
-
+    #@loggable(with_id=True, with_keyword='model')
     def set_bkg_full_model(self, id, model=None, bkg_id=None):
         """
         set_bkg_full_model
@@ -5634,7 +5688,7 @@ class Session(sherpa.ui.utils.Session):
 
         self._runparamprompt(model.pars)
 
-
+    #@loggable(with_id=True, with_keyword='model')
     def set_bkg_model(self, id, model=None, bkg_id=None):
         """
         set_bkg_model
@@ -5762,7 +5816,7 @@ class Session(sherpa.ui.utils.Session):
                     raise
         return (x,y)
 
-
+    #@loggable()
     def load_table_model(self, modelname, filename, method=sherpa.utils.linear_interp, *args, **kwargs):
         """
         load_table_model
@@ -5836,7 +5890,17 @@ class Session(sherpa.ui.utils.Session):
         except Exception, e:
             #print e, type(e)
             #raise e
-            x, y = self._read_user_model(filename, *args, **kwargs)
+            x = None
+            y = None
+            try:
+                x, y = self._read_user_model(filename, *args, **kwargs)
+            except:
+                # Fall back to reading plain ASCII, if no other
+                # more sophisticated I/O backend loaded (such as
+                # pyfits or crates) SMD 05/29/13
+                data = sherpa.io.read_data(filename, ncols=2)
+                x = data.x
+                y = data.y
             tablemodel.load(x,y)
 
 
@@ -6065,7 +6129,7 @@ class Session(sherpa.ui.utils.Session):
         # validate the kwds to f.fit() so user typos do not
         # result in regular fit
         #valid_keys = sherpa.utils.get_keyword_names(sherpa.fit.Fit.fit)
-        valid_keys = ('outfile', 'clobber')
+        valid_keys = ('outfile', 'clobber', 'filter_nan')
         for key in kwargs.keys():
             if key not in valid_keys:
                 raise TypeError("unknown keyword argument: '%s'" % key)
@@ -6074,6 +6138,10 @@ class Session(sherpa.ui.utils.Session):
             ids, f = self._get_bkg_fit(id, otherids)
         else:
             ids, f = self._get_fit(id, otherids)
+
+	if kwargs.has_key('filter_nan') and kwargs.pop('filter_nan'):
+		for i in ids:
+			self.get_data(i).mask = self.get_data(i).mask & numpy.isfinite(self.get_data(i).get_x())
 
         res = f.fit(**kwargs)
         res.datasets = ids
@@ -6100,8 +6168,7 @@ class Session(sherpa.ui.utils.Session):
                 statinfo = f.calc_stat_info()
                 statinfo.name = 'Dataset %s' % (str(id))
                 statinfo.ids = (id,)
-                if d.staterror is not None:
-                    statinfo.statname = 'chi2'
+
                 output.append(statinfo)
 
                 bkg_ids = extra_ids.get(id, ())
@@ -6119,8 +6186,7 @@ class Session(sherpa.ui.utils.Session):
                                      (str(bkg_id), str(id)))
                     statinfo.ids = (id,)
                     statinfo.bkg_ids = (bkg_id,)
-                    if bkg.staterror is not None:
-                        statinfo.statname = 'chi2'
+
                     output.append(statinfo)
 
                 jj += 1
@@ -6130,10 +6196,6 @@ class Session(sherpa.ui.utils.Session):
         statinfo = f.calc_stat_info()
         if len(ids) == 1:
             statinfo.name = 'Dataset %s' % str(ids)
-            isSimulFit = isinstance(f.data, sherpa.data.DataSimulFit)
-            if ((isSimulFit and f.data.datasets[0].staterror is not None) or
-                (not isSimulFit and f.data.staterror is not None)):
-                statinfo.statname = 'chi2'
         else:
             statinfo.name = 'Datasets %s' % str(ids).strip("()")
         statinfo.ids = ids
@@ -8169,7 +8231,8 @@ class Session(sherpa.ui.utils.Session):
              samples = self.calc_energy_flux( lo=lo, hi=hi, id=id,
                                               bkg_id=bkg_id )
          else:
-             samples = self.sample_energy_flux( lo=lo, hi=hi, id=id, num=num,
+             # num+1 cause sample energy flux is under-reporting its result?
+             samples = self.sample_energy_flux( lo=lo, hi=hi, id=id, num=num+1,
                                                scales=scales,
                                                correlated=correlated,
                                                numcores=numcores,
@@ -8988,31 +9051,61 @@ class Session(sherpa.ui.utils.Session):
         # link commands to outfile now; else, linkstr is just an empty string
         _send_to_outfile(linkstr, outfile)
         
-        # Save all source models
+        # Save all source, pileup and background models
         
-        _send_to_outfile("\n######### Set Source Models\n", outfile)
+        _send_to_outfile("\n######### Set Source, Pileup and Background Models\n", outfile)
         for id in dids:
             if (type(id) == str):
                 cmd_id = "\"%s\"" % id
             else:
                 cmd_id = "%s" % id
-
+            
             # If a data set has a source model associated with it,
             # set that here -- try to distinguish cases where
             # source model is different from whole model.
             # If not, just pass
             try:
-                if (repr(self.get_model(id)) == repr(self.get_source(id))):
-                    cmd = "set_full_model(%s, %s)" % (cmd_id, self.get_model(id).name)
+                the_source = None
+                the_full_model = None
+                try:
+                    the_source = self.get_source(id)
+                except:
+                    the_source = None
+                    pass
+
+                try:
+                    the_full_model = self.get_model(id)
+                except:
+                    the_full_model = None
+                    pass
+
+                if (the_source is None and
+                    the_full_model is None):
+                    cmd=""
+                    pass
+                elif (the_source is None and
+                      the_full_model is not None):
+                    cmd = "set_full_model(%s, %s)" % (cmd_id, the_full_model.name)
+                elif (the_source is not None and
+                      the_full_model is None):
+                    cmd = "set_source(%s, %s)" % (cmd_id, self.the_source.name)
+                elif (the_source is not None and
+                    the_full_model is not None):
+                    if (repr(the_source) == repr(the_full_model)):
+                        cmd = "set_full_model(%s, %s)" % (cmd_id, the_full_model.name)
+                    else:
+                        cmd = "set_source(%s, %s)" % (cmd_id, self.the_source.name)
                 else:
-                    cmd = "set_source(%s, %s)" % (cmd_id, self.get_source(id).name)
+                    # You can't actually get here
+                    cmd=""
+                    pass
                 _send_to_outfile(cmd, outfile)
+                _send_to_outfile("", outfile)
             except:
                 pass
 
             # If any pileup models, try to set them.  If not, just pass.
             try:
-                _send_to_outfile("\n######### Set Pileup Models\n", outfile)
                 cmd = "set_pileup_model(%s, %s)" % (cmd_id, self.get_pileup_model(id).name)
                 _send_to_outfile(cmd, outfile)
             except:
@@ -9024,7 +9117,6 @@ class Session(sherpa.ui.utils.Session):
             # to distinguish cases where background "source" model is
             # different from whole background model.
             try:
-                _send_to_outfile("\n######### Set Background Models\n", outfile)
                 bids = self.list_bkg_ids(id)
                 cmd_bkg_id = ""
                 for bid in bids:
@@ -9033,12 +9125,571 @@ class Session(sherpa.ui.utils.Session):
                     else:
                         cmd_bkg_id = "%s" % bid
 
-                    if (repr(self.get_bkg_model(id, bid)) ==
-                        repr(self.get_bkg_source(id, bid))):
-                        cmd = "set_bkg_full_model(%s, %s, bkg_id=%s)" % (cmd_id, self.get_bkg_model(id, bid).name, cmd_bkg_id)
+                    the_bkg_source = None
+                    the_bkg_full_model = None
+                    try:
+                        the_bkg_source = self.get_bkg_source(bid)
+                    except:
+                        the_bkg_source = None
+                        pass
+
+                    try:
+                        the_bkg_full_model = self.get_bkg_model(id)
+                    except:
+                        the_bkg_full_model = None
+                        pass
+
+                    if (the_bkg_source is None and
+                        the_bkg_full_model is None):
+                        cmd=""
+                        pass
+                    elif (the_bkg_source is None and
+                          the_bkg_full_model is not None):
+                        cmd = "set_bkg_full_model(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_full_model.name, cmd_bkg_id)
+                    elif (the_bkg_source is not None and
+                          the_bkg_full_model is None):
+                        cmd = "set_bkg_source(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_source.name, cmd_bkg_id)
+                    elif (the_bkg_source is not None and
+                          the_bkg_full_model is not None):
+                        if (repr(the_bkg_source) == repr(the_bkg_full_model)):
+                            cmd = "set_bkg_full_model(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_full_model.name, cmd_bkg_id)
+                        else:
+                            cmd = "set_bkg_source(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_source.name, cmd_bkg_id)
                     else:
-                        cmd = "set_bkg_source(%s, %s, bkg_id=%s)" % (cmd_id, self.get_bkg_source(id, bid).name, cmd_bkg_id)
+                        # You can't actually get here
+                        cmd=""
+                        pass
                     _send_to_outfile(cmd, outfile)
+                    _send_to_outfile("", outfile)
+
+            except:
+                pass
+
+        # Save XSPEC settings if XSPEC module has been loaded.
+        if (hasattr(sherpa.astro, "xspec")):
+            _send_to_outfile("\n######### XSPEC Module Settings\n", outfile)
+            xspec_state = sherpa.astro.xspec.get_xsstate()
+
+            cmd = "set_xschatter(%d)" % xspec_state["chatter"]
+            _send_to_outfile(cmd, outfile)
+            cmd = "set_xsabund(\"%s\")" % xspec_state["abund"]
+            _send_to_outfile(cmd, outfile)
+            cmd = "set_xscosmo(%g, %g, %g)" % (xspec_state["cosmo"][0],
+                                               xspec_state["cosmo"][1],
+                                               xspec_state["cosmo"][2])
+            _send_to_outfile(cmd, outfile)
+            cmd = "set_xsxsect(\"%s\")" % xspec_state["xsect"]
+            _send_to_outfile(cmd, outfile)
+            for name in xspec_state["modelstrings"].keys():
+                cmd = "set_xsxset(\"%s\", \"%s\")" % (name,
+                                                      xspec_state["modelstrings"][name])
+                _send_to_outfile(cmd, outfile)
+
+
+
+
+
+
+    def save_session(self, outfile=None, clobber=False):
+
+        # Send output to stdout, or file
+
+        def _send_to_outfile(all, filename=None):
+            if all is None:
+                return
+            try:
+                if filename is None:
+                    print all
+                else:
+                    outfile = file(filename, 'a')
+                    print >> outfile, all
+            except:
+                raise
+
+        # a helper function to print parameter attributes as we wish
+        def _print_par(par):
+            linkstr = ""
+            if par.link is not None:
+                linkstr = "\nlink(%s, %s)\n" % (par.fullname, par.link.fullname)
+
+            unitstr = ""
+            if (type(par.units) == str):
+                unitstr = "\"%s\"" % par.units
+            
+            return ((('%s.default_val = %s\n' +
+                      '%s.default_min = %s\n' +
+                      '%s.default_max = %s\n' +
+                      '%s.val     = %s\n' +
+                      '%s.min     = %s\n' +
+                      '%s.max     = %s\n' +
+                      '%s.units   = %s\n' +
+                      '%s.frozen  = %s\n' ) %
+                     (par.fullname, repr(par.default_val),
+                      par.fullname, repr(par.default_min),
+                      par.fullname, repr(par.default_max),
+                      par.fullname, repr(par.val),
+                      par.fullname, repr(par.min),
+                      par.fullname, repr(par.max),
+                      par.fullname, unitstr,
+                      par.fullname, par.frozen)), linkstr)
+        
+        # Check output file can be written to
+
+        clobber=sherpa.utils.bool_cast(clobber)
+        if (type(outfile) != str and outfile != None):
+            raise ArgumentTypeErr('badarg', 'string or None')
+        if (type(outfile) == str and os.path.isfile(outfile) and not clobber):
+            raise IOErr('filefound', outfile)
+
+        # Import numpy
+        _send_to_outfile("import numpy", outfile)
+
+        # Save data files
+
+        _send_to_outfile("\n######### Load Data Sets\n", outfile)
+        dids = self.list_data_ids()
+
+	def get_logged_call(call_name, id=None):
+		if id is not None:
+			if self._calls_tracker.has_key(id) and self._calls_tracker[id].has_key(call_name):
+				return self._calls_tracker[id][call_name]
+		else:
+			if self._calls_tracker.has_key(call_name):
+				return self._calls_tracker[call_name]
+        cmd_id = ""
+        cmd_resp_id = ""
+        cmd_bkg_id = ""
+    
+        for id in dids:
+            # But if id is a string, then quote as a string
+            # But what about the rest of any possible load_data() options;
+            # how do we replicate the optional keywords that were possibly
+            # used?  Store them with data object?
+            if (type(id) == str):
+                cmd_id = "\"%s\"" % id
+            else:
+                cmd_id = "%s" % id
+
+            cmd = get_logged_call('load_data', id)
+            _send_to_outfile(cmd, outfile)
+
+            # Set physical or WCS coordinates here if applicable
+            # If can't be done, just pass to next
+            try:
+                _send_to_outfile("\n######### Set Image Coordinates \n", outfile)
+                cmd = get_logged_call('set_coord', id)
+                _send_to_outfile(cmd, outfile)
+            except:
+                pass
+        
+            # PHA attributes; group data if applicable
+            try:
+                # Only store group flags and quality flags if they were changed
+                # from flags in the file
+                if (self.get_data(id)._original_groups == False):
+                    if (self.get_data(id).grouping != None):
+                        _send_to_outfile("\n######### Data Group Flags\n", outfile)
+			cmd = get_logged_call('set_grouping')
+                        cmd = "set_grouping(%s, " % cmd_id
+                        cmd = cmd + "val=numpy.array(" + repr(self.get_grouping(id).tolist()) + ", numpy." + str(self.get_grouping(id).dtype) + "))"
+                        _send_to_outfile(cmd, outfile)
+                    if (self.get_data(id).quality != None):
+                        _send_to_outfile("\n######### Data Quality Flags\n", outfile)
+                        cmd = "set_quality(%s, " % cmd_id
+                        cmd = cmd + "val=numpy.array(" + repr(self.get_quality(id).tolist()) + ", numpy." + str(self.get_quality(id).dtype) + "))"
+                        _send_to_outfile(cmd, outfile)
+                # End check for original groups and quality flags
+                if (self.get_data(id).grouped == True):
+                    cmd = "if (get_data(%s).grouping != None and get_data(%s).grouped == False):" % (cmd_id, cmd_id)
+                    _send_to_outfile(cmd, outfile)
+                    _send_to_outfile("\t######### Group Data", outfile)
+                    cmd = "\tgroup(%s)" % cmd_id
+                    _send_to_outfile(cmd, outfile)                
+            except:
+                pass
+
+            # Add responses and ARFs, if any
+            try:
+                _send_to_outfile("\n######### Data Spectral Responses\n", outfile)
+                rids = self.list_response_ids(id)
+                cmd_resp_id = ""
+
+                for rid in rids:
+                    if (type(rid) == str):
+                        cmd_resp_id = "\"%s\"" % rid
+                    else:
+                        cmd_resp_id = "%s" % rid
+
+                    try:
+                        arf = self.get_arf(id, rid)
+                        cmd = "load_arf(%s,\"%s\",%s)" % (cmd_id, arf.name, cmd_resp_id)
+                        _send_to_outfile(cmd, outfile)
+                    except:
+                        pass
+
+                    try:
+                        rmf = self.get_rmf(id, rid)
+                        cmd = "load_rmf(%s,\"%s\",%s)" % (cmd_id, rmf.name, cmd_resp_id)
+                        _send_to_outfile(cmd, outfile)
+                    except:
+                        pass
+            except:
+                pass
+
+            # Check if this data set has associated backgrounds
+            try:
+                _send_to_outfile("\n######### Load Background Data Sets\n", outfile)
+                bids = self.list_bkg_ids(id)
+                cmd_bkg_id = ""
+                for bid in bids:
+                    if (type(bid) == str):
+                        cmd_bkg_id = "\"%s\"" % bid
+                    else:
+                        cmd_bkg_id = "%s" % bid
+                    cmd = "load_bkg(%s,\"%s\", bkg_id=%s)" % (cmd_id, self.get_bkg(id,bid).name, cmd_bkg_id)
+                    _send_to_outfile(cmd, outfile)
+
+                    # Group data if applicable
+                    try:
+                        # Only store group flags and quality flags if they were changed
+                        # from flags in the file
+                        if (self.get_bkg(id, bid)._original_groups == False):
+                            if (self.get_bkg(id, bid).grouping != None):
+                                _send_to_outfile("\n######### Background Group Flags\n", outfile)
+                                cmd = "set_grouping(%s, " % cmd_id
+                                cmd = cmd + "val=numpy.array(" + repr(self.get_grouping(id).tolist()) + ", numpy." + str(self.get_grouping(id, bid).dtype) + "), bkg_id=" + cmd_bkg_id + ")"
+                                _send_to_outfile(cmd, outfile)
+                            if (self.get_bkg(id, bid).quality != None):
+                                _send_to_outfile("\n######### Background Quality Flags\n", outfile)
+                                cmd = "set_quality(%s, " % cmd_id
+                                cmd = cmd + "val=numpy.array(" + repr(self.get_quality(id).tolist()) + ", numpy." + str(self.get_quality(id, bid).dtype) + "), bkg_id=" + cmd_bkg_id + ")"
+                                _send_to_outfile(cmd, outfile)
+                        # End check for original groups and quality flags
+                        if (self.get_bkg(id, bid).grouped == True):
+                            cmd = "if (get_bkg(%s,%s).grouping != None and get_bkg(%s,%s).grouped == False):" % (cmd_id, cmd_bkg_id, cmd_id, cmd_bkg_id)
+                            _send_to_outfile(cmd, outfile)
+                            _send_to_outfile("\t######### Group Background", outfile)
+                            cmd = "\tgroup(%s,%s)" % (cmd_id, cmd_bkg_id)
+                            _send_to_outfile(cmd, outfile)
+                    except:
+                        pass
+                
+                    # Load background response, ARFs if any
+                    _send_to_outfile("\n######### Background Spectral Responses\n", outfile)
+                    rids = self.list_response_ids(id, bid)
+                    cmd_resp_id = ""
+                    for rid in rids:
+                        if (type(rid) == str):
+                            cmd_resp_id = "\"%s\"" % rid
+                        else:
+                            cmd_resp_id = "%s" % rid
+
+                        try:
+                            arf = self.get_arf(id, rid, bid)
+                            cmd = "load_arf(%s,\"%s\",%s,%s)" % (cmd_id, arf.name, cmd_resp_id, cmd_bkg_id)
+                            _send_to_outfile(cmd, outfile)
+                        except:
+                            pass
+
+                        try:
+                            rmf = self.get_rmf(id, rid, bid)
+                            cmd = "load_rmf(%s,\"%s\",%s,%s)" % (cmd_id, rmf.name, cmd_resp_id, cmd_bkg_id)
+                            _send_to_outfile(cmd, outfile)
+                        except:
+                            pass
+                                                      
+            except:
+                pass
+
+            # Set energy units if applicable
+            # If can't be done, just pass to next
+            try:
+                _send_to_outfile("\n######### Set Energy or Wave Units\n", outfile)
+                units = self.get_data(id).units
+                rate = self.get_data(id).rate
+                if (rate == True):
+                    rate = "\"rate\""
+                else:
+                    rate = "\"counts\""
+                factor = self.get_data(id).plot_fac
+                cmd = "set_analysis(%s, %s, %s, %s)" % (cmd_id,
+                                                                repr(units),
+                                                                rate,
+                                                                repr(factor))
+                _send_to_outfile(cmd, outfile)
+            except:
+                pass
+
+            # Subtract background data if applicable
+            try:
+                if (self.get_data(id).subtracted == True):
+                    cmd = "if (get_data(%s).subtracted == False):" % cmd_id
+                    _send_to_outfile(cmd, outfile)
+                    _send_to_outfile("\t######### Subtract Background Data", outfile)
+                    cmd = "\tsubtract(%s)" % cmd_id
+                    _send_to_outfile(cmd, outfile)
+            except:
+                pass
+
+            # Set filter if applicable
+            try:
+                _send_to_outfile("\n######### Filter Data\n", outfile)
+                if (len(self.get_data(id).get_filter()) > 0):
+                    filter = self.get_data(id).get_filter()
+                    if (len(self.get_data(id).get_dims()) == 1):
+                        cmd = "notice_id(%s,\"%s\")" % (cmd_id, filter)
+                        _send_to_outfile(cmd, outfile)
+                    if (len(self.get_data(id).get_dims()) == 2):
+                        cmd = "notice2d_id(%s,\"%s\")" % (cmd_id, filter)
+                        _send_to_outfile(cmd, outfile)
+            except:
+                pass
+        
+        _send_to_outfile("", outfile)
+
+        # Save statistic
+
+        _send_to_outfile("\n######### Set Statistic\n", outfile)
+        cmd = "set_stat(\"%s\")" % self.get_stat_name()
+        _send_to_outfile(cmd, outfile)
+        _send_to_outfile("", outfile)
+
+        # Save fitting method
+
+        _send_to_outfile("\n######### Set Fitting Method\n", outfile)
+        cmd = "set_method(\"%s\")" % self.get_method_name()
+        _send_to_outfile(cmd, outfile)
+        _send_to_outfile("", outfile)
+
+        mdict = self.get_method_opt()
+        for key in mdict:
+            val = mdict.get(key)
+            cmd = "set_method_opt(\"%s\", %s)" % (key, val)
+            _send_to_outfile(cmd, outfile)
+        _send_to_outfile("", outfile)
+
+        # Save iterative fitting method (if any)
+        if (self.get_iter_method_name() != 'none'):
+            _send_to_outfile("\n######### Set Iterative Fitting Method\n", outfile)
+            cmd = "set_iter_method(\"%s\")" % self.get_iter_method_name()
+            _send_to_outfile(cmd, outfile)
+            _send_to_outfile("", outfile)
+
+            mdict = self.get_iter_method_opt()
+            for key in mdict:
+                val = mdict.get(key)
+                cmd = "set_iter_method_opt(\"%s\", %s)" % (key, val)
+                _send_to_outfile(cmd, outfile)
+            _send_to_outfile("", outfile)
+
+        # Save all model components
+
+        # Have to call elements in list in reverse order (item at end of
+        # list was model first created), so that we get links right, if any
+
+        # To recreate attributes, print out dictionary as ordered pairs,
+        # for each parameter
+
+        _send_to_outfile("\n######### Set Model Components and Parameters\n", outfile)
+        all_model_components = self.list_model_components()
+        all_model_components.reverse()
+
+        # If there are any links between parameters, store link commands here
+        # Then, *after* processing all models in the for loop below, send
+        # link commands to outfile -- *all* models need to be created before
+        # *any* links between parameters can be established.
+        linkstr = ""
+        for mod in all_model_components:
+
+            # get actual model instance from the name we are given
+            # then get model type, and name of this instance.
+            mod = eval(mod)
+            typename = mod.type
+            modelname = mod.name.partition(".")[2]
+
+            # Special cases:
+
+            # account for PSF creation elsewhere (above, with load_data
+            # commands);
+
+            # for table models, use "load_table_model", to ensure we
+            # add to lists of known models *and* separate list of
+            # tabel models;
+
+            # skip user models entirely, as they require importation of
+            # user modules, beyond scope of this script.
+        
+            if (typename != "psfmodel" and typename != "tabelmodel" and
+                typename != "usermodel"):
+                # Normal case:  create an instance of the model.
+                cmd = "eval(\"%s.%s\")" % (typename, modelname)
+                _send_to_outfile(cmd, outfile)
+            if (typename == "psfmodel"):
+                cmd = "load_psf(\"%s\", \"%s\")" % (mod._name, mod.kernel.name)
+                _send_to_outfile(cmd, outfile)
+                try:
+                    psfmod = self.get_psf(id)
+                    cmd = "set_psf(%s, %s)" % (cmd_id, psfmod._name)
+                    _send_to_outfile(cmd, outfile)
+                except:
+                    pass
+            if (typename == "tablemodel"):
+                # Create table model with load_table_model
+                cmd = "load_table_model(\"%s\", \"%s\")" % (modelname , mod.filename)
+                _send_to_outfile(cmd, outfile)
+
+            if (typename == "convolutionkernel"):
+                # Create general convolution kernel with load_conv
+                cmd = "load_conv(\"%s\", \"%s\")" % (modelname , mod.kernel.name)
+                _send_to_outfile(cmd, outfile)
+
+            if (typename == "usermodel"):
+                # Skip user models -- don't create, don't set parameters
+                # Go directly to next model in the model component list.
+                _send_to_outfile("WARNING: User model not saved, add any user model to save file manually\n", outfile)
+                continue
+
+            if (hasattr(mod, "integrate") == True):
+                cmd = "%s.integrate = %s" % (modelname, mod.integrate)
+                _send_to_outfile(cmd, outfile)
+                _send_to_outfile("", outfile)
+
+            from sherpa.models import Parameter
+            for par in mod.__dict__.values():
+                if (type(par) == Parameter or
+                    issubclass(Parameter, type(par)) == True):
+                    par_attributes, par_linkstr = _print_par(par)
+                    _send_to_outfile(par_attributes, outfile)
+                    linkstr = linkstr + par_linkstr
+            # If the model is a PSFModel, could have special
+            # attributes "size" and "center" -- if so, record them.
+            if (typename == "psfmodel"):
+                if (hasattr(mod,"size") == True):
+                    cmd = "%s.size = %s" % (modelname, repr(mod.size))
+                    _send_to_outfile(cmd, outfile)
+                    _send_to_outfile("", outfile)
+                if (hasattr(mod,"center") == True):
+                    cmd = "%s.center = %s" % (modelname, repr(mod.center))
+                    _send_to_outfile(cmd, outfile)
+                    _send_to_outfile("", outfile)
+
+            
+
+        # If there were any links made between parameters, send those
+        # link commands to outfile now; else, linkstr is just an empty string
+        _send_to_outfile(linkstr, outfile)
+        
+        # Save all source, pileup and background models
+        
+        _send_to_outfile("\n######### Set Source, Pileup and Background Models\n", outfile)
+        for id in dids:
+            if (type(id) == str):
+                cmd_id = "\"%s\"" % id
+            else:
+                cmd_id = "%s" % id
+            
+            # If a data set has a source model associated with it,
+            # set that here -- try to distinguish cases where
+            # source model is different from whole model.
+            # If not, just pass
+            try:
+                the_source = None
+                the_full_model = None
+                try:
+                    the_source = self.get_source(id)
+                except:
+                    the_source = None
+                    pass
+
+                try:
+                    the_full_model = self.get_model(id)
+                except:
+                    the_full_model = None
+                    pass
+
+                if (the_source is None and
+                    the_full_model is None):
+                    cmd=""
+                    pass
+                elif (the_source is None and
+                      the_full_model is not None):
+                    cmd = "set_full_model(%s, %s)" % (cmd_id, the_full_model.name)
+                elif (the_source is not None and
+                      the_full_model is None):
+                    cmd = "set_source(%s, %s)" % (cmd_id, self.the_source.name)
+                elif (the_source is not None and
+                    the_full_model is not None):
+                    if (repr(the_source) == repr(the_full_model)):
+                        cmd = "set_full_model(%s, %s)" % (cmd_id, the_full_model.name)
+                    else:
+                        cmd = "set_source(%s, %s)" % (cmd_id, self.the_source.name)
+                else:
+                    # You can't actually get here
+                    cmd=""
+                    pass
+                _send_to_outfile(cmd, outfile)
+                _send_to_outfile("", outfile)
+            except:
+                pass
+
+            # If any pileup models, try to set them.  If not, just pass.
+            try:
+                cmd = "set_pileup_model(%s, %s)" % (cmd_id, self.get_pileup_model(id).name)
+                _send_to_outfile(cmd, outfile)
+            except:
+                pass
+        
+        
+            # Set background models (if any) associated with backgrounds
+            # tied to this data set -- if none, then pass.  Again, try
+            # to distinguish cases where background "source" model is
+            # different from whole background model.
+            try:
+                bids = self.list_bkg_ids(id)
+                cmd_bkg_id = ""
+                for bid in bids:
+                    if (type(bid) == str):
+                        cmd_bkg_id = "\"%s\"" % bid
+                    else:
+                        cmd_bkg_id = "%s" % bid
+
+                    the_bkg_source = None
+                    the_bkg_full_model = None
+                    try:
+                        the_bkg_source = self.get_bkg_source(bid)
+                    except:
+                        the_bkg_source = None
+                        pass
+
+                    try:
+                        the_bkg_full_model = self.get_bkg_model(id)
+                    except:
+                        the_bkg_full_model = None
+                        pass
+
+                    if (the_bkg_source is None and
+                        the_bkg_full_model is None):
+                        cmd=""
+                        pass
+                    elif (the_bkg_source is None and
+                          the_bkg_full_model is not None):
+                        cmd = "set_bkg_full_model(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_full_model.name, cmd_bkg_id)
+                    elif (the_bkg_source is not None and
+                          the_bkg_full_model is None):
+                        cmd = "set_bkg_source(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_source.name, cmd_bkg_id)
+                    elif (the_bkg_source is not None and
+                          the_bkg_full_model is not None):
+                        if (repr(the_bkg_source) == repr(the_bkg_full_model)):
+                            cmd = "set_bkg_full_model(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_full_model.name, cmd_bkg_id)
+                        else:
+                            cmd = "set_bkg_source(%s, %s, bkg_id=%s)" % (cmd_id, the_bkg_source.name, cmd_bkg_id)
+                    else:
+                        # You can't actually get here
+                        cmd=""
+                        pass
+                    _send_to_outfile(cmd, outfile)
+                    _send_to_outfile("", outfile)
+
             except:
                 pass
 

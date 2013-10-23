@@ -1683,7 +1683,7 @@ class DataIMG(Data2D):
         # Destroys original data to conserve memory for big imgs
         good = ('logical','image','physical','world','wcs')
         if coord not in good:
-            raise DataErr('bad', 'coordinates', coord)
+            raise DataErr('badchoices', 'coordinates', coord, ", ".join(good))
 
         if coord.startswith('wcs'):
             coord = 'world'

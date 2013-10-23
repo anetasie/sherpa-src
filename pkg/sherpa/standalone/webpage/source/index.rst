@@ -47,57 +47,56 @@ For detailed documentation see:
 http://cxc.cfa.harvard.edu/sherpa
 
 
-New Features in Version 4.4.1 Patch
-===================================
+New Features in Version 4.5.0
+=============================
 
- * Support for XSPEC 12.7.1 has been added.  Interfaces to the
-   following additive models has been provided:
+ * Many updates for dynamic grouping functions.
 
-   * xseplogpar
-   * xsgadem
-   * xsvgadem
-   * xslogpar
-   * xsoptxagn
-   * xsoptxagnf
-   * xspexmon
+ * The Sersic2d model has been added.  This model is a generalization
+   of the de Vaucouleurs profile (i.e., the exponent is allowed to be
+   values other than 4).
 
+ * A new function, sample_flux(), has been added to calculate the
+   unabsorbed energy flux due to a Sherpa model.  It returns a sample
+   of parameters with a corresponding flux and a flux uncertainty for
+   a model component or a combination of model components.  The model
+   components have to be previously defined and used in the fit.  The
+   samples are generated from the multi-variate normal distributions
+   with the scales defined by covariance (if at the best fit) or
+   supplied (as "scales").  The flux is calculated for each set of new
+   parameters.  The returned flux value is given by a sample's median
+   with the lower and upper quantiles defined by the confidence level
+   supplied to the function.
+
+ * To simulate X-ray spectra, the function fake_pha() has been updated
+   to include background counts at the user's discretion.  If the user
+   chooses to include background counts that had been read in with a
+   previous PHA file, then the background counts are appropriately
+   scaled, a Poisson draw is taken of the scaled background counts,
+   and then that is added to the simulated source counts.  (If there
+   are multiple backgrounds, then the average of the backgrounds is
+   added to the simulated source counts.)
+ 
+ * Several corrections were made to formulas in the following
+   sherpa.astro.optical models:
+
+   AbsorptionEdge
+   AbsorptionGaussian
+   AbsorptionVoigt
+   EmissionGaussian
+   EmissionLorentz
+   EmissionVoigt
+   OpticalGaussian
+  
  * See the release notes NOTES_
 
     
-Features In Version 4.4
-=======================
-
- * 24 new optical models for astronomical data, in module
-   sherpa.astro.optical.
-
- * A new template model, for comparing 1-D data to libraries of
-   precalculated models.
-
- * The pyBLoCXS module is now integrated into Sherpa. pyBLoCXS is a
-   sophisticated Markov chain Monte Carlo (MCMC) based algorithm
-   designed to carry out Bayesian Low-Count X-ray Spectral (BLoCXS)
-   analysis in the Sherpa environment.
-
- * There is a new PPP statistic function, plot_pvalue(), to compute
-    the likelihood ratios of the null and the alternative models.
-
- * Many significant improvements to functions ``set_full_model()`` and
-   ``set_full_bkg_model()``, allowing users to explicitly define
-   instrument responses and convolutions that are applied to specified
-   model components. Instrument responses, PSF models and table models
-   may be used in model expressions defined with these functions.
-
- * Many bug fixes.
-
- * See a complete list of features in the release notes NOTES4.4.0_.
-
-
 Dependencies
 ============
 
 The new Sherpa can be downloaded, built, installed, and used independently of
 CIAO.  I/O support and plotting can be supplemented using PyFITS and
-matplotlib.  The current (Sherpa 4.4.1) source tarball_ has the following
+matplotlib.  The current (Sherpa 4.5.0) source tarball_ has the following
 prerequisites:
 
 .. _tarball: http://cxc.cfa.harvard.edu/contrib/sherpa/index.html#download
@@ -113,7 +112,9 @@ Compilers:
  * Xcode with gfortran 4.2.3 or later (disk images of gfortran for Mac can be
    found at http://r.research.att.com/tools/)
 
-    - Mac OSX 10.7 Snow Leopard, Xcode 3.2 or later
+    - Mac OSX 10.8 Mountain Lion, Xcode 4.0 or later
+
+    - Mac OSX 10.7 Lion, Xcode 4.0 or later
 
     - Mac OSX 10.6 Snow Leopard, Xcode 3.2 or later
 
@@ -147,7 +148,7 @@ Optional:
   and data visualization.
 
 
- :IPython 0.10 [ipy]_: IPython provides a nicer interpreter interface with readline
+ :IPython 0.13 [ipy]_: IPython provides a nicer interpreter interface with readline
   support compared to regular Python.
 
 
@@ -169,7 +170,7 @@ Optional:
   to communicate with DS9.
 
 
- :XSPEC 12.7.0 [xspec]_: The XSPEC spectral models are available in Sherpa by
+ :XSPEC 12.7.1 [xspec]_: The XSPEC spectral models are available in Sherpa by
   linking to certain dynamic libraries found in an XSPEC installation.
 
 
@@ -177,10 +178,10 @@ Optional:
 Download
 ========
 
-Current version **4.4.1** June 27, 2012
+Current version **4.5.0** December 13, 2012
 
  ==========================  ==================================================
- source tarball              sherpa-4.4.1.tar.gz_
+ source tarball              sherpa-4.5.0.tar.gz_
  Release Notes               NOTES_
  ==========================  ==================================================
 
@@ -188,11 +189,9 @@ For previous versions see downloads_
 
 .. _downloads: http://cxc.cfa.harvard.edu/contrib/sherpa/downloads
 
-.. _sherpa-4.4.1.tar.gz: http://cxc.cfa.harvard.edu/contrib/sherpa/sherpa-4.4.1.tar.gz
+.. _sherpa-4.5.0.tar.gz: http://cxc.cfa.harvard.edu/contrib/sherpa/sherpa-4.5.0.tar.gz
 
-.. _NOTES: http://cxc.cfa.harvard.edu/contrib/sherpa/NOTES-4.4.1.txt
-
-.. _NOTES4.4.0: http://cxc.cfa.harvard.edu/contrib/sherpa/NOTES-4.4.0.txt
+.. _NOTES: http://cxc.cfa.harvard.edu/contrib/sherpa/NOTES-4.5.0.txt
 
 
 Build and Install
@@ -200,8 +199,8 @@ Build and Install
 
 To build and install the package, do the following ::
 
-  $ tar xzf sherpa-4.4.1.tar.gz
-  $ cd sherpa-4.4.1
+  $ tar xzf sherpa-4.5.0.tar.gz
+  $ cd sherpa-4.5.0
   $ python setup.py [config-vars] install --prefix=<dest-dir>
 
 

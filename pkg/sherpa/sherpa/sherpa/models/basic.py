@@ -616,7 +616,7 @@ class Gauss2D(ArithmeticModel):
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999,
                                frozen=True)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians', frozen=True)
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name,
@@ -652,7 +652,7 @@ class NormGauss2D(ArithmeticModel):
         self.ypos = Parameter(name, 'ypos', 0)
         self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999,
                                frozen=True)
-        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+        self.theta = Parameter(name, 'theta', 0, -2*numpy.pi, 2*numpy.pi, -2*numpy.pi,
                                4*numpy.pi, 'radians', frozen=True)
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name,

@@ -59,6 +59,8 @@ include $(MK_TOP)/Makefile.all
 install: announce1
 	cd tests; $(MAKE) $(MKMACROS) install
 
+uninstall: announce1
+	cd tests; $(MAKE) $(MKMACROS) uninstall
 
 announce1:
 	@echo "   /---------------------------------------------------------\ "

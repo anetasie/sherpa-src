@@ -35,7 +35,7 @@ usage()
 
 banner()
 {
-   default_versionstr="Sherpa 4.5.1"
+   default_versionstr="Sherpa 4.6.1"
    echo "-----------------------------------------------------"
    echo "Welcome to Sherpa: CXC's Modeling and Fitting Package"
    echo "-----------------------------------------------------"
@@ -43,7 +43,7 @@ banner()
        if [ -r ${ASCDS_INSTALL}/VERSION ]; then
 	   numfields=`head -n 1 $ASCDS_INSTALL/VERSION | awk '{print NF}'`
 	   if [ $numfields = "6" ]; then
-	       echo "CIAO 4.5 Sherpa version 1 `awk '{print $3" "$4" "$5" "$6}' ${ASCDS_INSTALL}/VERSION`"
+	       echo "CIAO 4.6 Sherpa version 1 `awk '{print $3" "$4" "$5" "$6}' ${ASCDS_INSTALL}/VERSION`"
 	   else
 	       echo $default_versionstr
 	   fi

@@ -37,6 +37,8 @@ warning = logging.getLogger(__name__).warning
 from sherpa import get_config
 from ConfigParser import ConfigParser
 
+import readline, inspect
+
 config = ConfigParser()
 config.read(get_config())
 # Suppress printing of traceback in high-level UI.
@@ -213,7 +215,28 @@ def _assign_model_to_main(name, model):
 # Session
 #
 ###############################################################################
+class loggable(object):
+	def __init__(self, with_id=False, with_keyword=False, with_name=None):
+		self.with_id = with_id
+		self.with_keyword = with_keyword
+		self.with_name = with_name
 
+	def __call__(self, func):
+		if self.with_name:
+			name = self.with_name
+		else:
+			name = func.__name__
+		def log_decorator(*args, **kwargs):
+			ret = func(*args, **kwargs)
+			session = args[0]
+			line = readline.get_history_item(readline.get_current_history_length())
+			if self.with_id:
+				the_args = inspect.getcallargs(func, *args, **kwargs)
+				id = the_args['id']
+				if self.with_keyword:    					model = the_args[self.with_keyword]    					if model is None:    						id = None  
+				id = session._fix_id(id)  			    				if id is not None: # otherwise don't do anything and let normal error handling take action					if not session._calls_tracker.has_key(id):						session._calls_tracker[id] = dict()    					session._calls_tracker[id][name] = line
+			else:    				session._calls_tracker[name] = line
+            		return ret		log_decorator._original = func # this is needed because __init__.py will recreate the methods, see that file for info (look up 'decorator')        	return log_decorator
 
 
 class Session(NoNewAttributesAfterInit):
@@ -228,7 +251,10 @@ class Session(NoNewAttributesAfterInit):
         self.clean()
         self._model_types = {}
         self._model_globals = numpy.__dict__.copy()
+	self._calls_tracker = dict()
         NoNewAttributesAfterInit.__init__(self)
+	global _session
+	_session = self
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -1818,6 +1844,7 @@ class Session(NoNewAttributesAfterInit):
         else:
             _check_type(stat, sherpa.stats.Stat, 'stat',
                         'a statistic name or object')
+
         self._current_stat = stat
 
 
@@ -2835,7 +2862,7 @@ class Session(NoNewAttributesAfterInit):
                                            colkeys=colkeys, dstype=dstype,
                                            sep=sep, comment=comment))
 
-
+    ##@loggable(with_id = True)
     def load_arrays(self, id, *args):
         """
         load_arrays
@@ -4096,10 +4123,14 @@ class Session(NoNewAttributesAfterInit):
 
 
     def _get_source(self, id=None):
+        id = self._fix_id(id)
+        mdl = self._models.get(id, None)
+        if mdl is not None:
+            raise IdentifierErr("Convolved model\n'%s'\n is set for dataset %s. You should use get_model instead." % 
+                    (mdl.name, str(id)))
         return self._get_item(id, self._sources, 'source',
                               'has not been set, consider using set_source()' +
                               ' or set_model()')
-
 
     def get_source(self, id=None):
         """
@@ -4209,7 +4240,7 @@ class Session(NoNewAttributesAfterInit):
                     else:
                         break
 
-
+    ##@loggable(with_id=True, with_keyword='model')
     def set_full_model(self, id, model=None):
         """
         set_full_model
@@ -4245,7 +4276,7 @@ class Session(NoNewAttributesAfterInit):
                        'a model object or model expression string')
         self._runparamprompt(model.pars)
 
-
+    ##@loggable(with_id=True, with_keyword="model")
     def set_model(self, id, model=None):
         """
         set_model
@@ -4504,10 +4535,9 @@ class Session(NoNewAttributesAfterInit):
             raise
         return (x,y)
 
-
-
+    ##@loggable()
     def load_template_model(self, modelname, templatefile, dstype=sherpa.data.Data1D,
-                            sep=' ', comment='#', method=sherpa.utils.linear_interp):
+                            sep=' ', comment='#', method=sherpa.utils.linear_interp, template_interpolator_name=None):
 
         if sherpa.utils.is_binary_file(templatefile):
             raise sherpa.utils.err.IOErr('notascii', templatefile)
@@ -4568,10 +4598,27 @@ class Session(NoNewAttributesAfterInit):
         assert( len(templates) == parvals.shape[0] )
 
         templatemodel = sherpa.models.create_template_model(modelname, parnames, parvals, 
-                                                            templates)
+                                                            templates, template_interpolator_name)
         self._tbl_models.append(templatemodel)
         self._add_model_component(templatemodel)
 
+    def fit_template(self, id=None, model=None, parvals=None):
+	if model is None:
+		id, model = model, id
+	
+	id = self._fix_id(id)
+	if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+	self.set_model(id, model)
+	warning("Setting the model to gridsearch")
+	self.set_method("gridsearch")
+	parvals = parvals if parvals is not None else model.parvals
+	self.set_method_opt("sequence", parvals)
+	self.fit(id)
+
+    ##@loggable()
+    def load_template_interpolator(self, name, interpolator_class, **kwargs):
+	sherpa.models.template.interpolators[name] = (interpolator_class, kwargs)
 
 
     def load_table_model(self, modelname, filename, ncols=2, colkeys=None,
@@ -4629,6 +4676,7 @@ class Session(NoNewAttributesAfterInit):
         self._tbl_models.append(tablemodel)
         self._add_model_component(tablemodel)
 
+    ##@loggable()
     def load_user_model(self, func, modelname, filename=None, ncols=2,
                         colkeys=None, dstype=sherpa.data.Data1D,
                         sep=' ', comment='#'):
@@ -4687,6 +4735,7 @@ class Session(NoNewAttributesAfterInit):
                                                     dstype, sep, comment)
         self._add_model_component(usermodel)
 
+    ##@loggable()
     def add_user_pars(self, modelname, parnames,
                       parvals = None, parmins = None, parmaxs = None,
                       parunits = None, parfrozen = None):
@@ -4838,7 +4887,7 @@ class Session(NoNewAttributesAfterInit):
     # Conv
     #
 
-    
+    ##@loggable()
     def load_conv(self, modelname, filename_or_model, *args, **kwargs):
         """
         load_conv
@@ -4939,7 +4988,7 @@ class Session(NoNewAttributesAfterInit):
         self._add_model_component(psf)
         self._psf_models.append(psf)
 
-
+    ##@loggable(with_id=True, with_keyword='psf')
     def set_psf(self, id, psf=None):
         """
         set_psf
@@ -5361,7 +5410,7 @@ class Session(NoNewAttributesAfterInit):
 
 
     def _get_stat_info(self):
-        
+	
         ids, datasets, models = self._prepare_fit(None)
 
         self._add_extra_data_and_models(ids, datasets, models)
@@ -5374,18 +5423,13 @@ class Session(NoNewAttributesAfterInit):
                 statinfo = f.calc_stat_info()
                 statinfo.name = 'Dataset %s' % (str(id))
                 statinfo.ids = (id,)
-                if d.staterror is not None:
-                    statinfo.statname = 'chi2'
+		
                 output.append(statinfo)
 
         f = self._get_fit_obj(datasets, models, None)
         statinfo = f.calc_stat_info()
         if len(ids) == 1:
             statinfo.name = 'Dataset %s' % str(ids)
-            isSimulFit = isinstance(f.data, sherpa.data.DataSimulFit)
-            if ((isSimulFit and f.data.datasets[0].staterror is not None) or
-                (not isSimulFit and f.data.staterror is not None)):
-                statinfo.statname = 'chi2'
         else:
             statinfo.name = 'Datasets %s' % str(ids).strip("()")
         statinfo.ids = ids
@@ -8445,6 +8489,11 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            get_source_plot, plot_data, plot_fit, plot_fit_resid, plot_fit_delchi
         """
+        id = self._fix_id(id)
+        mdl = self._models.get(id, None)
+        if mdl is not None:
+            raise IdentifierErr("Convolved model\n'%s'\n is set for dataset %s. You should use plot_model instead." % 
+                    (mdl.name, str(id)))
         self._plot(id, self._sourceplot, **kwargs)
 
     def plot_fit(self, id=None, **kwargs):
@@ -10724,3 +10773,14 @@ class Session(NoNewAttributesAfterInit):
            image_xpaget, image_deleteframes
         """
         return sherpa.image.Image.xpaset(arg, data)
+
+#    def log_model_call(self, id, model, func_name):
+#	id_ = id
+#	if model is None:
+#		id_ = None
+#	id_ = self._fix_id(id_)
+#	if not self._calls_tracker.has_key(id_):
+#		self._calls_tracker[id_] = dict()
+#	line = readline.get_history_item(readline.get_current_history_length())
+#	self._calls_tracker[id_][func_name] = line
+

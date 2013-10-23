@@ -60,7 +60,10 @@ def get_region(coord):
 def image(arr, newframe=False, tile=False):
     if not imager.isOpen():
         imager.doOpen()
-    if newframe is True:
+    # Create a new frame if the user requested it, *or* if
+    # there happen to be no DS9 frames.
+    if (newframe is True or
+        imager.xpaget("frame all") == "\n"):
         try:
             imager.xpaset("frame new")
             imager.xpaset("frame last")

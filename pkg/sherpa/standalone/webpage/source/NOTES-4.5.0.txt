@@ -1,0 +1,149 @@
+		      Sherpa 4.5.0 Release Notes
+
+			    12/13/2012 SAO
+
+This document contains release notes for the Sherpa 4.5.0 release,
+December 2012.  This distribution of Sherpa releases the code as a
+standalone Python package.
+
+The following features have been added since the release of Sherpa 4.4.0:
+
+
+Features:
+=========
+
+
+  o A new IPython profile has been added, for use with IPython 0.13.
+
+  o Many updates for dynamic grouping functions have been added.
+    These include:
+
+    - Fixes to retain filters after dynamic grouping, and after
+      calling the group() and ungroup() functions.
+
+    - A new rule, that when a dynamic grouping scheme is applied to a
+      data set, it is also automatically applied to all associated
+      background data sets.  Commands such as:
+
+      group_snr(3)
+
+      now apply this grouping condition to both source and background.
+      It is no longer necessary to manually group the background(s).
+      The filter is also correctly updated for both source and
+      background.
+
+      The user can still set different background grouping schemes.
+      As an example,
+
+      group_snr(3)
+      group_snr(5, bkg_id=1)
+
+      will first group both source and background data sets with 
+      SNR >= 3, and then group the background only with SNR >= 5;
+
+    - Filters can now be defined in channels, when working in channel
+      space, whether the data are grouped or ungrouped.
+
+  o The Sersic2d model has been added.  This model is a generalization
+    of the de Vaucouleurs profile (i.e., the exponent is allowed to be
+    values other than 4).
+
+  o A new function, sample_flux(), has been added to calculate the
+    unabsorbed energy flux due to a Sherpa model.  It returns a sample
+    of parameters with a corresponding flux and a flux uncertainty for
+    a model component or a combination of model components.  The model
+    components have to be previously defined and used in the fit.  The
+    samples are generated from the multi-variate normal distributions
+    with the scales defined by covariance (if at the best fit) or
+    supplied (as "scales").  The flux is calculated for each set of
+    new parameters.  The returned flux value is given by a sample's
+    median with the lower and upper quantiles defined by the
+    confidence level supplied to the function.
+
+  o To simulate X-ray spectra, the function fake_pha() has been
+    updated to include background counts at the user's discretion.  If
+    the user chooses to include background counts that had been read
+    in with a previous PHA file, then the background counts are
+    appropriately scaled, a Poisson draw is taken of the scaled
+    background counts, and then that is added to the simulated source
+    counts.  (If there are multiple backgrounds, then the average of
+    the backgrounds is added to the simulated source counts.)
+
+    The option can used called as shown here:
+
+    load_pha("data.pha")
+    set_source("xsphabs.a1 * xspowerlaw.p1")
+    
+    # To include background counts read in from data file 
+    fake_pha(1,arf=get_arf(),rmf=get_rmf(),exposure=400000,bkg=get_bkg())
+
+    # To include ONLY simulated source counts, no background added
+    fake_pha(1,arf=get_arf(),rmf=get_rmf(),exposure=400000)
+
+  o The following functions for XSPEC convolution models
+    are now accessible through the Sherpa XSPEC module:
+
+      C_cflux
+      C_xsgsmt
+      C_ireflct
+      C_kdblur
+      C_kdblur2
+      C_spinconv
+      C_xslsmt
+      C_PartialCovering
+      C_rdblur
+      C_reflct
+      C_simpl
+      C_zashift
+      C_zmshift
+
+    The convolution models are *not* being made available for fitting
+    in Sherpa.  These XSPEC functions are being made available to
+    support development of corresponding Sherpa models in a future
+    release.
+
+  o Several corrections were made to formulas in the following 
+    sherpa.astro.optical models:
+
+    AbsorptionEdge
+    AbsorptionGaussian
+    AbsorptionVoigt
+    EmissionGaussian
+    EmissionLorentz
+    EmissionVoigt
+    OpticalGaussian
+
+    A misuse of NumPy slices led to incorrect results in these mdoels.
+    Also, AbsorptionEdge was made a multiplicative model,
+    AbsorptionVoigt updated to correctly scale FWHM in both Gaussian
+    and Lorentzian input models, and the EmissionLorentz "kurt",
+    EmissionVoigt "lg" and EmissionGaussian "skew" parameters are now
+    frozen by default.
+
+
+Bugs:
+=====
+
+
+  o 9943  Re: issues with changing grouping and filtering
+  o 10510 usage messages - 'notice' seems too tolerant.
+  o 12224 sample_flux_error
+  o 12618 RFE: flux errors
+  o 12619 Re: RFE: flux errors
+  o 12871 Re: CIAOBETA/CIAOX: notice command and background data
+  o 12987 Re: CIAOT: scale for statistics sampling functions
+  o 12988 Re: CIAOT: scale for statistics sampling functions
+  o 13153 CIAOT: dynamic grouping - Docs and post-CIAO 4.4
+  o 13155 Re: CIAOT: more on grouping/filtering when set_analysis()
+  o 13459 Optical Model Updates in CIAO 4.5
+
+
+Caveats:
+========
+
+
+  o IPython 0.13 profiles are incompatible with the IPython 0.10
+    profile packaged with Sherpa 4.4.0.
+
+    Customizations to user IPython profiles must be rewritten to work
+    with IPython 0.13.
