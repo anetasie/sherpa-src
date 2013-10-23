@@ -11,6 +11,21 @@ TOLFILE=''
 # Synopsis: Sherpa Self Test
 TESTCMD='python -c "import sherpa; sherpa.test()"'
 
+# Find a usable grep command to search log for strings
+# indicating various failures -- if no grep, exit.
+GREPCMD=/bin/grep
+if test ! -x $GREPCMD
+then
+    GREPCMD=/usr/bin/grep
+    if test ! -x $GREPCMD
+    then
+        echo "No usable grep command to test log file"
+        echo "Exiting WITHOUT running Sherpa tests"
+        echo " FAIL"
+        exit 1
+    fi
+fi
+
 # Setup CIAO environment
 #   (replace with variable via configure)
 #
@@ -55,18 +70,25 @@ then
 else
   failure_found=0
   # Hack -- check output log for FAIL string
-  /bin/grep -i "FAIL" $OUTDIR/diff.log > /dev/null 2>&1
+  $GREPCMD -i "FAIL" $OUTDIR/diff.log > /dev/null 2>&1
   if test $? = 0
   then
     failure_found=1
   fi
   printf "."
   # Hack -- check output log for Error string
-  /bin/grep -i "Error" $OUTDIR/diff.log > /dev/null 2>&1
+  $GREPCMD -i "Error" $OUTDIR/diff.log > /dev/null 2>&1
   if test $? = 0
   then
     failure_found=1
   fi
+  # Hack -- check output log for "Library not loaded" string                    
+  $GREPCMD -i "Library not loaded" $OUTDIR/diff.log > /dev/null 2>&1
+  if test $? = 0
+  then
+    failure_found=1
+  fi
+
   if test $failure_found = 1
   then
     fail=1

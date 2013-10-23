@@ -1,0 +1,238 @@
+		      Sherpa 4.4.0 Release Notes
+
+			    12/15/2011 SAO
+
+This document contains release notes for the Sherpa 4.4.0 release,
+December 2011.  This distribution of Sherpa releases the code as a
+standalone Python package.
+
+The following features have been added since the release of Sherpa 4.3.0:
+
+
+Features:
+=========
+
+
+  o The OGIP AREASCAL keyword within Type I and II PHA files 
+    is now supported in Sherpa.
+
+  o Several significant bugs associated with the functions
+    set_full_model() and set_bkg_full_model() have been fixed in this
+    release.  These functions are intended to allow users to define
+    more complex models (i.e., models with some components that are
+    folded through an RMF or a PSF, and other components that are
+    not).
+
+  o Several significant bug fixes associated with modeling and fitting
+    with PSFs have been included.  These are:
+
+    - 2-D PSF kernels can now be larger than the source data (before
+      we restricted the kernel to be equal to or smaller that the
+      source).  FFT padding 2^n occurs using the largest of the two
+      sizes.  The PSF padding is removed down to the size of the
+      source data.
+
+    - A fix to the PSF utility 'normalize'.  It no longer returns NaN
+      when the PSF kernel is all zeros.
+
+    - The WCS in 2-D PSFs kernels is now changed according to
+      subkernel extraction.  In previous versions of Sherpa, the WCS
+      of subkernel images is wrong.  The image sources now line up
+      according to the WCS, consistent with Sherpa 3.4.  NOTE: this
+      fix only affects imaging.  The kernel WCS is unused during
+      fitting.
+  
+    - The normalization of a kernel now occurs before kernel
+      extraction for both file-based and model-based PSFs.
+
+    - The coordinate system of kernel plots/contours is now based on
+      the kernel or source data coordinate system.  Originally, the
+      coordinate system was based on the number of bins in each
+      dimension.
+
+    - The location of model-based PSFs is now updated based on PSF
+      parameters when set_psf() is used to associate the kernel with a
+      source model.  This is simply a convenience if the user forgets
+      to update the kernel model parameters.
+
+  o This release includes major updates to Sherpa's optimization
+    functions.  The Monte Carlo optimization method has been
+    significantly improved, and can now find more reasonable parameter
+    values in cases where it formerly came up against parameter
+    limits.  The optimization method LMDIF has also been updated to
+    avoid getting "stuck" at the parameter space boundaries for
+    certain cases.
+
+  o A new module containing models for use in the optical regime has
+    been added to Sherpa.  A new module, sherpa.astro.optical,
+    contains 24 models that are designed for use with spectra or SEDs
+    at optical wavelengths--which means that where relevant, position,
+    line width, and other similar model parameters have units of
+    Angstroms.
+
+    The new models are:
+
+    AbsorptionEdge
+    AbsorptionGaussian
+    AbsorptionLorentz
+    AbsorptionVoigt
+    AccretionDisk
+    BlackBody
+    Bremsstrahlung
+    BrokenPowerlaw
+    CCM
+    EmissionGaussian
+    EmissionLorentz
+    EmissionVoigt
+    FM
+    LMC
+    LogAbsorption
+    LogEmission
+    OpticalGaussian
+    Polynomial
+    Powerlaw
+    Recombination
+    Seaton
+    SM
+    SMC
+    XGal
+
+    These include continuum models, absorption and emission features,
+    and extinction curves for the ISM at optical and UV wavelengths.
+
+  o There is a new math function, "inverse erf", in sherpa utils
+    (wrapped from cephes).  Useful for converting between confidence
+    limits and confidence interval (sigma/percent).
+
+  o 1-D PSF plots (from file and model) are exclusively scatter plots.
+    (Model PSFs are no longer plotted as a red line).
+
+  o 2-D PSF contours (from file and model) are exclusively scatter
+    plots.  (Model PSFs are no longer plotted as a red contour lines).
+
+  o Sherpa now supports a new template model (an extension of table
+    model).  Sherpa can now read in a collection of templates from a
+    directory full of template files, and can compare a data set to
+    all the templates in that collection.  Sherpa finds the template
+    that best matches the data, and reports back the parameter values
+    associated with that template.
+
+    The files that contain template models can be read into Sherpa via
+    the new "load_template_model()" function, which has a similar
+    signature to the "load_table_model()" function.
+
+
+    load_template_model(modelname, templatefile, dstype=sherpa.data.Data1D,
+                        sep=' ', comment='#', method=sherpa.utils.neville)
+
+    Loads templates listed by a table-of-contents file "templatefile",
+    into a Sherpa template model, "modelname".
+
+  o There is new support to overplot template models with
+    plot_source_component().
+
+  o Sherpa table and template models now support linear,
+    nearest-neighbor, and polynomial interpolation.  (Interpolation is
+    used by both table and template models to match the data grid to
+    the model grid--which must match before the fit statistics can be
+    calculated for fitting.)
+
+  o There is a new grid searching optimization method, called
+    "gridsearch".  The user must provide this method with a parameter
+    space grid to search.  The method will evaluate the fit statistic
+    for each point in the grid; the best match is the grid point with
+    the lowest value of the fit statistic.  The grid search method
+    will report back the parameter values associated with this point.
+
+    The grid search method is meant to be used with the new template
+    model.
+
+  o The pyBLoCXS module is now integrated into Sherpa.  pyBLoCXS is a
+    sophisticated Markov chain Monte Carlo (MCMC) based algorithm
+    designed to carry out Bayesian Low-Count X-ray Spectral (BLoCXS)
+    analysis in the Sherpa environment.  The code is a Python extension
+    to Sherpa that explores parameter space at a suspected minimum
+    using a predefined Sherpa model to high-energy X-ray spectral
+    data.  (See the "New pyBLoCXS Functions" section below for a list
+    of new functions provided by this integration.)
+
+  o There is a new PPP statistic function, plot_pvalue(), to compute
+    the likelihood ratios of the null and the alternative models.
+    This function can help users determine if the fitted model is
+    statistically significant compared to the null model.
+
+
+    plot_pvalue(null_model, alt_model, conv_model=None, id=1,
+                otherids=(), num=500, bins=25, numcores=None, replot=False,
+                overplot=False, clearwindow=True)
+
+    Plots a histogram of likelihood ratios comparing fits of the null
+    model to fits of the alternative model using data faked with
+    Poisson noise.  Computes the likelihood ratio on the real data and
+    computes the p-value.
+
+
+    get_pvalue_plot(null_model=None, alt_model=None, conv_model=None, id=1,
+                    otherids=(), num=500, bins=25, numcores=None, recalc=False)
+
+    Access the histogram plot of the likelihood ratios comparing fits
+    of the null model to fits of the alternative model using faked
+    data with Poisson noise.  Access the likelihood ratio on the real
+    data and the p-value.
+
+
+    get_pvalue_results()
+
+    Access the simulation results of the likelihood ratio test.
+
+  o There are new statistics plot functions associated with the
+    pyBLoCXS module, to plot statistical distribution functions.
+
+    get_pdf_plot()
+    get_cdf_plot()
+    get_trace_plot()
+    get_scatter_plot()
+
+  o Sherpa 4.4.0 has been updated to work with XSPEC 12.7.0.
+
+  o The Sherpa XSPEC module provides interfaces to seven new XSPEC
+    models:
+
+    xsbvvapec
+    xscompth
+    xscplinear
+    xseqpair
+    xseqtherm
+    xsvvapec
+    xszigm
+
+  o The ATOMDB v2.0.1 database is now distributed with XSPEC 12.7.0,
+    and can be used with XSPEC models (such as the APEC models) that
+    depend on the database.
+
+  o PyFITS 3.0 is now supported in the alternate PyFITS I/O backend.
+
+
+Bugs:
+=====
+
+
+The following bugs have been fixed in Sherpa 4.4.0:
+
+  o 12116 BUG: save() does not save the X-Spec abundance setting
+  o 12223 Re: BUG: numerical issues mean powlaw1d results
+  o 12226 RFE: sample_energy_flux()
+  o 12418 Re: sherpa 4.2.2: save_all followed by execfile
+  o 12637 CIAOX: Error while using a file created by save_all()
+  o 12639 Re: CIAOX Test failures
+  o 12642 Re: BUG?: set_full_model and getting an index-out-of-bounds
+  o 12643 Re: CIAOT: multiple data sets - filtering issues
+  o 12646 CIAOT: iterative methods
+  o 12653 plot_*_component() now respect set_*log(), set_*linear()
+  o 12667 support AREASCAL
+  o 12676 Re: set_full_model/set_bkg_full_model
+  o 12710 support plot_* in channel (correctly)
+  o 12717 conf/proj do not respect 'numcores' setting in .sherpa.rc
+  o 12731 Re: log in reg_proj
+  o 12780 Re: can not run sherpa
+  o 12851 Re: sherpa crash with group'ing

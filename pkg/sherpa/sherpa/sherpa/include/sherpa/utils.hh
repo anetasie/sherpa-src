@@ -33,7 +33,7 @@
 #include <limits>
 
 #include <sherpa/constants.hh>
-#include <sherpa/Array2d.hh>
+#include <sherpa/myArray.hh>
 
 #define ACOS(x)			std::acos(x)
 #define ASIN(x)			std::asin(x)

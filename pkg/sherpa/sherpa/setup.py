@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # 
 #  Copyright (C) 2007  Smithsonian Astrophysical Observatory
 #
@@ -209,7 +207,7 @@ if platform.system() == 'Darwin':
     def _universal_flags(self, cmd):
         # These need to come from CCEXTRA_ARGS, without setting
         # LDFLAGS
-        return ['-arch', 'i386', '-arch', 'x86_64']
+        return ['-m64']
 
     from numpy.distutils.fcompiler.gnu import Gnu95FCompiler
     Gnu95FCompiler._universal_flags = _universal_flags
@@ -258,7 +256,7 @@ else:
 sherpa_inc = ['sherpa/include']
 
 header_deps = {
-    'Array2d': (),
+    'myArray': (),
     'array': (),
     'constants': (),
     'extension': ('array',),
@@ -351,6 +349,15 @@ extension_modules = [
                'sherpa/optmethods/src/syminv.f']),
 
 ###############################################################################
+
+##    # sherpa.optmethods._chokkan
+##     Extension('sherpa.optmethods._chokkan',
+##               ['sherpa/optmethods/src/chokkan/_chokkan.cc',
+##                'sherpa/optmethods/src/chokkan/lbfgs.c'],
+##               sherpa_inc + ['sherpa/optmethods/src/chokkan'],
+##               depends=(get_deps(['myArray', 'extension']) +
+##                        ['sherpa/optmethods/src/chokkan/lbfgs.h'])),
+
 ##     # powell: bobyqa & newuoa 
 ##     Extension('sherpa.optmethods._powell',
 ##               ['sherpa/optmethods/src/powell/_powell.pyf',
@@ -371,10 +378,10 @@ extension_modules = [
 ##     # sherpa.optmethods._odrpack
 ##     Extension('sherpa.optmethods._odrpack',
 ##               ['sherpa/optmethods/src/odrpack/_odrpack.pyf',
-##                'sherpa/optmethods/src/odrpack/real_precision.f90',
-##                'sherpa/optmethods/src/odrpack/odrpack.f90',
-##                'sherpa/optmethods/src/odrpack/lpkbls.f90',
-##                'sherpa/optmethods/src/odrpack/odr.f90']),
+##                'sherpa/optmethods/src/odrpack/real_precision.f95',
+##                'sherpa/optmethods/src/odrpack/myodr.f95',
+##                'sherpa/optmethods/src/odrpack/lpkbls.f95',
+##                'sherpa/optmethods/src/odrpack/odr.f95']),
 
 ##     # sherpa.optmethods._port
 ##     Extension('sherpa.optmethods._port',
@@ -382,6 +389,20 @@ extension_modules = [
 ##                'sherpa/optmethods/src/port/port.f',
 ##                'sherpa/optmethods/src/port/myport.f',
 ##                'sherpa/optmethods/src/port/dpptri.f']),
+
+##    # sherpa.optmethods._stogo
+##     Extension('sherpa.optmethods._stogo',
+##              ['sherpa/optmethods/src/StoGo/_stogo.cc',
+##               'sherpa/optmethods/src/StoGo/linalg.cc',
+##               'sherpa/optmethods/src/StoGo/tools.cc'],
+##               depends=(get_deps(['myArray', 'extension']) +
+##                        ['sherpa/include/sherpa/functor.hh',
+##                        'sherpa/optmethods/src/StoGo/linag.h',
+##                        'sherpa/optmethods/src/StoGo/tools.h',
+##                        'sherpa/optmethods/src/StoGo/Local.hh',
+##                        'sherpa/optmethods/src/StoGo/Global.hh'])),
+
+ 
 ###############################################################################
 
     # sherpa.optmethods._saoopt
@@ -390,7 +411,7 @@ extension_modules = [
                'sherpa/optmethods/src/Simplex.cc'],
               sherpa_inc + ['sherpa/utils/src/gsl'],
               libraries=(cpp_libs + ['sherpa']),              
-              depends=(get_deps(['Array2d', 'extension']) +
+              depends=(get_deps(['myArray', 'extension']) +
                        ['sherpa/include/sherpa/fcmp.hh',
                         'sherpa/include/sherpa/MersenneTwister.h',
                         'sherpa/include/sherpa/functor.hh',
@@ -614,13 +635,16 @@ if conf['xspec_library_dir'] is not None:
 #
 ###############################################################################
 
-# CIAO 4.4 release, Sherpa package 1
+# CIAO 4.5 release, Sherpa package 1
 setup(name='sherpa',
-      version='4.4.1',
+      version='4.5.1',
       author='Smithsonian Astrophysical Observatory / Chandra X-Ray Center',
       author_email='cxchelp@head.cfa.harvard.edu',
       url='http://cxc.harvard.edu/sherpa/',
       description='Modeling and fitting package for scientific data analysis',
+      license='GNU GPL v3',
+      long_description='Modeling and fitting package for scientific data analysis',
+      platforms='Linux, Mac OS X, Solaris',
       packages=['sherpa',
                 'sherpa.estmethods',
                 'sherpa.image',

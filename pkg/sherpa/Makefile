@@ -38,7 +38,7 @@ RM_RF = /bin/rm -rf
 FORTRAN_LIB=$(subst -l,,$(word 2,$(F95LIB)))
 FORTRAN_LIB_DIR=$(subst -L,,$(firstword $(F95LIB)))
 
-SETUP_VARS = xspec_library_dir=$(XSPEC12)/base/lib \
+SETUP_VARS = xspec_library_dir=$(XSPEC12_LIB) \
 	cfitsio_lib=$(CFITSIO_LIB_NAME) cfitsio_library_dir=$(CFITSIO)/lib\
 	reg_library_dir=$(LIB_DIR) reg_include_dir=$(INC_DIR) \
 	fftw_library_dir=$(FFTW)/lib fftw_include_dir=$(FFTW)/include \
@@ -97,24 +97,30 @@ SHERPA_SCRIPT_PY = sherpa_py
 
 all: build
 
+build_sherpa:
+	$(SHERPA_SETUP_PY) build
+
 build:
 	@echo ""
 	@echo "   /-------------------------------------------------------\ "
 	@echo "   |                   Building Sherpa                     | "
 	@echo "   \-------------------------------------------------------/ "
 	@echo ""
-	$(SHERPA_SETUP_PY) build
+	$(MAKE) $(MKMACROS) build_sherpa
 	cd tests; $(MAKE) $(MKMACROS)
 	cd doc; $(MAKE) $(MKMACROS)
 	cd scripts; $(MAKE) $(MKMACROS)
+
+install_sherpa:
+##	$(SHERPA_SETUP_PY) install --install-lib=$(PYTHONMOD)
+	$(SHERPA_SETUP_PY) install --prefix=$(ASCDS_BLD_INSTALL)
 
 install:
 	@echo "   /-------------------------------------------------------\ "
 	@echo "   |                  Installing Sherpa                    | "
 	@echo "   \-------------------------------------------------------/ "
 	@echo ""
-##	$(SHERPA_SETUP_PY) install --install-lib=$(PYTHONMOD)
-	$(SHERPA_SETUP_PY) install --prefix=$(ASCDS_BLD_INSTALL)
+	$(MAKE) $(MKMACROS) install_sherpa
 	if [ -n "$(BIN_DIR)" -a -d "$(BIN_DIR)" ]; then \
 	  $(CP_PF) sherpa/sherpa/$(SHERPA_SCRIPT) $(BIN_DIR); \
 	  $(CP_PF) sherpa/sherpa/$(SHERPA_SCRIPT_PY) $(BIN_DIR); \
@@ -131,15 +137,18 @@ install:
 	cd doc; $(MAKE) $(MKMACROS) install
 	cd scripts; $(MAKE) $(MKMACROS) install
 
+uninstall_sherpa:
+	if [ -n "$(PYTHONMOD)" -a -d "$(PYTHONMOD)" \
+	     -a -d "$(PYTHONMOD)/sherpa" ]; then \
+	  $(RM_RF) $(PYTHONMOD)/sherpa; \
+	fi;
+
 uninstall:
 	@echo "   /-------------------------------------------------------\ "
 	@echo "   |                 Uninstalling Sherpa                   | "
 	@echo "   \-------------------------------------------------------/ "
 	@echo ""
-	if [ -n "$(PYTHONMOD)" -a -d "$(PYTHONMOD)" \
-	     -a -d "$(PYTHONMOD)/sherpa" ]; then \
-	  $(RM_RF) $(PYTHONMOD)/sherpa; \
-	fi;
+	$(MAKE) $(MKMACROS) uninstall_sherpa
 	if [ -n "$(BIN_DIR)" -a -d "$(BIN_DIR)" ]; then \
 	  $(RM_F) $(BIN_DIR)/$(SHERPA_SCRIPT); \
 	  $(RM_F) $(BIN_DIR)/$(SHERPA_SCRIPT_PY); \
@@ -159,12 +168,15 @@ dist:
 	@echo ""
 	$(SHERPA_SETUP_PY) sdist
 
+clean_sherpa:
+	$(RM_RF) sherpa/build sherpa/dist sherpa/MANIFEST
+
 clean:
 	@echo "   /-------------------------------------------------------\ "
 	@echo "   |           Cleaning Sherpa build directories           | "
 	@echo "   \-------------------------------------------------------/ "
 	@echo ""
-	$(RM_RF) sherpa/build sherpa/dist sherpa/MANIFEST
+	$(MAKE) $(MKMACROS) clean_sherpa
 	cd tests; $(MAKE) $(MKMACROS) clean
 	cd doc; $(MAKE) $(MKMACROS) clean
 	cd scripts; $(MAKE) $(MKMACROS) clean

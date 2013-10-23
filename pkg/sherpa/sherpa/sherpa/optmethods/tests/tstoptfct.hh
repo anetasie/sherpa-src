@@ -34,6 +34,7 @@
 //
 //
 
+#include <cstdio>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -1844,7 +1845,7 @@ namespace tstoptfct {
     for ( int ii = 0; ii < npar; ++ii ) {
       double s = 0.0;
       for ( int kk = 1; kk <= d; ++kk ) {
-	double pow2 = pow( 2, kk );
+	double pow2 = std::pow( Real(2), Real(kk) );
 	s += round(pow2 * x[ ii ]) / pow2;
       }
       fval *= 1.0 + ( ii + 1) * s;

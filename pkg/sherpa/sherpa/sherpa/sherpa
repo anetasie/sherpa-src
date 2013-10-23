@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2007,2012  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -35,7 +35,7 @@ usage()
 
 banner()
 {
-   default_versionstr="Sherpa 4.4.1"
+   default_versionstr="Sherpa 4.5.1"
    echo "-----------------------------------------------------"
    echo "Welcome to Sherpa: CXC's Modeling and Fitting Package"
    echo "-----------------------------------------------------"
@@ -43,7 +43,7 @@ banner()
        if [ -r ${ASCDS_INSTALL}/VERSION ]; then
 	   numfields=`head -n 1 $ASCDS_INSTALL/VERSION | awk '{print NF}'`
 	   if [ $numfields = "6" ]; then
-	       echo "CIAO 4.4 Sherpa version 1 `awk '{print $3" "$4" "$5" "$6}' ${ASCDS_INSTALL}/VERSION`"
+	       echo "CIAO 4.5 Sherpa version 1 `awk '{print $3" "$4" "$5" "$6}' ${ASCDS_INSTALL}/VERSION`"
 	   else
 	       echo $default_versionstr
 	   fi
@@ -182,15 +182,18 @@ export CIAO_IPYTHON
 
 
 if test "$batch" = "yes"; then
-   ipython -p sherpa-user -nomessages -noconfirm_exit -nobanner -c "${cmd}quit()"
+   if test "x$cmd" = "x"; then
+      cmd="quit()"
+   fi 
+   ipython --profile sherpa -c "\"${cmd}\""
 else
    if test "$printbanner" = "yes"; then
       banner
    fi
    # python shell options should follow a -- w/ any sherpa command file last 
    if test "x$cmd" = "x"; then
-      ipython -p sherpa-user
+      ipython --profile sherpa
    else
-      ipython -i -p sherpa-user -c ${cmd}
+      ipython --profile sherpa -i -c "\"${cmd}\""
    fi
 fi

@@ -67,8 +67,10 @@ TKDIR="tk8.5.10/unix"
 READLINEFILE="$SRC/readline-6.2.tar.gz"
 READLINEDIR="readline-6.2"
 
-SSLFILE="$SRC/openssl-0.9.8e.tar.gz"
-SSLDIR="openssl-0.9.8e"
+#SSLFILE="$SRC/openssl-0.9.8e.tar.gz"
+#SSLDIR="openssl-0.9.8e"
+SSLFILE="$SRC/openssl-1.0.1.tar.gz"
+SSLDIR="openssl-1.0.1"
 
 ZLIBFILE="$SRC/zlib-1.2.5.tar.gz"
 ZLIBDIR="zlib-1.2.5"

@@ -1,5 +1,19 @@
 Building and Installing Sherpa
 
+Sherpa 4.4.0
+=======================
+
+    * Required dependencies:
+        o Python-2.7.X (preferred) or Python-2.6.X
+        o Numpy-1.5.1 or later
+
+    * Optional dependencies:
+        o DS9 5.6 or later (SAO imager)
+        o XPA 2.1.9 or later (for DS9 communication)
+        o PyFITS 1.3 or later (for FITS I/O)
+        o matplotlib 0.98.5.2 or later (for plotting and imaging,
+          be sure to set "interactive=True" in ~/.matplotlib/matplotlibrc)
+        o IPython 0.10
 
 Dependencies
 ============
@@ -7,21 +21,23 @@ Dependencies
 The new Sherpa can be downloaded, built, installed, and used independently of
 CIAO. If you use Sherpa this way, you won't have access to CRATES I/O, ChIPS
 plotting, 2D region, or dynamic grouping but all other functionality will be
-available. The current (CIAO 4.2.1) source tarball is sherpa-4.2.1.tar.gz. It
+available. The current (CIAO 4.4) source tarball is sherpa-4.4.0.tar.gz. It
 has the following prerequisites:
 
     * Required:
           o GCC compilers with g77/gfortran/g95 3.4.5 or later
           o or Sun Studio with f77/f95 WS 10 or later
           o or Xcode with g77/gfortran/g95 3.1.2 or later
-          o Python 2.6.2 or later
-          o NumPy 1.3.0 or later
-          o FFTW3 3.2.1 or later (be sure to build with "--enable-float" also)
+          o Python 2.7.X or Python 2.6.X
+          o NumPy 1.5.1 or later
+          o FFTW3 3.3 or later (be sure to build with "--enable-float" also)
     * Optional:
           o DS9 5.6 or later (SAO imager)
           o XPA 2.1.9 or later (for DS9 communication)
-          o XSPEC 12.5 (for the XSPEC model functions)
-          o PyFITS 1.3/2.1.1 or later (for non-DM FITS I/O)
+          o XSPEC 12.7.0 (for the XSPEC model functions)
+	  o CCfits 2.3 (for use in XSPEC models)
+	  o CFITSIO 3.27 (for use in XSPEC models)
+          o PyFITS 1.3 or later (for non-DM FITS I/O)
           o matplotlib 0.98.5.2 or later (for plotting and imaging,
 	    be sure to set "interactive=True" in ~/.matplotlib/matplotlibrc)
           o IPython (for a nicer interactive interface; this is distributed 
@@ -32,8 +48,8 @@ Build and Install
 
 To build and install the package, do the following:
 
-$ tar xzf sherpa-4.2.1.tar.gz
-$ cd sherpa-4.2.1
+$ tar xzf sherpa-4.4.0.tar.gz
+$ cd sherpa-4.4.0
 $ python setup.py [config-vars] install --prefix=<dest-dir>
 
 config-vars is an optional list of arguments in the format var=value that 
@@ -57,7 +73,7 @@ fortran_library_dir  None (may be needed to find libg2c.so or libgfortran.so or
 fortran_lib          None ('g2c', 'gfortran', or 'f95' depending on fcompiler )
 
 xspec_library_dir    None (if not given, XSPEC module is not built)
-cfitsio_lib 	     cfitsio  ('cfitsio', or 'cfitsio_3.11' depending on
+cfitsio_lib 	     cfitsio  ('cfitsio', or 'cfitsio_3.27' depending on
 		     version)
 cfitsio_library_dir  <xspec_library_dir>
 
@@ -93,7 +109,3 @@ If Sherpa is installed in a non-standard location, be sure to update the
 following variables accordingly.
 
     PYTHONPATH
-    
-    LD_LIBRARY_PATH / DYLD_LIBRARY_PATH (for libsherpa.so).
-
-    HEADAS (for XSPEC spectral tables)

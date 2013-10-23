@@ -20,11 +20,13 @@
 #ifndef __sherpa_astro_xspec_extension_hh__
 #define __sherpa_astro_xspec_extension_hh__
 
+#include <cfloat>
 #include <sherpa/extension.hh>
 #include <sherpa/constants.hh>
 #include <vector>
 #include <sstream>
 #include <iostream>
+#include "sherpa/fcmp.hh"
 
 namespace sherpa { namespace astro { namespace xspec {
 
@@ -82,10 +84,43 @@ namespace sherpa { namespace astro { namespace xspec {
 		 sherpa::constants::h_kev<SherpaFloat>());
     bool is_wave = (xlo[0] > xlo[nelem-1]) ? true : false;
 
+    std::vector<int> gaps;
+    std::vector<double> gap_widths;
+
     // The XSPEC functions expect the input array to be of length ne+1
     int near = nelem;
-    if( xhi )
+    if( xhi ) {
       near++;
+
+      // Suppose the data were filtered, such that there is a gap
+      // in the middle of the energy array.  In that case *only*,
+      // we will find that xlo[i+1] != xhi[i].  However, XSPEC models
+      // expect that xlo[i+1] == xhi[i].
+      //
+      // So, if we pass in filtered data and xlo[i+1] != xhi[i],
+      // then at energy bin i we will end up calculating an energy
+      // flux that is far too great.  We will correct that by gathering 
+      // information to allow us to recalculate individual bins, with
+      // boundaries xlo[i], xhi[i], to correct for cases where
+      // boundaries xlo[i], xlo[i+1] results in a bin that is too big.
+      //
+      // We will gather the locations of the gaps here, and calculate
+      // actual widths based on xhi[i] - xlo[i] downstream.
+      //
+      // If we are working in wavelength space we will also correct for that.
+      // SMD 11/21/12.
+
+      for (int i = 0; i < nelem-1; i++) {
+	if (0 != sao_fcmp(xhi[i], xlo[i+1], DBL_EPSILON)) {
+	  gaps.push_back(i);
+	  double width = fabs(xhi[i] - xlo[i]);
+	  if( is_wave ) {
+	    width = hc / width;
+	  }
+	  gap_widths.push_back(width);
+	}
+      }
+    }
 
     std::vector<FloatArrayType> ear(near);
 
@@ -144,6 +179,35 @@ namespace sherpa { namespace astro { namespace xspec {
     try {
 
       XSpecFunc( &ear[0], &nelem, &pars[0], &ifl, &result[0], &error[0] );
+      
+      // If there were gaps in the energy array, because of locations
+      // where xlo[i+1] != xhi[i], then this is place where we recalculate
+      // energy fluxes for those bins *only*.
+      //
+      // For each such location in the energy grid, construct a new
+      // 2-bin energy array, such that the 2-bin array is [xlo[i],
+      // xhi[i]].  This is accomplished by:
+      //
+      // ear2[0] = ear[location of gap]
+      // ear2[1] = ear[location of gap] + abs(xhi[location of gap] -
+      //                                      xlo[location of gap])
+      // The locations of the gaps, and the actual widths of the energy
+      // bins at those locations, were calculated above.  So use the
+      // gaps and gap_widths vectors here to recalculate energy fluxes
+      // at affected bins *only*. SMD 11/21/12
+      
+      while(!gaps.empty()) {
+	std::vector<FloatArrayType> ear2(2);
+	int bin_number = gaps.back();
+	ear2[0] = ear[bin_number];
+	ear2[1] = ear2[0] + gap_widths.back();
+	int ear2_nelem = 1;
+	XSpecFunc( &ear2[0], &ear2_nelem, &pars[0], &ifl, &result[bin_number], 
+		   &error[bin_number]);
+
+	gaps.pop_back();
+	gap_widths.pop_back();
+      }
 
     } catch(...) {
 
@@ -185,15 +249,18 @@ namespace sherpa { namespace astro { namespace xspec {
     DoubleArray pars;
     DoubleArray xlo;
     DoubleArray xhi;
+    DoubleArray fluxes;
     DoubleArray *x;
 
-    if ( !PyArg_ParseTuple( args, (char*)"O&O&|O&",
+    if ( !PyArg_ParseTuple( args, (char*)"O&O&|O&O&",
 			    (converter)convert_to_contig_array< DoubleArray >,
 			    &pars,
 			    (converter)convert_to_contig_array< DoubleArray >,
 			    &xlo,
 			    (converter)convert_to_contig_array< DoubleArray >,
-			    &xhi ) )
+			    &xhi,
+	                    (converter)convert_to_contig_array< DoubleArray >,
+			    &fluxes ) )
       return NULL;
     
     npy_intp npars = pars.get_size();
@@ -218,10 +285,43 @@ namespace sherpa { namespace astro { namespace xspec {
 		 sherpa::constants::h_kev<SherpaFloat>());
     bool is_wave = (xlo[0] > xlo[nelem-1]) ? true : false;
 
+    std::vector<int> gaps;
+    std::vector<double> gap_widths;
+
     // The XSPEC functions expect the input array to be of length nFlux+1
     int near = nelem;
-    if( xhi )
+    if( xhi ) {
       near++;
+
+      // Suppose the data were filtered, such that there is a gap
+      // in the middle of the energy array.  In that case *only*,
+      // we will find that xlo[i+1] != xhi[i].  However, XSPEC models
+      // expect that xlo[i+1] == xhi[i].
+      //
+      // So, if we pass in filtered data and xlo[i+1] != xhi[i],
+      // then at energy bin i we will end up calculating an energy
+      // flux that is far too great.  We will correct that by gathering 
+      // information to allow us to recalculate individual bins, with
+      // boundaries xlo[i], xhi[i], to correct for cases where
+      // boundaries xlo[i], xlo[i+1] results in a bin that is too big.
+      //
+      // We will gather the locations of the gaps here, and calculate
+      // actual widths based on xhi[i] - xlo[i] downstream.
+      //
+      // If we are working in wavelength space we will also correct for that.
+      // SMD 11/21/12.
+
+      for (int i = 0; i < nelem-1; i++) {
+	if (0 != sao_fcmp(xhi[i], xlo[i+1], DBL_EPSILON)) {
+	  gaps.push_back(i);
+	  double width = fabs(xhi[i] - xlo[i]);
+	  if( is_wave ) {
+	    width = hc / width;
+	  }
+	  gap_widths.push_back(width);
+	}
+      }
+    }
     
     std::vector<SherpaFloat> ear(near);
 
@@ -263,10 +363,15 @@ namespace sherpa { namespace astro { namespace xspec {
     }
     else
       nelem--;
-    
+
     DoubleArray result;
     if ( EXIT_SUCCESS != result.create( xlo.get_ndim(), xlo.get_dims() ) )
       return NULL;
+
+    if (fluxes) {
+      for ( int ii = 0; ii < nelem; ii++ )
+        result[ii] = fluxes[ii];
+    }
 
     // The XSPEC functions require fluxError to be non-NULL, so we create
     // it but discard it after the computation is done    
@@ -279,6 +384,35 @@ namespace sherpa { namespace astro { namespace xspec {
     try {
 
       XSpecFunc( &ear[0], nelem, &pars[0], 0, &result[0], &error[0], NULL );
+
+      // If there were gaps in the energy array, because of locations
+      // where xlo[i+1] != xhi[i], then this is place where we recalculate
+      // energy fluxes for those bins *only*.
+      //
+      // For each such location in the energy grid, construct a new
+      // 2-bin energy array, such that the 2-bin array is [xlo[i],
+      // xhi[i]].  This is accomplished by:
+      //
+      // ear2[0] = ear[location of gap]
+      // ear2[1] = ear[location of gap] + abs(xhi[location of gap] -
+      //                                      xlo[location of gap])
+      // The locations of the gaps, and the actual widths of the energy
+      // bins at those locations, were calculated above.  So use the
+      // gaps and gap_widths vectors here to recalculate energy fluxes
+      // at affected bins *only*. SMD 11/21/12
+
+      while(!gaps.empty()) {
+	std::vector<SherpaFloat> ear2(2);
+	int bin_number = gaps.back();
+	ear2[0] = ear[bin_number];
+	ear2[1] = ear2[0] + gap_widths.back();
+	int ear2_nelem = 1;
+	XSpecFunc( &ear2[0], ear2_nelem, &pars[0], 0, &result[bin_number], 
+		   &error[bin_number], NULL );
+
+	gaps.pop_back();
+	gap_widths.pop_back();
+      }
 
     } catch(...) {
 
@@ -350,10 +484,43 @@ namespace sherpa { namespace astro { namespace xspec {
 		 sherpa::constants::h_kev<SherpaFloat>());
     bool is_wave = (xlo[0] > xlo[nelem-1]) ? true : false;
 
+    std::vector<int> gaps;
+    std::vector<double> gap_widths;
+
     // The XSPEC functions expect the input array to be of length ne+1
     int near = nelem;
-    if( xhi )
+    if( xhi ) {
       near++;
+
+      // Suppose the data were filtered, such that there is a gap
+      // in the middle of the energy array.  In that case *only*,
+      // we will find that xlo[i+1] != xhi[i].  However, XSPEC models
+      // expect that xlo[i+1] == xhi[i].
+      //
+      // So, if we pass in filtered data and xlo[i+1] != xhi[i],
+      // then at energy bin i we will end up calculating an energy
+      // flux that is far too great.  We will correct that by gathering 
+      // information to allow us to recalculate individual bins, with
+      // boundaries xlo[i], xhi[i], to correct for cases where
+      // boundaries xlo[i], xlo[i+1] results in a bin that is too big.
+      //
+      // We will gather the locations of the gaps here, and calculate
+      // actual widths based on xhi[i] - xlo[i] downstream.
+      //
+      // If we are working in wavelength space we will also correct for that.
+      // SMD 11/21/12.
+
+      for (int i = 0; i < nelem-1; i++) {
+	if (0 != sao_fcmp(xhi[i], xlo[i+1], DBL_EPSILON)) {
+	  gaps.push_back(i);
+	  double width = fabs(xhi[i] - xlo[i]);
+	  if( is_wave ) {
+	    width = hc / width;
+	  }
+	  gap_widths.push_back(width);
+	}
+      }
+    }
 
     //std::vector<FloatArrayType> ear(near);
     float *ear = NULL;
@@ -415,6 +582,41 @@ namespace sherpa { namespace astro { namespace xspec {
 
       XSpecFunc( ear, nelem, &pars[0], filename, ifl, &result[0],
 		 &error[0] );
+
+      // If there were gaps in the energy array, because of locations
+      // where xlo[i+1] != xhi[i], then this is place where we recalculate
+      // energy fluxes for those bins *only*.
+      //
+      // For each such location in the energy grid, construct a new
+      // 2-bin energy array, such that the 2-bin array is [xlo[i],
+      // xhi[i]].  This is accomplished by:
+      //
+      // ear2[0] = ear[location of gap]
+      // ear2[1] = ear[location of gap] + abs(xhi[location of gap] -
+      //                                      xlo[location of gap])
+      // The locations of the gaps, and the actual widths of the energy
+      // bins at those locations, were calculated above.  So use the
+      // gaps and gap_widths vectors here to recalculate energy fluxes
+      // at affected bins *only*. SMD 11/21/12
+      
+      while(!gaps.empty()) {
+	float *ear2 = NULL;
+	ear = (float*)malloc(2*sizeof(float));
+	int bin_number = gaps.back();
+	ear2[0] = ear[bin_number];
+	ear2[1] = ear2[0] + gap_widths.back();
+	int ear2_nelem = 1;
+	try {
+	  XSpecFunc( ear2, ear2_nelem, &pars[0], filename, ifl, 
+		     &result[bin_number], &error[bin_number]);
+	} catch(...) {
+	  if (ear2) free(ear2);
+	  throw;
+	}
+	gaps.pop_back();
+	gap_widths.pop_back();
+	if (ear2) free(ear2);
+      }
 
     } catch(...) {
 

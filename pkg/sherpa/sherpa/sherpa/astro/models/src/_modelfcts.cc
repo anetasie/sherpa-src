@@ -23,6 +23,10 @@
 #include "sherpa/model_extension.hh"
 #include "sherpa/astro/models.hh"
 
+extern "C" {
+  void init_modelfcts();
+}
+
 
 static PyMethodDef ModelFcts[] = {
 
@@ -40,6 +44,7 @@ static PyMethodDef ModelFcts[] = {
 
   MODELFCT2D_NOINT( beta2d, 7 ),
   MODELFCT2D_NOINT( devau, 6 ),
+  MODELFCT2D_NOINT( sersic, 7 ),
   MODELFCT2D_NOINT( hr, 6 ),
   MODELFCT2D_NOINT( lorentz2d, 6 ),
 

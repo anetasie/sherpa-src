@@ -954,15 +954,16 @@ namespace sherpa { namespace astro { namespace models {
       return EXIT_FAILURE;
     }
 
-    if( p[0] == 0.0 )
+    if( 0.0 == p[0] )
       return EXIT_FAILURE;
     else {
-      val = p[5]*EXP(-7.67*(POW(r/p[0],0.25)-1.0));
+      // Ciotti & Bertin (1999)
+      DataType b4 = 8.0 - 1./3. + 1.0/405. + 23./204120;
+      val = p[5]*EXP(-b4*(POW(r/p[0],0.25)-1.0));
       return EXIT_SUCCESS;
     }
 
   }
-
 
   template <typename DataType, typename ConstArrayType>
   inline int hr_point( const ConstArrayType& p,
@@ -1000,6 +1001,28 @@ namespace sherpa { namespace astro { namespace models {
     else {
       val = p[5] * ( p[0] / 2.0 ) * ( p[0] / 2.0 ) /
 	( r + ( p[0] / 2.0 ) * ( p[0] / 2.0 ) );
+      return EXIT_SUCCESS;
+    }
+
+  }
+
+  template <typename DataType, typename ConstArrayType>
+  inline int sersic_point( const ConstArrayType& p,
+			   DataType x0, DataType x1, DataType& val )
+  {
+  
+    register DataType r;
+
+    if( EXIT_SUCCESS != sherpa::utils::radius(p,x0,x1,r)) {
+      return EXIT_FAILURE;
+    }
+
+    if( 0.0 == p[0] || 0.0 == p[6] )
+      return EXIT_FAILURE;
+    else {
+      // Ciotti & Bertin (1999)
+      DataType bn = 2.0*p[6] - 1./3. + 4.0/(405*p[6]) + 46./(25515.0*p[6]*p[6]);
+      val = p[5]*EXP(-bn*(POW(r/p[0],1./p[6])-1.0));
       return EXIT_SUCCESS;
     }
 

@@ -48,7 +48,7 @@ class test_xspec(SherpaTestCase):
                 m = cls()
                 count += 1
 
-        self.assertEqual(count, 140)
+        self.assertEqual(count, 147)
 
     def test_evaluate_model(self):
         m = xs.XSbbody()

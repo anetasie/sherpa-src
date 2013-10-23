@@ -47,27 +47,49 @@ For detailed documentation see:
 http://cxc.cfa.harvard.edu/sherpa
 
 
-New Features In Version 4.3
-===========================
+New Features in Version 4.4.1 Patch
+===================================
 
- * Updated source for new GCC compilers, 4.5.
+ * Support for XSPEC 12.7.1 has been added.  Interfaces to the
+   following additive models has been provided:
 
- * New functions ``set_full_model()`` and ``set_full_bkg_model()`` allow users
-   to explicitly define instrument responses and convolutions that are applied
-   to specified model components. Instrument responses, PSF models and table
-   models may be used in model expressions defined with these functions.
+   * xseplogpar
+   * xsgadem
+   * xsvgadem
+   * xslogpar
+   * xsoptxagn
+   * xsoptxagnf
+   * xspexmon
 
- * User-defined models implemented as Python classes can be incorporated as
-   Sherpa model factories with a new function ``add_model()`` . ::
+ * See the release notes NOTES_
 
-     from sherpa.models import PowLaw1D
-     class MyPowLaw1d(PowLaw1D): pass
-     add_model(MyPowLaw1D)
-     set_model(xswabs.abs1*mypowlaw1d.p1)
+    
+Features In Version 4.4
+=======================
 
- * Many bug fixes
+ * 24 new optical models for astronomical data, in module
+   sherpa.astro.optical.
 
- * See a complete list of new features in the release notes NOTES_.
+ * A new template model, for comparing 1-D data to libraries of
+   precalculated models.
+
+ * The pyBLoCXS module is now integrated into Sherpa. pyBLoCXS is a
+   sophisticated Markov chain Monte Carlo (MCMC) based algorithm
+   designed to carry out Bayesian Low-Count X-ray Spectral (BLoCXS)
+   analysis in the Sherpa environment.
+
+ * There is a new PPP statistic function, plot_pvalue(), to compute
+    the likelihood ratios of the null and the alternative models.
+
+ * Many significant improvements to functions ``set_full_model()`` and
+   ``set_full_bkg_model()``, allowing users to explicitly define
+   instrument responses and convolutions that are applied to specified
+   model components. Instrument responses, PSF models and table models
+   may be used in model expressions defined with these functions.
+
+ * Many bug fixes.
+
+ * See a complete list of features in the release notes NOTES4.4.0_.
 
 
 Dependencies
@@ -75,7 +97,7 @@ Dependencies
 
 The new Sherpa can be downloaded, built, installed, and used independently of
 CIAO.  I/O support and plotting can be supplemented using PyFITS and
-matplotlib.  The current (Sherpa 4.3.0) source tarball_ has the following
+matplotlib.  The current (Sherpa 4.4.1) source tarball_ has the following
 prerequisites:
 
 .. _tarball: http://cxc.cfa.harvard.edu/contrib/sherpa/index.html#download
@@ -91,6 +113,8 @@ Compilers:
  * Xcode with gfortran 4.2.3 or later (disk images of gfortran for Mac can be
    found at http://r.research.att.com/tools/)
 
+    - Mac OSX 10.7 Snow Leopard, Xcode 3.2 or later
+
     - Mac OSX 10.6 Snow Leopard, Xcode 3.2 or later
 
     - Mac OSX 10.5 Leopard, Xcode 3.1, 3.1.1, 3.1.2, or 3.1.3 (Intel processors
@@ -104,17 +128,17 @@ Required:
   object-oriented, extensible programming language.
 
 
- :NumPy 1.3.0 or later [np]_: Powerful N-dimensional array object for Python.
+ :NumPy 1.5.1 or later [np]_: Powerful N-dimensional array object for Python.
 
 
- :FFTW 3.2.1 or later [fftw]_: Fast fourier transform library speeds up Sherpa
+ :FFTW 3.3 or later [fftw]_: Fast fourier transform library speeds up Sherpa
   PSF model convolution. Be sure to build with "--enable-float" also.
 
 
 Optional:
 ---------
 
- :CIAO dmRegion Library 4.3 [reg]_: The Sherpa region module accepts CIAO region
+ :CIAO dmRegion Library 4.4 [reg]_: The Sherpa region module accepts CIAO region
   filtering syntax parsed by the dmRegion library.  Regions are two dimensional
   filters that can be used to include or exclude data points in a 2D data set.
 
@@ -145,7 +169,7 @@ Optional:
   to communicate with DS9.
 
 
- :XSPEC 12.6.0q [xspec]_: The XSPEC spectral models are available in Sherpa by
+ :XSPEC 12.7.0 [xspec]_: The XSPEC spectral models are available in Sherpa by
   linking to certain dynamic libraries found in an XSPEC installation.
 
 
@@ -153,26 +177,22 @@ Optional:
 Download
 ========
 
-Current version **4.3.0** December 15, 2010
+Current version **4.4.1** June 27, 2012
 
  ==========================  ==================================================
- OSX 10.6/10.5 dmg Py2.6     sherpa-4.3.0-py2.6-python.org-macosx10.6-intel.dmg_
- OSX 10.6/10.5 dmg Py2.7     sherpa-4.3.0-py2.7-python.org-macosx10.6-intel.dmg_
- source tarball              sherpa-4.3.0.tar.gz_
+ source tarball              sherpa-4.4.1.tar.gz_
  Release Notes               NOTES_
  ==========================  ==================================================
 
 For previous versions see downloads_
 
-.. _downloads: http://cxc.harvard.edu/contrib/sherpa/downloads
+.. _downloads: http://cxc.cfa.harvard.edu/contrib/sherpa/downloads
 
-.. _sherpa-4.3.0.tar.gz: http://cxc.harvard.edu/contrib/sherpa/sherpa-4.3.0.tar.gz
+.. _sherpa-4.4.1.tar.gz: http://cxc.cfa.harvard.edu/contrib/sherpa/sherpa-4.4.1.tar.gz
 
-.. _sherpa-4.3.0-py2.6-python.org-macosx10.6-intel.dmg: http://cxc.harvard.edu/contrib/sherpa/sherpa-4.3.0-py2.6-python.org-macosx10.6-intel.dmg
+.. _NOTES: http://cxc.cfa.harvard.edu/contrib/sherpa/NOTES-4.4.1.txt
 
-.. _sherpa-4.3.0-py2.7-python.org-macosx10.6-intel.dmg: http://cxc.harvard.edu/contrib/sherpa/sherpa-4.3.0-py2.7-python.org-macosx10.6-intel.dmg
-
-.. _NOTES: http://cxc.harvard.edu/contrib/sherpa/NOTES-4.3.0.txt
+.. _NOTES4.4.0: http://cxc.cfa.harvard.edu/contrib/sherpa/NOTES-4.4.0.txt
 
 
 Build and Install
@@ -180,8 +200,8 @@ Build and Install
 
 To build and install the package, do the following ::
 
-  $ tar xzf sherpa-4.3.0.tar.gz
-  $ cd sherpa-4.3.0
+  $ tar xzf sherpa-4.4.1.tar.gz
+  $ cd sherpa-4.4.1
   $ python setup.py [config-vars] install --prefix=<dest-dir>
 
 

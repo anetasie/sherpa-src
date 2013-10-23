@@ -24,7 +24,7 @@
 //
 
 
-#include "sherpa/Array2d.hh"
+#include "sherpa/myArray.hh"
 
 namespace sherpa {
 

@@ -54,7 +54,7 @@
 # 
 # % chmod +x makeit.sh
 # % ./makeit.sh
-# % cd sherpa-4.4.1
+# % cd sherpa-4.4.0
 # % python setup.py install --prefix=<install path>
 # % cd ..
 # % cp -f group.so <install path>/lib/python2.X/site-packages
@@ -143,10 +143,10 @@ FFTW_PATH="$REPO/${FFTW_FILE}"
 # CIAO 4.4
 CIAO="ciao-4.4"
 CIAO_FILE="$CIAO-src-core.tar.gz"
-CIAO_PATH="ftp://cxc.cfa.harvard.edu/pub/ciao4.3/all/${CIAO_FILE}"
+CIAO_PATH="ftp://cxc.cfa.harvard.edu/pub/ciao4.4/all/${CIAO_FILE}"
 
-# Sherpa 4.3
-SHERPA="sherpa-4.4.1"
+# Sherpa 4.4
+SHERPA="sherpa-4.4.0"
 SHERPA_FILE="$SHERPA.tar.gz"
 SHERPA_PATH="http://cxc.cfa.harvard.edu/contrib/sherpa/${SHERPA_FILE}"
 
@@ -435,15 +435,18 @@ build_sherpa() {
     fi
     $TAR $SHERPA_FILE
 
+    ## No, skip all this business -- it's smarter to make a 4.4.0
+    ## tar file at CfA, and not oblige user to go through this step.
+    ## SMD 01/27/12
     # update stand-alone Sherpa to be 1 minor version behind CIAO
     # 4.4.1 --> 4.4.0
-    VERSION=`echo $SHERPA | awk '{print substr($1,8,12)}'`
-    MAJOR=`echo $VERSION | awk '{print substr($1,1,3)}'`
-    MINOR=`echo $VERSION | awk '{print substr($1,5,6)}'`
-    NEWVERSION="$MAJOR.`expr $MINOR - "1"`"
+    #VERSION=`echo $SHERPA | awk '{print substr($1,8,12)}'`
+    #MAJOR=`echo $VERSION | awk '{print substr($1,1,3)}'`
+    #MINOR=`echo $VERSION | awk '{print substr($1,5,6)}'`
+    #NEWVERSION="$MAJOR.`expr $MINOR - "1"`"
 
-    python fix_sherpa.py $SHERPA $VERSION $NEWVERSION
-
+    #python fix_sherpa.py $SHERPA $VERSION $NEWVERSION
+    ##
     cd $SHERPA
     export F77=$FC
     export F90=$FC
@@ -457,7 +460,7 @@ build_sherpa() {
 	fftw_include_dir="../include" \
 	wcs_library_dir="../lib" \
 	wcs_include_dir="../include" \
-	build
+	install
 
     cd $PREFIX
 }

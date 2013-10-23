@@ -66,6 +66,16 @@
 #include "../Opt.hh"
 namespace minpack {
 
+  /*
+  // from size_t to int
+  template < typename Type0, typename Type1 >
+  Type1 convertme( Type0 arg0 ) {
+
+    if ( arg0 < std::numeric_limits< Type1 >::max() )
+	 return static_cast< Type1 >( arg0 );
+  }
+  */
+
   template < typename Func, typename Data >
   class LevMar : public sherpa::Opt {
     
@@ -146,11 +156,12 @@ namespace minpack {
 
       ++nfev;
       int ierr=EXIT_SUCCESS;
-      int mymfct = myfvec.size( );
+
+      int mymfct = static_cast<int>( myfvec.size( ) );
 
       usr_func( mymfct, npar, &par[0], &myfvec[0], ierr, usr_data );
 
-      fval = pow( enorm( mymfct, &myfvec[0] ), 2.0 );
+      fval = pow( enorm( myfvec.size( ), &myfvec[0] ), 2.0 );
       if ( EXIT_SUCCESS != ierr )
 	throw sherpa::OptErr( sherpa::OptErr::UsrFunc );
       if ( nfev >= maxnfev )
@@ -409,18 +420,19 @@ namespace minpack {
     // c     **********
     //
 
-    double enorm(int n, const double *x) {
+    template < typename Type >
+    double enorm( Type n, const double *x) {
       
       // Initialized data
       const double rdwarf=3.834e-20;
       const double rgiant= 1.304e19;
 
       // System generated locals
-      int i__1;
+      Type i__1;
       double ret_val=0.0, d__1;
 
       // Local variables
-      int i__;
+      Type i__;
       double s1, s2, s3, xabs, x1max, x3max, agiant, floatn;
 
       // Parameter adjustments
@@ -878,7 +890,7 @@ namespace minpack {
       int iter;
       double temp=0.0, temp1, temp2;
       int iflag=0;
-      double delta;
+      double delta=0.0;
       double ratio;
       double fnorm, gnorm;
       double pnorm, xnorm=0.0, fnorm1, actred, dirder, epsmch, prered;

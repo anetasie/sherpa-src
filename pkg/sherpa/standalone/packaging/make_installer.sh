@@ -104,7 +104,7 @@ build_installer()
     chmod +x $NAMEFILE
 
     /bin/rm -f $PAYLOADFILEGZ tmp.1 tmp.2
-    echo "Created $NAMEFILE"
+    echo "Created $NAME.sh"
 }
 
 # SCRIPT

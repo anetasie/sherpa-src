@@ -26,7 +26,7 @@ python module odrpack__user__routines
 end python module odrpack__user__routines
 python module _odrpack
     interface
-        subroutine odrpack(fcn,n,np,beta,info,nfev,chisqr,err,lo,hi,y,x,iprint,tol)
+        subroutine odrpack(fcn,n,np,beta,info,nfev,chisqr,err,lo,hi,y,x,iprint,tol,ndigit)
             use odrpack__user__routines
             external fcn
             integer intent(in) :: n
@@ -42,6 +42,7 @@ python module _odrpack
             double precision dimension(n,1),depend(n,1),intent(hide) :: x
             integer intent(in) :: iprint
             double precision intent(in) :: tol
+            integer intent(in) :: ndigit
         end subroutine odrpack
     end interface 
 end python module _odrpack

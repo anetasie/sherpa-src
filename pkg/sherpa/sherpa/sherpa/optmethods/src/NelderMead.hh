@@ -313,22 +313,24 @@ namespace sherpa {
 
 	for ( int jj = 0; jj < npar; ++jj ) {
       
-	  if ( simplex[ ii ][ jj ] < low[ jj ] )
+	  if ( simplex[ ii ][ jj ] < low[ jj ] ) {
 	    if ( high[ jj ] - low[ jj ] < 10.0 )
 	      simplex[ ii ][ jj ] = low[ jj ] +
 		( high[ jj ] - low[ jj ] ) / 4.0;
 	    else
 	      simplex[ ii ][ jj ] =
 		std::min( par[ ii ] + 0.01 * fabs( par[ ii ] ), high[ jj ] );
+	  }
 	  
-	  if ( simplex[ ii ][ jj ] > high[ jj ] )
+	  if ( simplex[ ii ][ jj ] > high[ jj ] ) {
 	    if ( high[ jj ] - low[ jj ] < 10.0 )
 	      simplex[ ii ][ jj ] = low[ jj ] +
 		( high[ jj ] - low[ jj ] ) / 4.0;
 	    else
 	      simplex[ ii ][ jj ] = 
 		std::max( low[ jj ], par[ ii ] - 0.01 * fabs( par[ ii ] ) );
-	  
+	  }
+
 	}
 
       for ( int ii = 0; ii <= npar; ++ii ) {

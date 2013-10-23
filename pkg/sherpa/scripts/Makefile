@@ -12,6 +12,14 @@ MK_TOP = ../../..
 include $(MK_TOP)/Makefile.master
 include $(MK_TOP)/include/Makefile.scidev
 
+PYTHONSCRIPTS = \
+	lev3_f2cratio.py \
+	lev3_iss.py \
+	lev3_mho.py \
+	lev3_specfit.py \
+	modelflux \
+	srcextent
+
 PAR_FILES = \
 	lev3_specfit.par \
 	lev3_f2cratio.par \
@@ -19,7 +27,6 @@ PAR_FILES = \
 	lev3_iss.par \
 	modelflux.par \
 	srcextent.par
-
 
 EXEC	= \
 	lev3_specfit.py \
@@ -40,6 +47,8 @@ EXEC	= \
 
 
 MAKECLEAN =
+
+MAKEALL = $(PYTHONSCRIPTS)
 
 include $(MK_TOP)/Makefile.all
 

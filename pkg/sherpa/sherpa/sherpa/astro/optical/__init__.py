@@ -89,7 +89,7 @@ class AbsorptionEdge(ArithmeticModel):
     #@modelCacher1d
     def calc(self, p, x, xhi=None, **kwargs):
         x = numpy.asarray(x, dtype=SherpaFloat)
-        y = numpy.zeros_like(x)
+        y = numpy.ones_like(x)
 
         if 0.0 == p[0]:
             raise ValueError('model evaluation failed, ' +
@@ -162,8 +162,8 @@ class AbsorptionGaussian(ArithmeticModel):
         delta = numpy.abs((x - p[1]) / sigma)
         ampl  = p[2] / sigma / 2.50662828  # document this constant
 
-        idx = (delta < p[3])
-        y[idx] = 1.0 - ampl * numpy.exp(- delta * delta / 2.0)
+        idx = (delta < self.limit)
+        y[idx] = 1.0 - ampl * numpy.exp(- delta[idx] * delta[idx] / 2.0)
 
         return y
 
@@ -209,7 +209,7 @@ class EmissionLorentz(ArithmeticModel):
                               units="km/s")
         self.pos = Parameter(name, 'pos', 5000., tinyval, frozen=True, units='angstroms')
         self.flux = Parameter(name, 'flux', 1.)
-        self.kurt = Parameter(name, 'kurt', 1.)
+        self.kurt = Parameter(name, 'kurt', 2., frozen=True)
 
         ArithmeticModel.__init__(self, name, (self.fwhm, self.pos,
                                               self.flux, self.kurt))
@@ -266,8 +266,8 @@ class OpticalGaussian(ArithmeticModel):
         sigma = p[1] * p[0] / 705951.5     # = 2.9979e5 / 2.354820044 ?
         delta = numpy.abs((x - p[1]) / sigma)
 
-        idx = (delta < p[3])
-        y[idx] = numpy.exp(-p[2] * numpy.exp(- delta * delta / 2.0))
+        idx = (delta < self.limit)
+        y[idx] = numpy.exp(-p[2] * numpy.exp(- delta[idx] * delta[idx] / 2.0))
 
         return y
 
@@ -281,7 +281,7 @@ class EmissionGaussian(ArithmeticModel):
                               units="km/s")
         self.pos = Parameter(name, 'pos', 5000., tinyval, frozen=True, units='angstroms')
         self.flux = Parameter(name, 'flux', 1.)
-        self.skew = Parameter(name, 'skew', 1., tinyval)
+        self.skew = Parameter(name, 'skew', 1., tinyval, frozen=True)
         self.limit = Parameter(name, 'limit', 4., alwaysfrozen=True,
                                hidden=True )
 
@@ -308,19 +308,18 @@ class EmissionGaussian(ArithmeticModel):
         y = numpy.zeros_like(x)
         sigma = p[1] * p[0] / 705951.5     # = 2.9979e5 / 2.354820044
         delta = numpy.abs((x - p[1]) / sigma)
-        ampl  = p[2] / sigma / 2.50662828  # document this constant
-        idx = (delta < p[3])
+        idx = (delta < self.limit)
 
         arg = - delta * delta / 2.0
         if sao_fcmp(p[3], 1.0, _tol) == 0:
-            y[idx] = p[0] * numpy.exp(arg) / sigma / 2.50662828
+            y[idx] = p[2] * numpy.exp(arg[idx]) / sigma / 2.50662828
 
         else:
             left = (arg <= p[1])
             arg[left] = numpy.exp(arg[left])
             right = ~left
             arg[right] = numpy.exp(arg[right] / p[3] / p[3])
-            y[idx] = 2.0 * p[0] * arg / sigma / 2.50662828 / (1.0 + p[3])
+            y[idx] = 2.0 * p[2] * arg[idx] / sigma / 2.50662828 / (1.0 + p[3])
 
         return y
 
@@ -348,7 +347,7 @@ class AbsorptionVoigt(ArithmeticModel):
         # to addAbsorption in NarrowBandFunction.java)
 
         core_pars = numpy.array([ p[2], p[0], p[1] / 2.0, 4.0 ])
-        wing_pars = numpy.array([ p[2], p[0] * p[3], p[1] / 2.0 ])
+        wing_pars = numpy.array([ p[2] * p[3], p[0], p[1] / 2.0 ])
         return self._core.calc(core_pars, x) * self._wings.calc(wing_pars, x)
 
 # This model computes continuum emission as a blackbody function.
@@ -563,7 +562,7 @@ class LogEmission(ArithmeticModel):
                               units="km/s")
         self.pos = Parameter(name, 'pos', 5000., tinyval, frozen=True, units='angstroms')
         self.flux = Parameter(name, 'flux', 1.)
-        self.skew = Parameter(name, 'skew', 1., tinyval)
+        self.skew = Parameter(name, 'skew', 1., tinyval, frozen=True)
         self.limit = Parameter(name, 'limit', 4., alwaysfrozen=True,
                                hidden=True )
 
@@ -688,7 +687,7 @@ class EmissionVoigt(ArithmeticModel):
         self.center = Parameter(name, 'center', 5000., tinyval, hard_min=tinyval, frozen=True, units="angstroms")
         self.flux = Parameter(name, 'flux', 1.)
         self.fwhm = Parameter(name, 'fwhm', 100., tinyval, hard_min=tinyval, units="km/s")
-        self.lg = Parameter(name, 'lg', 1., tinyval, hard_min=tinyval)
+        self.lg = Parameter(name, 'lg', 1., tinyval, hard_min=tinyval, frozen=True)
 
         # Create core and wings from Gaussian and Lorentz
         self._core = EmissionGaussian()

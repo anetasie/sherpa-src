@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2007,2012  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -95,39 +95,22 @@ then
         mkdir ${IPY_DIR} 
 	chmod 755 ${IPY_DIR}
     fi
-    if [ -d ${ASCDS_OTS_PY_DIR}/site-packages/IPython/UserConfig/ ]
-    then
-	for file in ${ASCDS_OTS_PY_DIR}/site-packages/IPython/UserConfig/*
-	do
-	  if [ ! -f ${IPY_DIR}/`basename ${file}` ]
-	  then
-	      cp ${file} ${IPY_DIR}
-	      chmod 644 ${IPY_DIR}/`basename ${file}`
-	      if [ "`basename ${file}`" = "ipythonrc" ]
-	      then
-		  chmod 444 ${IPY_DIR}/ipythonrc
-	      fi
-	  fi
-	done
-    else
-	echo "Warning: IPython's user config directory could not be found."
-    fi
 
-# Copy over the IPython profile for Sherpa, if the user doesn't
-# have the profile
-    if [ ! -f ${IPY_DIR}/ipythonrc-sherpa ]
+    IPY_DIR_PROFILE=${IPY_DIR}/profile_sherpa
+    CONFIG_DIR=${ASCDS_PY_DIR}/site-packages/sherpa/
+
+    # create a profile if one doesn't exist
+    if [ ! -d ${IPY_DIR_PROFILE} ]
     then
-        if [ -f ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa ]
-        then
-	   cp ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa ${IPY_DIR}
-	   chmod 444 ${IPY_DIR}/ipythonrc-sherpa
-        else
-           echo "Warning: ipythonrc-sherpa file could not be found."
-        fi
+        ipython profile create sherpa 2>/dev/null
+        cp ${CONFIG_DIR}/ipython_config.py ${IPY_DIR}/profile_sherpa/
+        chmod 444 ${IPY_DIR_PROFILE}/ipython_config.py
+        cp ${CONFIG_DIR}/00-sherpa_startup.py ${IPY_DIR}/profile_sherpa/startup
+        chmod 444 ${IPY_DIR_PROFILE}/startup/00-sherpa_startup.py
     elif [ $# -eq 0 ]; then
         # if not in batch mode and have ipythonrc-sherpa, check its version
-        localver=`grep SHERPA_VERSION $HOME/.ipython-ciao/ipythonrc-sherpa | sed 's/# SHERPA_VERSION//' | sed 's/ //g'`
-        sysver=`grep SHERPA_VERSION ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa | sed 's/# SHERPA_VERSION//' | sed 's/ //g'`
+        localver=`grep SHERPA_VERSION ${IPY_DIR_PROFILE}/ipython_config.py | sed 's/# SHERPA_VERSION//' | sed 's/ //g'`
+        sysver=`grep SHERPA_VERSION ${CONFIG_DIR}/ipython_config.py | sed 's/# SHERPA_VERSION//' | sed 's/ //g'`
         if [ "x$localver"  = "x" ]; then
            localver=0
         fi
@@ -137,7 +120,7 @@ then
 	if [ "$localver" -lt "$sysver" ] && [ "$sysver" -gt 0 ]; then
            echo ""
            echo " ATTENTION: Out of date IPython profile for Sherpa found in:"
-	   echo "            ${IPY_DIR}"
+	   echo "            ${IPY_DIR_PROFILE}"
 	   echo ""
 	   if [ "$localver" -eq 0 ]; then
               localver="unknown"
@@ -149,29 +132,23 @@ then
            stty -raw
            echo ""     # print newline
 	   case "$ANSWER" in
-	      [yY] ) mv ${IPY_DIR}/ipythonrc-sherpa ${IPY_DIR}/ipythonrc-sherpa_`date "+%Y%m%d.%H:%M:%S"`
-                     cp ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa ${IPY_DIR}
-                     chmod 444 ${IPY_DIR}/ipythonrc-sherpa
+	      [yY] ) 
+                     mv ${IPY_DIR_PROFILE}/ipython_config.py ${IPY_DIR_PROFILE}/ipython_config_`date "+%Y%m%d.%H:%M:%S"`.py
+                     cp -f ${CONFIG_DIR}/ipython_config.py ${IPY_DIR_PROFILE}
+                     chmod 444 ${IPY_DIR_PROFILE}/ipython_config.py
+                     cp -f ${CONFIG_DIR}/00-sherpa_startup.py ${IPY_DIR_PROFILE}/startup/
+                     chmod 444 ${IPY_DIR_PROFILE}/startup/00-sherpa_startup.py
 		     echo ""
-                     echo "            Updated: ${IPY_DIR}/ipythonrc-sherpa"
-                     echo "";;
+		     echo "            Updated: ${IPY_DIR_PROFILE}/ipython_config.py"
+		     echo "";;
+
+
 	       *)
 		     echo ""
                      echo "            Profile NOT updated."
                      echo "";;
            esac
 	fi
-    fi
-
-    if [ ! -f ${IPY_DIR}/ipythonrc-sherpa-user ]
-    then
-        if [ -f ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa-user ]
-        then
-	   cp ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa-user ${IPY_DIR}
-	   chmod 644 ${IPY_DIR}/ipythonrc-sherpa-user
-        else
-           echo "Warning: ipythonrc-sherpa-user file could not be found."
-        fi
     fi
 
 # If the user doesn't have a local .sherpa.rc file, copy it 
@@ -189,9 +166,9 @@ then
 # If the user doesn't have a local .chips.rc file, copy it 
     if [ ! -f ${HOME}/.chips.rc ]
     then
-        if [ -f ${ASCDS_PY_DIR}/site-packages/pychips/.chips.rc ]
+        if [ -f ${ASCDS_INSTALL}/config/chips/.chips.rc ]
         then
-	   cp ${ASCDS_PY_DIR}/site-packages/pychips/.chips.rc ${HOME}/.chips.rc
+	   cp ${ASCDS_INSTALL}/config/chips/.chips.rc ${HOME}/.chips.rc
 	   chmod 644 ${HOME}/.chips.rc
         else
           echo "Warning: .chips.rc file could not be found."

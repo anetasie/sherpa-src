@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 fd = open('_pykdtree.template.cc', 'r')
 template = fd.read()
 fd.close()
