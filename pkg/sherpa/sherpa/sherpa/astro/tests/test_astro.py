@@ -23,20 +23,7 @@ import os.path
 from sherpa.utils import SherpaTestCase, needs_data
 import sherpa.astro.ui as ui
 
-try:
-    import pysl
-    import pysl.slsh
-    from pysl import sl
-    try:
-        sl.require('sherpa', 'sherpa')
-    except:
-        raise ImportError
-    have_slang = True
-except ImportError:
-    have_slang = False
-
 logger = logging.getLogger('sherpa')
-
 
 class test_threads(SherpaTestCase):
 
@@ -191,18 +178,18 @@ class test_threads(SherpaTestCase):
     def test_fpsf2d(self):
         self.run_thread('fpsf')
         self.assertEqualWithinTol(ui.get_fit_results().statval, 3967.91, 1e-4)
-        self.assertEqualWithinTol(self.locals['b1'].xlow.val, -4.70832, 1e-4)
-        self.assertEqualWithinTol(self.locals['b1'].xhi.val, 164.687, 1e-4)
-        self.assertEqualWithinTol(self.locals['b1'].ylow.val, 0.83626, 1e-4)
-        self.assertEqualWithinTol(self.locals['b1'].yhi.val, 142.603, 1e-4)
-        self.assertEqualWithinTol(self.locals['b1'].ampl.val, 0.956766, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].fwhm.val, 4.51042, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].ypos.val, 76.5966, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].xpos.val, 89.0615, 1e-4)
-        self.assertEqualWithinTol(self.locals['g1'].ampl.val, 62.4888, 1e-4)
+        # self.assertEqualWithinTol(self.locals['b1'].xlow.val, -4.70832, 1e-4)
+        # self.assertEqualWithinTol(self.locals['b1'].xhi.val, 164.687, 1e-4)
+        # self.assertEqualWithinTol(self.locals['b1'].ylow.val, 0.83626, 1e-4)
+        # self.assertEqualWithinTol(self.locals['b1'].yhi.val, 142.603, 1e-4)
+        # self.assertEqualWithinTol(self.locals['b1'].ampl.val, 0.956766, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].fwhm.val, 4.51059, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].xpos.val, 89.0606, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].ypos.val, 76.5964, 1e-4)
+        self.assertEqualWithinTol(self.locals['g1'].ampl.val, 62.4856, 1e-4)
         #self.assertEqual(ui.get_fit_results().nfev,978)
         self.assertEqual(ui.get_fit_results().numpoints,4899)
-        self.assertEqual(ui.get_fit_results().dof,4890)
+        self.assertEqual(ui.get_fit_results().dof,4895)
 
     @needs_data
     def test_radpro_psf(self):
@@ -402,27 +389,30 @@ class test_threads(SherpaTestCase):
         self.assertEqualWithinTol(self.locals['stat_chi2x'],1204.69363458,1e-4)
         self.assertEqualWithinTol(self.locals['stat_cstat'],1210.56896183,1e-4)
 
-if have_slang:
-    class test_slang_ui(SherpaTestCase):
+    @needs_data
+    def test_lev3fft(self):
+        self.run_thread('lev3fft', scriptname='bar.py')
 
-        def test_ui(self):
-            for name in ui.__all__:
-                self.assert_(hasattr(sl, name) or hasattr(sl.sherpa, name),
-                             "'%s' is missing from S-Lang UI" % name)
+        # self.assertEqualWithinTol(ui.get_source().lhs.fwhm.val, 0.0034705, 1e-4)
+        # self.assertEqualWithinTol(ui.get_source().lhs.xpos.val, 150.016, 1e-4)
+        # self.assertEqualWithinTol(ui.get_source().lhs.ypos.val, 2.66587, 1e-4)
+        # self.assertEqualWithinTol(ui.get_source().lhs.ampl.val, 0.0117411, 1e-4)
+        # self.assertEqualWithinTol(ui.get_source().rhs.c0.val, 0.0190897, 1e-4)
 
-        def test_slsh(self):
-            # Find CIAO slsh
-            path_to_slsh = None
-            try:
-                path_to_slsh = os.environ['ASCDS_INSTALL']
-            except:
-                self.assertTrue(False, "ASCDS_INSTALL not set")
-            if (os.path.exists(path_to_slsh+"/bin/slsh") == True):
-                path_to_slsh = path_to_slsh+"/bin/slsh"
-            elif (os.path.exists(path_to_slsh+"/ots/bin/slsh") == True):
-                path_to_slsh = path_to_slsh+"/ots/bin/slsh"
-            else:
-                path_to_slsh = None
-            self.assertTrue(path_to_slsh is not None, "slsh not found in PATH")
-            self.assertEqual(0,
-                             os.system("echo 'require(\"sherpa\");' | " + path_to_slsh))
+        self.assertEqualWithinTol(self.locals['src'].fwhm.val, 0.0034705, 1e-4)
+        self.assertEqualWithinTol(self.locals['src'].xpos.val, 150.016, 1e-4)
+        self.assertEqualWithinTol(self.locals['src'].ypos.val, 2.66587, 1e-4)
+        self.assertEqualWithinTol(self.locals['src'].ampl.val, 0.0117411, 1e-4)
+        self.assertEqualWithinTol(self.locals['bkg'].c0.val, 0.0190897, 1e-4)
+
+        self.assertEqualWithinTol(ui.get_fit_results().istatval, 19496.3, 1e-4)
+        self.assertEqualWithinTol(ui.get_fit_results().statval, 607.09, 1e-4)
+        self.assertEqual(ui.get_fit_results().numpoints, 3307)
+        self.assertEqual(ui.get_fit_results().dof, 3302)
+
+
+if __name__ == '__main__':
+
+    from sherpa.utils import SherpaTest
+    import sherpa.astro as astro
+    SherpaTest(astro).test(datadir="/data/scialg/testdata")

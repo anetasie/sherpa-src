@@ -18,7 +18,7 @@
 #
 
 import sys
-from random import randint, uniform
+import random
 import numpy
 import _minpack
 import _minim
@@ -80,57 +80,69 @@ def _my_is_nan( x ):
     else:
         return False
 
+def _narrow_limits( myrange, xxx, debug ):
 
-def _narrow_limit( myrange, xxx, debug ):
+    def double_check_limits( myx, myxmin, myxmax ):
+        from itertools import izip
+        for my_l,my_x,my_h in izip( myxmin, myx, myxmax ):
+            if my_x < my_l:
+                print 'x = ', my_x, ' is < lower limit = ', my_l
+            if my_x > my_h:
+                print 'x = ', my_x, ' is > upper limit = ', my_h
 
-    def raise_min( range, xmin, x, debug=False ):
+    def raise_min_limit( range, xmin, x, debug=False ):
         myxmin = numpy.asarray( map( lambda xx: xx - range * numpy.abs(xx),
                                      x ), numpy.float_ )
         if False != debug:
             print
-            print 'raise_min: myxmin=%s' % myxmin    
-            print 'raise_min: x=%s' % x
+            print 'raise_min_limit: myxmin=%s' % myxmin    
+            print 'raise_min_limit: x=%s' % x
         below = numpy.flatnonzero(myxmin < xmin)
         if below.size > 0:
             myxmin[below] = xmin[below]
         if False != debug:
-            print 'raise_min: myxmin=%s' % myxmin    
-            print 'raise_min: x=%s' % x
+            print 'raise_min_limit: myxmin=%s' % myxmin    
+            print 'raise_min_limit: x=%s' % x
             print
         return myxmin
 
-    def lower_max( range, x, xmax, debug=False ):
+    def lower_max_limit( range, x, xmax, debug=False ):
         myxmax = numpy.asarray( map( lambda xx: xx + range * numpy.abs(xx),
                                      x ), numpy.float_ )
         if False != debug:
             print
-            print 'lower_max: x=%s' % x
-            print 'lower_max: myxmax=%s' % myxmax    
+            print 'lower_max_limit: x=%s' % x
+            print 'lower_max_limit: myxmax=%s' % myxmax    
         above = numpy.flatnonzero(myxmax > xmax)
         if above.size > 0:
             myxmax[above] = xmax[above]
         if False != debug:
-            print 'lower_max: x=%s' % x
-            print 'lower_max: myxmax=%s' % myxmax    
+            print 'lower_max_limit: x=%s' % x
+            print 'lower_max_limit: myxmax=%s' % myxmax    
             print
         return myxmax
 
-    
     x = xxx[ 0 ]
     xmin = xxx[ 1 ]
     xmax = xxx[ 2 ]
 
     if False != debug:
-        print 'narrow_limit: xmin=%s' % xmin
-        print 'narrow_limit: x=%s' % x        
+        print 'narrow_limits: xmin=%s' % xmin
+        print 'narrow_limits: x=%s' % x        
+        print 'narrow_limits: xmax=%s' % xmax
+    myxmin = raise_min_limit( myrange, xmin, x, debug=False )
+    myxmax = lower_max_limit( myrange, x, xmax, debug=False )
+
+    if False != debug:
         print 'range = %d' % myrange
-        print 'narrow_limit: xmax=%s' % xmax
-    myxmin = raise_min( myrange, xmin, x, debug=False )
-    myxmax = lower_max( myrange, x, xmax, debug=False )
-    if False != debug:    
-        print 'narrow_limit: myxmin=%s' % myxmin
-        print 'narrow_limit: myxmax=%s' % myxmax    
+        print 'narrow_limits: myxmin=%s' % myxmin
+        print 'narrow_limits: x=%s' % x        
+        print 'narrow_limits: myxmax=%s\n' % myxmax
+
+    double_check_limits( x, myxmin, myxmax )
+            
     return myxmin, myxmax
+
 
 def _outside_limits(x, xmin, xmax):
     return (numpy.any(x < xmin) or numpy.any(x > xmax))
@@ -236,6 +248,9 @@ def difevo_nm(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
                seed=741985, population_size=None, xprob=0.9, strategy=0,
                weighting_factor=0.8):
 
+    def stat_cb0( pars ):
+        return fcn( pars )[ 0 ]
+
     x, xmin, xmax = _check_args(x0, xmin, xmax)
 
     # make sure that the cross over prob is within [0.1,1.0]
@@ -258,7 +273,7 @@ def difevo_nm(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
 
     de = _saoopt.nm_difevo( verbose, maxfev, seed, population_size, strategy,
                             ftol, xprob, weighting_factor, xmin, xmax,
-                            x, fcn )
+                            x, stat_cb0 )
     fval = de[ 1 ]
     nfev = de[ 2 ]
     ierr = de[ 3 ]
@@ -282,20 +297,25 @@ def lmdif(fcn, x0, xmin, xmax, ftol=EPSILON, xtol=EPSILON, gtol=EPSILON,
 
     if maxfev is None:
         maxfev = 256 * len(x)
-        
-    m = numpy.asanyarray(fcn(x)).size
 
-    orig_fcn = fcn
+    def stat_cb0( pars ):
+        return fcn( pars )[ 0 ]
+    def stat_cb1( pars ):
+        return fcn( pars )[ 1 ]
+
+    m = numpy.asanyarray(stat_cb1(x)).size
+    
+    orig_fcn = stat_cb1
     error = []
 
-    def fcn(x_new, iflag):
+    def stat_cb1(x_new, iflag):
         fvec = None
         try:
-            if _outside_limits(x_new, xmin, xmax) or _my_is_nan(x_new):
-                fvec = numpy.empty((m,), x_new.dtype, numpy.isfortran(x_new))
-                fvec[:] = numpy.sqrt(FUNC_MAX / m)
-            else:
-                fvec = orig_fcn(x_new)
+##             if _outside_limits(x_new, xmin, xmax) or _my_is_nan(x_new):
+##                 fvec = numpy.empty((m,), x_new.dtype, numpy.isfortran(x_new))
+##                 fvec[:] = numpy.sqrt(FUNC_MAX / m)
+##             else:
+            fvec = orig_fcn(x_new)
         except:
             error.append(sys.exc_info()[1])
             fvec = numpy.zeros((m,), x_new.dtype, numpy.isfortran(x_new))
@@ -335,7 +355,7 @@ def lmdif(fcn, x0, xmin, xmax, ftol=EPSILON, xtol=EPSILON, gtol=EPSILON,
         return myiflag, myfjac
 
     multicore = 0
-    info, nfev, fval, ifault, covarerr = _minpack.mylmdif(fcn, m, x, ftol, xtol, gtol, maxfev, epsfcn, factor, verbose, xmin, xmax, multicore, myfdjac)
+    info, nfev, fval, covarerr = _minpack.mylmdif(stat_cb1, m, x, ftol, xtol, gtol, maxfev, epsfcn, factor, verbose, xmin, xmax, multicore, myfdjac)
 
     if error:
         raise error.pop()
@@ -376,9 +396,9 @@ def lmdif(fcn, x0, xmin, xmax, ftol=EPSILON, xtol=EPSILON, gtol=EPSILON,
     status, msg = _get_saofit_msg( maxfev, info )
       
     rv = (status, x, fval)
-    debug = False
-    if 0 == ifault and debug:
-        rv += (msg, {'info': info, 'nfev': nfev,'covarerr': covarerr})
+    print_covar_err = False
+    if print_covar_err:
+        rv += (msg, {'info': info, 'nfev': nfev, 'covarerr': covarerr})
     else:
         rv += (msg, {'info': info, 'nfev': nfev})
 
@@ -391,8 +411,11 @@ def lmdif(fcn, x0, xmin, xmax, ftol=EPSILON, xtol=EPSILON, gtol=EPSILON,
 def minim(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, step=None,
           nloop=1, iquad=1, simp=None, verbose=-1):
 
-    x, xmin, xmax = _check_args(x0, xmin, xmax)
+    def stat_cb0( pars ):
+        return fcn( pars )[ 0 ]
 
+    x, xmin, xmax = _check_args(x0, xmin, xmax)
+    
     if step is None:
         step = 0.4*numpy.ones(x.shape, numpy.float_, numpy.isfortran(x))
     if simp is None:
@@ -400,16 +423,15 @@ def minim(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, step=None,
     if maxfev is None:
         maxfev = 512 * len(x)
 
-    orig_fcn = fcn
-    def fcn(x_new):
+    orig_fcn = stat_cb0
+    def stat_cb0(x_new):
         if _outside_limits(x_new, xmin, xmax) or _my_is_nan(x_new):        
             return FUNC_MAX
         return orig_fcn(x_new)
     
     fval, var, ifault, neval = _minim.minim(x, step, maxfev, verbose, ftol,
-                                            nloop, iquad, simp, fcn,
+                                            nloop, iquad, simp, stat_cb0,
                                             xmin, xmax)
-    
     key = {
         0: (True, 'successful termination'),
         1: (False,
@@ -421,7 +443,13 @@ def minim(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, step=None,
     status, msg = key.get(ifault, (False, 'unknown status flag (%d)' % ifault))
 
     rv = (status, x, fval)
-    rv += (msg, {'var': numpy.sqrt(var), 'info': ifault, 'nfev': neval})
+    print_covar_err = False
+    if print_covar_err and 0 == ifault and numpy.any( var > 0.0 ):
+        var = map( lambda x: x * numpy.sqrt(2.0), var )
+        rv += (msg, {'covarerr': numpy.sqrt(var), 'info': ifault,
+                     'nfev': neval})
+    else:
+        rv += (msg, {'info': ifault, 'nfev': neval})
     return rv
 
 
@@ -431,6 +459,9 @@ def minim(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, step=None,
 def montecarlo(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
                seed=74815, population_size=None, xprob=0.9, 
                weighting_factor=0.8):
+
+    def stat_cb0( pars ):
+        return fcn( pars )[ 0 ]
 
     x, xmin, xmax = _check_args(x0, xmin, xmax)
 
@@ -448,58 +479,66 @@ def montecarlo(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
     strategy = min( strategy, 9 )
 
     if seed is None:
-        seed = randint(0, 2147483648L) # pow(2,31) == 2147483648L
+        seed = random.randint(0, 2147483648L) # pow(2,31) == 2147483648L
     if population_size is None:
-        population_size = max( population_size, 16 * x.size )
+        population_size = max( population_size, 12 * x.size )
 
     if maxfev is None:
         maxfev = 8192 * population_size
 
-    def myopt( fcn, xxx, ftol, maxfev, seed, pop, xprob, strategy,
+    def myopt( myfcn, xxx, ftol, maxfev, seed, pop, xprob, strategy,
                weight, factor=4.0, debug=False ):
 
         x = xxx[ 0 ]
         xmin = xxx[ 1 ]
         xmax = xxx[ 2 ]
+        maxfev_per_iter = 512 * x.size
 
         def random_start( xmin, xmax ):
             xx = []
             for ii in range( len(xmin ) ):
-                xx.append( uniform( xmin[ ii ], xmax[ ii ] ) )
+                xx.append( random.uniform( xmin[ ii ], xmax[ ii ] ) )
             return numpy.asarray( xx )
 
         ############################# NelderMead #############################
-        result = neldermead( fcn, x, xmin, xmax, maxfev=512*len(x), ftol=ftol,
-                             finalsimplex=9 )
+        mymaxfev = min( maxfev_per_iter, maxfev )
+        if all( x == 0.0 ):
+            mystep = map( lambda fubar: 1.2 + fubar, x )
+        else: 
+            mystep = map( lambda fubar: 1.2 * fubar, x )
+        result = neldermead( myfcn, x, xmin, xmax, maxfev=mymaxfev, ftol=ftol,
+                             finalsimplex=9, step=mystep )
         x = numpy.asarray( result[ 1 ], numpy.float_ )
         nfval = result[2]
         nfev = result[4].get( 'nfev' )
         if False != debug:
-            print 'f%s=%e in %d nfev (neldermead)\n' % ( x, nfval, nfev )
+            print 'f%s=%.14e in %d nfev (neldermead)\n' % ( x, nfval, nfev )
         ############################# NelderMead #############################
 
         ############################## nmDifEvo ##############################
-        xmin, xmax = _narrow_limit( 4 * factor, [x,xmin,xmax], debug=False )
-        result = difevo_nm( fcn, x, xmin, xmax, ftol=ftol, maxfev=maxfev,
+        xmin, xmax = _narrow_limits( 4 * factor, [x,xmin,xmax], debug=False )
+        mymaxfev = min( maxfev_per_iter, maxfev - nfev )
+        result = difevo_nm( myfcn, x, xmin, xmax, ftol=ftol, maxfev=mymaxfev,
                             seed=seed, population_size=pop, xprob=xprob,
                             strategy=strategy, weighting_factor=weight )
         nfev += result[4].get( 'nfev' )
         x = numpy.asarray( result[1], numpy.float_ )
         nfval = result[2]
         if False != debug:
-            print 'f%s=%e in %d nfev (difevo_nm)\n' % ( x, result[2],
+            print 'f%s=%.14e in %d nfev (difevo_nm)\n' % ( x, result[2],
                                                         result[4].get('nfev'))
         ############################## nmDifEvo ##############################
             
         ofval = FUNC_MAX        
         while nfev < maxfev:
 
-            xmin, xmax = _narrow_limit( factor, [x,xmin,xmax], debug=False )
+            xmin, xmax = _narrow_limits( factor, [x,xmin,xmax], debug=False )
 
             ############################ nmDifEvo #############################
-            #strategy = ( strategy + 5 ) % 10
+            strategy = ( strategy + 5 ) % 10
             y = random_start( xmin, xmax )
-            result = difevo_nm( fcn, y, xmin, xmax, ftol=ftol, maxfev=maxfev,
+            mymaxfev = min( maxfev_per_iter, maxfev - nfev )
+            result = difevo_nm( myfcn, y, xmin, xmax, ftol=ftol, maxfev=mymaxfev,
                                 seed=seed, population_size=pop, xprob=xprob,
                                 strategy=strategy, weighting_factor=weight )
             nfev += result[4].get( 'nfev' )
@@ -507,29 +546,39 @@ def montecarlo(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
                 nfval = result[2]
                 x = numpy.asarray( result[1], numpy.float_ )
             if False != debug:
-                print 'f%s=%e in %d nfev (difevo_nm)\n' % \
+                print 'f%s=%.14e in %d nfev (difevo_nm)\n' % \
                       ( x, result[2], result[4].get('nfev'))
             ############################ nmDifEvo #############################
 
 
             if False != debug:
-                print 'ofval=%e\tnfval=%e\n' % (ofval, nfval)
-            if nfval > 0.995 * ofval:
+                print 'ofval=%.14e\tnfval=%.14e\n' % (ofval, nfval)
+
+            if sao_fcmp( ofval, nfval, ftol ) <= 0:
                 return x, nfval, nfev
             ofval = nfval
             factor *= 2
             
         return x, nfval, nfev
-            
+
     x, fval, nfev = myopt( fcn, [x, xmin, xmax], numpy.sqrt(ftol), maxfev,
                            seed, population_size, xprob, strategy,
                            weighting_factor, factor=2.0, debug=False )
 
-    result = neldermead( fcn, x, xmin, xmax, maxfev=512*len(x), ftol=ftol,
-                             finalsimplex=9 )
-    x = numpy.asarray( result[ 1 ], numpy.float_ )
-    fval = result[2]
-    nfev += result[4].get( 'nfev' )
+    covarerr = None
+    if nfev < maxfev:
+        if all( x == 0.0 ):
+            mystep = map( lambda fubar: 1.2 + fubar, x )
+        else: 
+            mystep = map( lambda fubar: 1.2 * fubar, x )
+        result = neldermead( fcn, x, xmin, xmax,
+                             maxfev=min( 512*len(x), maxfev - nfev ),
+                             ftol=ftol, finalsimplex=9, step=mystep )
+        covarerr = result[4].get( 'covarerr' )
+
+        x = numpy.asarray( result[ 1 ], numpy.float_ )
+        fval = result[2]
+        nfev += result[4].get( 'nfev' )
 
     ierr = 0
     if nfev >= maxfev:
@@ -537,7 +586,11 @@ def montecarlo(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
     status, msg = _get_saofit_msg( maxfev, ierr )
 
     rv = (status, x, fval)
-    rv += (msg, {'info': status, 'nfev': nfev})
+    print_covar_err = False
+    if print_covar_err and None != covarerr:
+        rv += (msg, {'covarerr': covarerr, 'info': status, 'nfev': nfev})
+    else:
+        rv += (msg, {'info': status, 'nfev': nfev})
     return rv
 
 
@@ -555,11 +608,14 @@ def neldermead( fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None,
     elif numpy.isscalar(step):
         step = step*numpy.ones(x.shape, numpy.float_, numpy.isfortran(x))
 
+    def stat_cb0( pars ):
+        return fcn( pars )[ 0 ]
+
     #
     # A safeguard just in case the initial simplex is outside the bounds
     #
-    orig_fcn = fcn
-    def fcn(x_new):
+    orig_fcn = stat_cb0
+    def stat_cb0(x_new):
         if _outside_limits(x_new, xmin, xmax) or _my_is_nan(x_new):
             return FUNC_MAX
         return orig_fcn(x_new)
@@ -609,69 +665,45 @@ def neldermead( fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None,
     if maxfev is None:
         maxfev = 1024 * len( x )
 
-    # to be used in quadsurf
-    g = numpy.asarray( len(x)*(len(x)+1) * [1.0], numpy.float_ )
-    h = numpy.asarray( (len(x)+1) * [1.0], numpy.float_ )
-
-
     if debug:
         print 'opfcts.py neldermead() finalsimplex=%s\tisscalar=%s\titerable=%d' % (finalsimplex,numpy.isscalar(finalsimplex), numpy.iterable(finalsimplex))
 
     def simplex( verbose, maxfev, init, final, tol, step, xmin, xmax, x,
-                 g, h, fcn, debug, ofval=FUNC_MAX ):
+                 myfcn, debug, ofval=FUNC_MAX ):
 
         tmpfinal = final[:]
         if len( final ) >= 3:
             tmpfinal = final[0:-1] # get rid of the last entry in the list
 
-        xx,ff,nf,er,gg,hh = _saoopt.neldermead( verbose, maxfev, init,
-                                                tmpfinal, tol, step, xmin,
-                                                xmax, x, g, h, fcn )
+        xx,ff,nf,er = _saoopt.neldermead( verbose, maxfev, init, tmpfinal, tol,
+                                          step, xmin, xmax, x, myfcn )
 
         if debug:
             print 'finalsimplex=%s, nfev=%d:\tf%s=%.20e' % (tmpfinal,nf,xx,ff)
 
         if len( final ) >= 3 and ff < 0.995 * ofval and nf < maxfev:
             myfinal = [final[-1]]
-            x,fval,nfev,err,g,h = simplex( verbose, maxfev-nf, init, myfinal,
-                                           tol, step, xmin, xmax, x, g, h, fcn,
-                                           debug, ofval=ff )
-            return x,fval,nfev+nf,err,g,h
+            x,fval,nfev,err = simplex( verbose, maxfev-nf, init, myfinal, tol,
+                                       step, xmin, xmax, x, myfcn, debug,
+                                       ofval=ff )
+            return x,fval,nfev+nf,err
         else:
-            return xx,ff,nf,er,gg,hh
+            return xx,ff,nf,er
 
 
-    x, fval, nfev, ier, g, h = simplex( verbose, maxfev, initsimplex, finalsimplex,
-                                        ftol, step, xmin, xmax, x, g, h, fcn, debug )
+    x, fval, nfev, ier = simplex( verbose, maxfev, initsimplex, finalsimplex,
+                                  ftol, step, xmin, xmax, x, stat_cb0, debug )
     if debug:
         print 'f%s=%f in %d nfev' % ( x, fval, nfev )
-
-
-    def quadsurf( x, g, h, nfev, step, fcn, debug ):
-        ggg = []
-        for i in range(0,len(x)+1):
-            ggg.append( g[ i * len(x) : (i+1)*len(x) ] )
-        g = ggg
-        simp = 1.0e3 * ftol
-        tmp_x = numpy.array(x, numpy.float_)  # Make a copy
-        tmp_fval, var, ifault, mynfev = _minim.quadsurf( tmp_x, step, -1, simp, fcn, g, h, 32 )
-        if debug:
-            print 'ifault=%d\tf%s=%e nfev=%d' % (ifault,x,fcn(x),nfev)
-        #
-        # if 0 != ifault then not at a minimum
-        #
-        return ifault, mynfev+nfev
-
-    #ifault, nfev = quadsurf( x, g, h, nfev, step, fcn, debug )
-
+    
     info=1
+    covarerr=None
     if len( finalsimplex ) >= 3 and 0 != iquad:
         nelmea = minim( fcn, x, xmin, xmax, ftol=10.0*ftol, maxfev=maxfev-nfev-12, iquad=1 )
         nelmea_x = numpy.asarray( nelmea[1], numpy.float_ )
         nelmea_nfev = nelmea[4].get( 'nfev' )
         info = nelmea[4].get( 'info' )
-        if 0 == info:
-            var = nelmea[4].get( 'var' )
+        covarerr = nelmea[4].get( 'covarerr' )
         nfev += nelmea_nfev
         minim_fval = nelmea[ 2 ]
         if minim_fval < fval:
@@ -693,9 +725,9 @@ def neldermead( fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None,
                            (False, 'unknown status flag (%d)' % ier) )
 
     rv = (status, x, fval)
-    if 0 == info:
-        rv += (msg, {'var': numpy.sqrt(var), 'info': status,
-                     'nfev': nfev})
+    print_covar_err = False
+    if print_covar_err and None != covarerr:
+        rv += (msg, {'covarerr': covarerr, 'info': status, 'nfev': nfev})
     else:
         rv += (msg, {'info': status, 'nfev': nfev})
     return rv
@@ -717,7 +749,7 @@ def lmdifc(fcn, x0, xmin, xmax, ftol=EPSILON, xtol=EPSILON, gtol=EPSILON,
     def fcn(x_new):
         return orig_fcn(x_new)
 
-    x, fval, nfev, info, ifault, covarerr = _saoopt.clmdif(fcn, m, x, ftol, xtol, gtol, maxfev, epsfcn, factor, verbose, xmin, xmax)
+    x, fval, nfev, info, covarerr = _saoopt.clmdif(fcn, m, x, ftol, xtol, gtol, maxfev, epsfcn, factor, verbose, xmin, xmax)
     
     if error:
         raise error.pop()
@@ -750,20 +782,5 @@ def lmdifc(fcn, x0, xmin, xmax, ftol=EPSILON, xtol=EPSILON, gtol=EPSILON,
     status, msg = key.get(info, (False, 'unknown status flag (%d)' % info))
 
     rv = (status, x, fval)
-    if ifault:
-        rv += (msg, {'info': info, 'nfev': nfev})
-    else:
-        rv += (msg, {'info': info, 'nfev': nfev, 'covarerr': covarerr })
+    rv += (msg, {'info': info, 'nfev': nfev, 'covarerr': covarerr })
     return rv
-
-from sherpa.optmethods.nm import NelderMeadSimplex
-def myneldermead( fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None,
-                  initsimplex=0, finalsimplex=9, step=None, verbose=0 ):
-
-    x, xmin, xmax = _check_args(x0, xmin, xmax)
-    if maxfev is None:
-        maxfev = len(x) * 1024
-
-    nms = NelderMeadSimplex( fcn, x, xmin, xmax, maxfev )
-    return nms()
-

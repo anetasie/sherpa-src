@@ -29,6 +29,7 @@
 #define NAN quiet_nan(0)
 #endif
 
+#include <vector>
 #include <limits>
 #include <sherpa/constants.hh>
 
@@ -115,7 +116,7 @@ namespace sherpa { namespace utils {
    *     **********
    */
   template <typename ConstArrayType, typename DataType, typename IndexType>
-  DataType enorm2( IndexType n, const ConstArrayType& x ) {
+  inline DataType enorm2( IndexType n, const ConstArrayType& x ) {
 
     // int i;
     DataType agiant, floatn, s1, s2, s3, xabs, x1max, x3max;
@@ -200,7 +201,7 @@ namespace sherpa { namespace utils {
   }
 
   template <typename ConstArrayType, typename DataType, typename IndexType>
-  DataType simple_sum( IndexType num, const ConstArrayType& vals ) {
+  inline DataType simple_sum( IndexType num, const ConstArrayType& vals ) {
 
     DataType sum = vals[0];
 
@@ -213,7 +214,7 @@ namespace sherpa { namespace utils {
 
 
   template <typename ConstArrayType, typename DataType, typename IndexType>
-  DataType kahan_sum( IndexType num, const ConstArrayType& vals ) {
+  inline DataType kahan_sum( IndexType num, const ConstArrayType& vals ) {
 
     DataType sum = vals[ 0 ];
     DataType correction = 0.0;
@@ -233,8 +234,8 @@ namespace sherpa { namespace utils {
 
 
   template <typename DataType, typename ConstArrayType>
-  inline int radius( const ConstArrayType& p,
-		     DataType x0, DataType x1, DataType& val )
+  inline int radius2( const ConstArrayType& p,
+		      DataType x0, DataType x1, DataType& val )
   {
   
     register DataType deltaX = x0 - p[1];
@@ -254,11 +255,12 @@ namespace sherpa { namespace utils {
       if( p[3] == 1 )
 	return EXIT_FAILURE;
       else {
-	val = SQRT(newX*newX*(1-p[3])*(1-p[3])+newY*newY)/(1-p[3]);
+	register DataType ellip2 = (1. - p[3]) * (1. - p[3]);
+	val = (newX * newX * ellip2 + newY * newY) / ellip2;
 	return EXIT_SUCCESS;
       }
     } else {
-      val = SQRT( deltaX * deltaX + deltaY * deltaY );
+      val = deltaX * deltaX + deltaY * deltaY;
       return EXIT_SUCCESS;
     }
   
@@ -267,7 +269,56 @@ namespace sherpa { namespace utils {
   
   }
 
+
+  template <typename DataType, typename ConstArrayType>
+  inline int radius( const ConstArrayType& p,
+		     DataType x0, DataType x1, DataType& val )
+  {
+
+    if( EXIT_SUCCESS != radius2( p, x0, x1, val ) ) {
+      return EXIT_FAILURE;
+    }
+
+    val = SQRT( val );
+
+    return EXIT_SUCCESS;
+    
+  }
+
+  // {
   
+  //   register DataType deltaX = x0 - p[1];
+  //   register DataType deltaY = x1 - p[2];
+  //   register DataType p_four = p[4];
+  //   if( p[3] != 0 ) {
+  //     while( p_four >= 2*PI ) {
+  // 	p_four -= 2*PI;
+  //     }
+  //     while( p_four < 0.0 ) {
+  // 	p_four += 2*PI;
+  //     }
+  //     register DataType cosTheta = COS(p_four);
+  //     register DataType sinTheta = SIN(p_four);
+  //     register DataType newX = deltaX * cosTheta + deltaY * sinTheta;
+  //     register DataType newY = deltaY * cosTheta - deltaX * sinTheta;
+  //     if( p[3] == 1 )
+  // 	return EXIT_FAILURE;
+  //     else {
+  // 	val = SQRT(newX*newX*(1-p[3])*(1-p[3])+newY*newY)/(1-p[3]);
+  // 	return EXIT_SUCCESS;
+  //     }
+  //   } else {
+  //     val = SQRT( deltaX * deltaX + deltaY * deltaY );
+  //     return EXIT_SUCCESS;
+  //   }
+  
+  //   val = 0.0;
+  //   return EXIT_SUCCESS;
+  
+  // }
+
+
+
 //     Copyright (C) 2000 Massachusetts Institute of Technology 
  
 //     Author:  John E. Davis <davis@space.mit.edu>
@@ -359,6 +410,34 @@ namespace sherpa { namespace utils {
     return EXIT_SUCCESS;
   }
 
+
+  template<typename ConstFloatArrayType, typename FloatType>
+  inline int neville( int n,
+	       const ConstFloatArrayType& x, const ConstFloatArrayType& y,
+	       FloatType xinterp, FloatType& answer ) {
+
+    // ConstFloatArrayType may not be aligned in memory!
+    // Sherpa Arrays overload [] to make the correct jump.
+
+    //std::vector<FloatType> p( y, y+n );
+
+    std::vector<FloatType> p( n );
+    for ( int ii = 0; ii < n; ii++ )
+      p[ii] = y[ii];
+
+    for ( int jj = 1; jj < n; jj++ )
+      for ( int ii = n-1; ii >= jj; ii-- ) {
+	FloatType denom = x[ii] - x[ii-jj];
+	if ( 0.0 == denom )
+	  return EXIT_FAILURE;
+	p[ii] = ( (xinterp-x[ii-jj])*p[ii] - (xinterp-x[ii])*p[ii-1] ) / denom;
+      }
+    
+    answer = p[n-1];
+    return EXIT_SUCCESS;
+    
+  }
+    
 
   template <typename ConstFloatType, typename FloatType,
 	    typename ConstIntType, typename IndexType>

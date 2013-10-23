@@ -1,16 +1,10 @@
-# SHERPA_VERSION 4.2.1
+# SHERPA_VERSION 4.3.1
 [options]
 # Plotting packages available- pylab, chips
 plot_pkg   : chips
 
 # IO packages available- pyfits, crates
 io_pkg     : crates
-
-# For shell script "sherpa", NOT a Python config option
-# Which language will shell script choose?  By default
-# load modules into IPython, but set to "slang" to 
-# start slsh and import Sherpa S-Lang wrapper.
-shell      : python
 
 [statistics]
 # If true, use truncation value in Cash, C-stat
@@ -37,6 +31,12 @@ level      : 0
 # changed to a much larger value as Sherpa often deals with large
 # arrays.
 arraylength: 1000000
+
+[parallel]
+# Integral number of cores to use for all parallel operations
+# 'None' indicates that all available cores will be used.
+# Fewer than 2 will turn off parallel processing.
+numcores : None
 
 [chips]
 # If the plotting package is chips, set Sherpa-specific

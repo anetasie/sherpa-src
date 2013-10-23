@@ -1,5 +1,5 @@
 # 
-#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -17,8 +17,10 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+
 import numpy
 import pylab
+
 from sherpa.utils import get_keyword_defaults
 from sherpa.utils.err import NotImplementedErr
 
@@ -32,7 +34,8 @@ __all__ = ('clear_window','point','plot','histo','contour','set_subplot','init',
            'get_fit_contour_defaults', 'get_resid_contour_defaults',
            'get_ratio_contour_defaults','get_confid_plot_defaults',
            'get_confid_contour_defaults', 'set_window_redraw', 'set_jointplot',
-           'get_model_histo_defaults', 'get_histo_defaults')
+           'get_model_histo_defaults', 'get_histo_defaults',
+           'get_component_plot_defaults','get_component_histo_defaults')
 
 def init():
     pass
@@ -94,16 +97,87 @@ def histo(xlo, xhi, y, yerr=None, title=None, xlabel=None, ylabel=None,
           barsabove=_errorbar_defaults['barsabove'],
           xlog=False,
           ylog=False,
-          linestyle='steps',
+          linestyle='steps-mid',
           linecolor=None,
           color=None,
           marker='None',
           markerfacecolor=None,
           markersize=None):
 
-    plot(xlo, y, yerr, None, title, xlabel, ylabel, overplot, clearwindow,
+    plot(0.5*(xlo+xhi), y, yerr, None, title, xlabel, ylabel, overplot, clearwindow,
          False, yerrorbars, ecolor, capsize, barsabove, xlog, ylog, linestyle,
          linecolor, color, marker, markerfacecolor, markersize, False, False)
+
+
+_attr_map = {
+    'linecolor' : 'color',
+    'linestyle' : 'linestyle',
+    'linewidth' : 'linewidth',
+    }
+
+_linestyle_map = {
+
+    'noline'  : ' ',
+    'solid'   : '-',
+    'dot'     : ':',
+    'dash'    : '--', 
+    'dotdash' : '-.',
+    }
+
+
+def _check_hex_color(val):
+    if type(val) in (str, numpy.string_) and val.startswith('0x'):
+        val = '#'+str(val).replace('0x','').rjust(6,'0')
+    return val
+
+def vline(x, ymin=0, ymax=1,
+          linecolor=None,
+          linestyle=None,
+          linewidth=None,
+          overplot=False, clearwindow=True):
+
+    if overplot:
+        axes = pylab.gca()
+    else:
+        if clearwindow:
+            clear_window()
+        axes = pylab.gca()
+
+    line = axes.axvline(x, ymin, ymax)
+
+    for var in ('linecolor', 'linestyle', 'linewidth'):
+        val = locals()[var]
+        if val is not None:
+            if 'style' in var:
+                val = _linestyle_map[val]
+            elif 'color' in var:
+                val = _check_hex_color(val)
+            getattr(line, 'set_' + _attr_map[var])(val)
+
+
+def hline(y, xmin=0, xmax=1,
+          linecolor=None,
+          linestyle=None,
+          linewidth=None,
+          overplot=False, clearwindow=True):
+
+    if overplot:
+        axes = pylab.gca()
+    else:
+        if clearwindow:
+            clear_window()
+        axes = pylab.gca()
+
+    line = axes.axhline(y, xmin, xmax)
+
+    for var in ('linecolor', 'linestyle', 'linewidth'):
+        val = locals()[var]
+        if val is not None:
+            if 'style' in var:
+                val = _linestyle_map[val]
+            elif 'color' in var:
+                val = _check_hex_color(val)
+            getattr(line, 'set_' + _attr_map[var])(val)
 
 
 def plot(x, y, yerr=None, xerr=None, title=None, xlabel=None, ylabel=None,
@@ -194,8 +268,8 @@ def contour(x0, x1, y, levels=None, title=None, xlabel=None, ylabel=None,
         if ylabel:
             axes.set_ylabel(ylabel)
 
-    x0 = numpy.unique1d(x0)
-    x1 = numpy.unique1d(x1)
+    x0 = numpy.unique(x0)
+    x1 = numpy.unique(x1)
     y  = numpy.asarray(y)
 
     if x0.size * x1.size != y.size:
@@ -236,7 +310,27 @@ def set_subplot(row, col, nrows, ncols, clearaxes=True,
     if clearaxes:
         pylab.cla()
 
-set_jointplot = set_subplot
+
+def set_jointplot(row, col, nrows, ncols, clearaxes=True,
+                  top=1,
+                  ratio=2):
+
+    if not clearaxes:
+        f, axarr = pylab.subplots(nrows, sharex=True, num=1)
+        f.subplots_adjust(hspace=0.05)
+        pylab.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
+
+        # need to set axes[0] as current axes.
+        pylab.sca(axarr[0])
+
+    else:
+        
+        # need to set axes[1] as current axes.
+        axes = pylab.gca()
+        ax2 = axes.figure.axes[-1]
+        pylab.sca(ax2)
+        #ax2.get_yticklabels()[-1].set_visible(False)
+
 
 def get_split_plot_defaults():
     return get_keyword_defaults(set_subplot, 1)
@@ -324,3 +418,5 @@ def get_fit_contour_defaults():
 get_confid_contour_defaults = get_data_contour_defaults
 get_resid_contour_defaults = get_data_contour_defaults
 get_ratio_contour_defaults = get_data_contour_defaults
+get_component_plot_defaults = get_model_plot_defaults
+get_component_histo_defaults = get_model_histo_defaults

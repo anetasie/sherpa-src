@@ -40,12 +40,12 @@ class test_basic(SherpaTestCase):
                 continue
 
             # These have very different interfaces than the others
-            if cls == 'PSF1D' or cls == 'PSF2D':
+            if cls == 'Integrator1D' or cls == 'Integrate1D':
                 continue
 
             m = clsobj()
             if isinstance(m, basic.TableModel):
-                m._y = x
+                m.load(x,x)
             if isinstance(m, basic.UserModel):
                 m.calc = userfunc 
             self.assertEqual(type(m).__name__.lower(), m.name)
@@ -56,7 +56,7 @@ class test_basic(SherpaTestCase):
                     pt_out  = m(x, x)
                     int_out = m(x, x, x, x)
                 else:
-                    if m.name.startswith('log'):
+                    if m.name in ('log', 'log10'):
                         xx = -x
                     else:
                         xx = x
@@ -69,4 +69,4 @@ class test_basic(SherpaTestCase):
                 self.assert_(out.dtype.type is SherpaFloat)
                 self.assertEqual(out.shape, x.shape)
 
-        self.assertEqual(count, 27)
+        self.assertEqual(count, 31)

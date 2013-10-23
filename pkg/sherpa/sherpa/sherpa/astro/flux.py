@@ -24,7 +24,7 @@ import numpy.random
 from sherpa.estmethods import *
 from sherpa.astro.utils import calc_energy_flux
 from itertools import izip
-from sherpa.utils import divide_run_parallel
+from sherpa.utils import parallel_map
 from sherpa.utils.err import EstErr
 
 import logging
@@ -59,9 +59,9 @@ def sample_param_uncorr(fit, num=1, dist=numpy.random.normal):
         if lo is not None and hi is not None:
             sigma = numpy.abs(lo)
         else:
-            warning("Covariance failed for '%s', trying Projection..." %
+            warning("Covariance failed for '%s', trying Confidence..." %
                     par.fullname)
-            fit.estmethod = Projection()
+            fit.estmethod = Confidence()
             try:
                 t = fit.est_errors(parlist = (par,))
                 if t.parmins[0] is not None and t.parmaxes[0] is not None:
@@ -90,57 +90,38 @@ def sample_param_corr(fit, num=1, dist=numpy.random.multivariate_normal):
     if cov is None:
         raise EstErr('nocov')
 
+    cov = numpy.asarray(cov)
+    if numpy.min(numpy.linalg.eigvalsh(cov)) <= 0:
+        raise TypeError("The covariance matrix is not positive definite")
+
     vals = fit.model.thawedpars
     samples = get_sample_corr(vals, cov, num, dist)
 
     return samples
 
 
-# def calc_flux(fit, data, src, samples, method=calc_energy_flux,
-#               lo=None, hi=None):
-#     #fluxes=numpy.array([])
-#     fluxes = []
-
-#     old_model_vals  = fit.model.thawedpars
-#     try:
-#         # FIXME add parallel support here
-#         for sample in samples:
-#             fit.model.thawedpars = sample
-#             flux = method(data, src, lo, hi)
-#             #flux = [ method(data, src, lo, hi) ]
-#             #flux.extend(sample)
-#             #fluxes = numpy.append(fluxes, [flux])
-#             fluxes.append(numpy.concatenate([[flux],fit.model.thawedpars]))
-#     finally:
-#         fit.model.thawedpars = old_model_vals
-
-#     return numpy.asarray(fluxes)
-
-
 def calc_flux(fit, data, src, samples, method=calc_energy_flux,
-              lo=None, hi=None):
+              lo=None, hi=None, numcores=None):
 
-    def eval(slice, *args, **kwargs):
-        fluxes = []
-        old_model_vals  = fit.model.thawedpars
-        try:
-            for sample in slice:
-                fit.model.thawedpars = sample
-                flux = method(data, src, lo, hi)
-                fluxes.append(numpy.concatenate([[flux],fit.model.thawedpars]))
-        finally:
-            fit.model.thawedpars = old_model_vals
+    def evaluate(sample):
+        fit.model.thawedpars = sample
+        flux = method(data, src, lo, hi)
+        return [flux] + list(sample)
 
-        return numpy.asarray(fluxes)
+    old_model_vals  = fit.model.thawedpars
+    try:
+        fluxes = parallel_map(evaluate, samples, numcores)
+    finally:
+        fit.model.thawedpars = old_model_vals
 
-    return divide_run_parallel(eval, samples)
+    return numpy.asarray(fluxes)
 
 
-def sample_flux(fit, data, src, method=calc_energy_flux, correlated=False, num=1,
-                lo=None, hi=None):
+def sample_flux(fit, data, src, method=calc_energy_flux, correlated=False,
+                num=1, lo=None, hi=None, numcores=None):
     samples=None
     if correlated:
         samples = sample_param_corr(fit, num, numpy.random.multivariate_normal)
     else:
         samples = sample_param_uncorr(fit, num, numpy.random.normal)
-    return calc_flux(fit, data, src, samples, method, lo, hi)
+    return calc_flux(fit, data, src, samples, method, lo, hi, numcores)

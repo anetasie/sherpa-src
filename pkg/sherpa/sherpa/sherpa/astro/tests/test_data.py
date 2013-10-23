@@ -57,38 +57,41 @@ class test_filter_energy_grid(SherpaTestCase):
         3.5624001 ,   3.796     ,   4.02960014,   4.24860001,   4.71579981,
         5.0223999 ,   5.37279987,   5.89839983,   6.57000017,   9.8696003 ,
         14.95040035], numpy.float)
-    
+
     def setUp(self):
         self.old_level = logger.getEffectiveLevel()
         logger.setLevel(logging.ERROR)
-        self.pha = DataPHA('', numpy.arange(46, dtype=float), numpy.zeros(46),
+        self.pha = DataPHA('', numpy.arange(46, dtype=float)+1.,
+                           numpy.zeros(46),
                            bin_lo = self._emin, bin_hi = self._emax )
-    
+        self.pha.units="energy"
+
     def tearDown(self):
         logger.setLevel(self.old_level)
-    
+
     def test_notice(self):
         #clear mask
         self.pha.notice()        
         self.pha.notice(0.0, 6.0)
         #self.assertEqual(self._notice, self.pha.mask)
-        assert( self._notice==self.pha.mask, True)
-            
+        assert (self._notice==numpy.asarray(self.pha.mask)).all()
+
+
     def test_ignore(self):
         #clear mask
         self.pha.notice()
         self.pha.ignore(0.0, 1.0)
         self.pha.ignore(3.0, 15.0)
         #self.assertEqual(self._ignore, self.pha.mask)
-        assert( self._ignore==self.pha.mask, True)
-         
+        assert (self._ignore==numpy.asarray(self.pha.mask)).all()
 
-        
+
+
 class test_filter_energy_grid_reversed(SherpaTestCase):
 
     _notice = numpy.zeros(204, dtype=bool)
     _notice[0:42]=True
-    
+
     _ignore = numpy.ones(204, dtype=bool)
     _ignore[66:70]=False
     _ignore[0:17]=False
@@ -181,29 +184,30 @@ class test_filter_energy_grid_reversed(SherpaTestCase):
 
 
     def setUp(self):
-        self.old_level = logger.getEffectiveLevel()
-        logger.setLevel(logging.ERROR)
-        self.pha = DataPHA('',
-                           numpy.arange(204, dtype=float),
+        #self.old_level = logger.getEffectiveLevel()
+        #logger.setLevel(logging.ERROR)
+        self.pha = DataPHA('', numpy.arange(204, dtype=float)+1.,
                            numpy.zeros(204),
-                           bin_lo = self._emin,
-                           bin_hi = self._emax )
+                           bin_lo = self._emin, bin_hi = self._emax )
+        self.pha.units="energy"
 
     def tearDown(self):
-        logger.setLevel(self.old_level)
-    
+        #logger.setLevel(self.old_level)
+        pass
+
     def test_notice(self):
         #clear mask
         self.pha.notice()
-        self.pha.notice(1.5, 3.0)
-        assert(self._notice==self.pha.mask, True)
+        self.pha.notice(4., 8.3)
+        assert (self._notice==numpy.asarray(self.pha.mask)).all()
+
 
     def test_ignore(self):
         #clear mask
         self.pha.notice()
-        self.pha.ignore(0.9, 1.2)
-        self.pha.ignore(2.0, 3.0)
-        assert(self._ignore==self.pha.mask, True)
+        self.pha.ignore(10.3, 13.8)
+        self.pha.ignore(4.6, 6.2)
+        assert (self._ignore==numpy.asarray(self.pha.mask)).all()
 
 
 class test_filter_wave_grid(SherpaTestCase):
@@ -221,23 +225,31 @@ class test_filter_wave_grid(SherpaTestCase):
     def setUp(self):
         self.old_level = logger.getEffectiveLevel()
         logger.setLevel(logging.ERROR)
-        self.pha = DataPHA('', numpy.arange(16384), numpy.zeros(16384),
+        self.pha = DataPHA('', numpy.arange(16384, dtype=float)+1,
+                           numpy.zeros(16384),
                            bin_lo = self._emin, bin_hi = self._emax )
-    
+
     def tearDown(self):
         logger.setLevel(self.old_level)
-    
+
     def test_notice(self):
         self.pha.units = 'wavelength'
         #clear mask
         self.pha.notice()
         self.pha.notice(100.0, 225.0)
-        assert(self._notice==self.pha.mask, True)
+        assert (self._notice==numpy.asarray(self.pha.mask)).all()
 
     def test_ignore(self):
         self.pha.units = 'wavelength'
         #clear mask
         self.pha.notice()
-        self.pha.ignore(30.0, 225.0)
+        self.pha.ignore(30.01, 225.0)
         self.pha.ignore(0.1, 6.0)        
-        assert(self._ignore==self.pha.mask, True)
+        assert (self._ignore==numpy.asarray(self.pha.mask)).all()
+
+
+if __name__ == '__main__':
+
+    from sherpa.utils import SherpaTest
+    import sherpa.astro
+    SherpaTest(sherpa.astro).test()

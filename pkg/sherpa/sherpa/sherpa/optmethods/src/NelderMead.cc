@@ -53,7 +53,7 @@ void justdoit( Init init, Fct fct, int npars,
 
       int verbose=0, initsimplex=0, maxnfev=npars*npars*1024, nfev;
       double fmin;
-      nm( &pars[0], verbose, initsimplex, finalsimplex, tol, &step[0], maxnfev, nfev, fmin, NULL, NULL );
+      nm( &pars[0], verbose, initsimplex, finalsimplex, tol, &step[0], maxnfev, nfev, fmin );
       
       print_pars( header, nfev, fmin, answer, npars, pars );
       

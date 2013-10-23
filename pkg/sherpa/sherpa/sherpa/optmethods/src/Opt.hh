@@ -64,8 +64,10 @@ namespace sherpa {
   template< typename Func, typename Data >
   class Opt {
 
+    /*
     friend std::ostream& operator << ( std::ostream& os, const Opt& opt ) {
       return opt.print( os ); }
+    */
 
   public:
 

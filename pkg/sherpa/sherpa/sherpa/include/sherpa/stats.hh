@@ -36,7 +36,7 @@ namespace sherpa { namespace stats {
   //
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_cstat_stat( IndexType num, const ConstArrayType& yraw,
+  inline int calc_cstat_stat( IndexType num, const ConstArrayType& yraw,
 		       const ConstArrayType& model,
 		       const ConstArrayType& error,
 		       const ConstArrayType& syserror,
@@ -86,7 +86,7 @@ namespace sherpa { namespace stats {
   //
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_cash_stat( IndexType num, const ConstArrayType& yraw,
+  inline int calc_cash_stat( IndexType num, const ConstArrayType& yraw,
 		      const ConstArrayType& model, const ConstArrayType& error,
 		      const ConstArrayType& syserror,
 		      const ConstArrayType& weight, ArrayType& fvec,
@@ -94,7 +94,7 @@ namespace sherpa { namespace stats {
 
     DataType mymodel, d;
     for ( IndexType ii = num - 1; ii >= 0; --ii ) {
- 
+      
       if ( model[ ii ] > 0.0) 
 	mymodel = model[ ii ];
       else {
@@ -132,7 +132,7 @@ namespace sherpa { namespace stats {
 
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_chi2gehrels_errors( IndexType num, const ConstArrayType& yraw,
+  inline int calc_chi2gehrels_errors( IndexType num, const ConstArrayType& yraw,
 			       ArrayType& err ) {
 
     const DataType fudge = 0.75;
@@ -155,7 +155,7 @@ namespace sherpa { namespace stats {
 
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_stat( IndexType num, const ConstArrayType& weight,
+  inline int calc_stat( IndexType num, const ConstArrayType& weight,
 		 ArrayType& fvec, DataType& stat ) {
 
     if ( weight )
@@ -188,7 +188,7 @@ namespace sherpa { namespace stats {
   //
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_chi2_stat( IndexType num, const ConstArrayType& yraw,
+  inline int calc_chi2_stat( IndexType num, const ConstArrayType& yraw,
 		      const ConstArrayType& model,
 		      const ConstArrayType& error, 
 		      const ConstArrayType& syserror,
@@ -220,7 +220,7 @@ namespace sherpa { namespace stats {
 
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_chi2constvar_errors( IndexType num, const ConstArrayType& yraw,
+  inline int calc_chi2constvar_errors( IndexType num, const ConstArrayType& yraw,
 				ArrayType& err ) {
 
     DataType mu = sherpa::utils::kahan_sum< ArrayType, DataType, IndexType >
@@ -240,7 +240,7 @@ namespace sherpa { namespace stats {
 
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_chi2datavar_errors( IndexType num, const ConstArrayType& yraw,
+  inline int calc_chi2datavar_errors( IndexType num, const ConstArrayType& yraw,
 				ArrayType& err ) {
 
     for ( IndexType ii = num - 1; ii >= 0; --ii )
@@ -266,7 +266,7 @@ namespace sherpa { namespace stats {
   //
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_chi2modvar_stat( IndexType num, const ConstArrayType& yraw,
+  inline int calc_chi2modvar_stat( IndexType num, const ConstArrayType& yraw,
 			    const ConstArrayType& model,
 			    const ConstArrayType& error,
 			    const ConstArrayType& syserror,
@@ -306,7 +306,7 @@ namespace sherpa { namespace stats {
   // behavior.
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_chi2xspecvar_errors( IndexType num, const ConstArrayType& yraw,
+  inline int calc_chi2xspecvar_errors( IndexType num, const ConstArrayType& yraw,
 				ArrayType& err ) {
 
     for ( IndexType ii = num - 1; ii >= 0; --ii )
@@ -322,7 +322,7 @@ namespace sherpa { namespace stats {
 
   template <typename ArrayType, typename ConstArrayType, typename DataType,
 	    typename IndexType>
-  int calc_lsq_stat( IndexType num, const ConstArrayType& yraw,
+  inline int calc_lsq_stat( IndexType num, const ConstArrayType& yraw,
 		      const ConstArrayType& model,
 		      const ConstArrayType& error, 
 		      const ConstArrayType& syserror,

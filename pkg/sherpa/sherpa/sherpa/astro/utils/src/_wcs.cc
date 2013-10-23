@@ -30,17 +30,18 @@ extern "C" {
 
 static PyObject* pix2world( PyObject* self, PyObject* args )
 {
-  DoubleArray vals;
-  DoubleArray result;
+  DoubleArray x0;
+  DoubleArray x1;
   DoubleArray crpix;
   DoubleArray crval;
   DoubleArray cdelt;
   double crota = 0.0, epoch = 0.0, equinox = 0.0;
   const char *ctype = NULL;
   
-  if ( !PyArg_ParseTuple( args, (char*)"sO&O&O&O&ddd",
+  if ( !PyArg_ParseTuple( args, (char*)"sO&O&O&O&O&ddd",
 			  &ctype,
-			  CONVERTME(DoubleArray), &vals,
+			  CONVERTME(DoubleArray), &x0,
+			  CONVERTME(DoubleArray), &x1,
 			  CONVERTME(DoubleArray), &crpix,
 			  CONVERTME(DoubleArray), &crval,
 			  CONVERTME(DoubleArray), &cdelt,
@@ -60,13 +61,13 @@ static PyObject* pix2world( PyObject* self, PyObject* args )
     return NULL;
   }
 
-  if ( vals.get_size() % 2 != 0 ) {
+  if ( x0.get_size() != x1.get_size() ) {
     PyErr_SetString( PyExc_TypeError,
-		     (char*)"input pixel array requires 2 dimensions" );
+		     (char*)"input pixel arrays x0,x1 not of equal length" );
     return NULL;
   }
   
-  long nsets = long(vals.get_size()/2);
+  long nsets = long(x0.get_size());
 
   char    ct1[80] = "";
   char    ct2[80] = "";
@@ -76,9 +77,6 @@ static PyObject* pix2world( PyObject* self, PyObject* args )
 		     (char*)"WCS params failed" );
     return NULL;
   }
-  
-  if ( EXIT_SUCCESS != result.create( vals.get_ndim(), vals.get_dims() ) )
-    return NULL;
   
   if ( strcmp(ctype,"LINEAR") == 0 )
   {
@@ -137,36 +135,34 @@ static PyObject* pix2world( PyObject* self, PyObject* args )
       wcs->cel.ref[3] = wcs->latpole;
   }  
 
-  long ndx = 0;
-  long ndy = 0;
   for (int ii = 0; ii < nsets; ii++)
   {
-    ndx = ii*2;
-    ndy = (ii*2) + 1;
-    
     // Convert to world coords 
-    pix2wcs(wcs, vals[ndx], vals[ndy], &result[ndx], &result[ndy]);
+    pix2wcs(wcs, x0[ii], x1[ii], &x0[ii], &x1[ii]);
   }    
 
   wcsfree(wcs);
   
-  return Py_BuildValue( (char*)"N", result.return_new_ref() );
+  return Py_BuildValue( (char*)"(NN)",
+			x0.return_new_ref(),
+			x1.return_new_ref() );
 }
 
 
 static PyObject* world2pix( PyObject* self, PyObject* args )
 {
-  DoubleArray vals;
-  DoubleArray result;
+  DoubleArray x0;
+  DoubleArray x1;
   DoubleArray crpix;
   DoubleArray crval;
   DoubleArray cdelt;
   double crota = 0.0, epoch = 0.0, equinox = 0.0;
   const char *ctype = NULL;
   
-  if ( !PyArg_ParseTuple( args, (char*)"sO&O&O&O&ddd",
+  if ( !PyArg_ParseTuple( args, (char*)"sO&O&O&O&O&ddd",
 			  &ctype,
-			  CONVERTME(DoubleArray), &vals,
+			  CONVERTME(DoubleArray), &x0,
+			  CONVERTME(DoubleArray), &x1,
 			  CONVERTME(DoubleArray), &crpix,
 			  CONVERTME(DoubleArray), &crval,
 			  CONVERTME(DoubleArray), &cdelt,
@@ -186,13 +182,13 @@ static PyObject* world2pix( PyObject* self, PyObject* args )
     return NULL;
   }
 
-  if ( vals.get_size() % 2 != 0 ) {
+  if ( x0.get_size() != x1.get_size() ) {
     PyErr_SetString( PyExc_TypeError,
-		     (char*)"input pixel array requires 2 dimensions" );
+		     (char*)"input pixel arrays x0,x1 not of equal length" );
     return NULL;
   }
   
-  long nsets = long(vals.get_size()/2);
+  long nsets = long(x0.get_size());
 
   char    ct1[80] = "";
   char    ct2[80] = "";
@@ -202,10 +198,7 @@ static PyObject* world2pix( PyObject* self, PyObject* args )
 		     (char*)"WCS params failed" );
     return NULL;
   }
-  
-  if ( EXIT_SUCCESS != result.create( vals.get_ndim(), vals.get_dims() ) )
-    return NULL;
-  
+
   if ( strcmp(ctype,"LINEAR") == 0 )
   {
     strcpy(ct1, "LINEAR");
@@ -236,20 +229,17 @@ static PyObject* world2pix( PyObject* self, PyObject* args )
 			     );
   
   int scale;
-  long ndx = 0;
-  long ndy = 0;
   for (int ii = 0; ii < nsets; ii++)
   {
-    ndx = ii*2;
-    ndy = (ii*2) + 1;
-    
     // Convert to world coords 
-    wcs2pix(wcs, vals[ndx], vals[ndy], &result[ndx], &result[ndy], &scale);
+    wcs2pix(wcs, x0[ii], x1[ii], &x0[ii], &x1[ii], &scale);
   }    
 
   wcsfree(wcs);
   
-  return Py_BuildValue( (char*)"N", result.return_new_ref() );
+  return Py_BuildValue( (char*)"(NN)",
+			x0.return_new_ref(),
+			x1.return_new_ref() );
 }
 
 

@@ -47,6 +47,9 @@ include $(MK_TOP)/Makefile.all
 # 			MAKEFILE DEPENDENCIES	
 #-----------------------------------------------------------------------
 
+install: announce1
+	cd tests; $(MAKE) $(MKMACROS) install
+
 
 announce1:
 	@echo "   /---------------------------------------------------------\ "

@@ -31,10 +31,6 @@ CP_PF = cp -pf
 RM_F = /bin/rm -f
 RM_RF = /bin/rm -rf
 
-SL_HELP_DIR  = sherpa/docs
-SL_HELP_FILE = sherpa.hlp
-DOC_DIR = $(SHARE_DIR)/slsh/local-packages/help
-
 # Take F95 variable, which defines full path to Fortran compiler
 # Get directory path, substitute trailing "bin/" with "lib"
 # Assumes F95 from Makefile.scidev defines full path to compiler
@@ -87,16 +83,17 @@ SHERPA_SETUP_PY = \
 	fi ; \
 	export CC CXX F77 F90 FDEBUG FOPT CFLAGS CXXFLAGS F77FLAGS F90FLAGS ; \
 	export DFLAGS OCFLAGS PYTHONPATH ; \
-	if [ "$$CC_EXTRA_FLAGS" != "" ] ; then \
-	   LDFLAGS="$$CC_EXTRA_FLAGS $(SHARE_FLAGS)" ; \
-	   export LDFLAGS ; \
+	if [ `$(UNAME)` != "Darwin" ] ; then \
+		if [ "$$CC_EXTRA_FLAGS" != "" ] ; then \
+			LDFLAGS="$$CC_EXTRA_FLAGS $(SHARE_FLAGS)" ; \
+			export LDFLAGS ; \
+		fi ; \
 	fi ; \
 	cd sherpa ; $(PYTHONEXE) setup.py $(SETUP_VARS)
 
 # Wrapper script to call IPython with Sherpa profile
 SHERPA_SCRIPT = sherpa
 SHERPA_SCRIPT_PY = sherpa_py
-SHERPA_SCRIPT_SL = sherpa_slsh.sl
 
 all: build
 
@@ -118,12 +115,6 @@ install:
 	@echo ""
 ##	$(SHERPA_SETUP_PY) install --install-lib=$(PYTHONMOD)
 	$(SHERPA_SETUP_PY) install --prefix=$(ASCDS_BLD_INSTALL)
-	if [ -n "$(SHARE_DIR)" -a -d "$(SHARE_DIR)" ]; then \
-	  $(CP_PF) sherpa/slang/sherpa.sl $(SHARE_DIR)/slsh/local-packages; \
-	  $(CP_PF) sherpa/sherpa/$(SHERPA_SCRIPT_SL) $(SHARE_DIR)/slsh/local-packages; \
-	  chmod 644 $(SHARE_DIR)/slsh/local-packages/sherpa.sl; \
-	  chmod 644 $(SHARE_DIR)/slsh/local-packages/$(SHERPA_SCRIPT_SL); \
-	fi;
 	if [ -n "$(BIN_DIR)" -a -d "$(BIN_DIR)" ]; then \
 	  $(CP_PF) sherpa/sherpa/$(SHERPA_SCRIPT) $(BIN_DIR); \
 	  $(CP_PF) sherpa/sherpa/$(SHERPA_SCRIPT_PY) $(BIN_DIR); \
@@ -135,10 +126,6 @@ install:
 	    chmod 755 $(ASCDS_BLD_INSTALL)/bin/$(SHERPA_SCRIPT); \
 	    chmod 755 $(ASCDS_BLD_INSTALL)/bin/$(SHERPA_SCRIPT_PY); \
 	  fi; \
-	fi;
-	if [ -n "$(DOC_DIR)" -a -d "$(DOC_DIR)" ]; then \
-	  $(CP_PF) $(SL_HELP_DIR)/$(SL_HELP_FILE) $(DOC_DIR); \
-	  chmod 644 $(DOC_DIR)/$(SL_HELP_FILE); \
 	fi;
 	cd tests; $(MAKE) $(MKMACROS) install
 	cd doc; $(MAKE) $(MKMACROS) install
@@ -153,10 +140,6 @@ uninstall:
 	     -a -d "$(PYTHONMOD)/sherpa" ]; then \
 	  $(RM_RF) $(PYTHONMOD)/sherpa; \
 	fi;
-	if [ -n "$(SHARE_DIR)" -a -d "$(SHARE_DIR)" ]; then \
-	  $(RM_F) $(SHARE_DIR)/slsh/local-packages/sherpa.sl; \
-	  $(RM_F) $(SHARE_DIR)/slsh/local-packages/$(SHERPA_SCRIPT_SL); \
-	fi;
 	if [ -n "$(BIN_DIR)" -a -d "$(BIN_DIR)" ]; then \
 	  $(RM_F) $(BIN_DIR)/$(SHERPA_SCRIPT); \
 	  $(RM_F) $(BIN_DIR)/$(SHERPA_SCRIPT_PY); \
@@ -164,9 +147,6 @@ uninstall:
 	    $(RM_F) $(ASCDS_BLD_INSTALL)/bin/$(SHERPA_SCRIPT); \
 	    $(RM_F) $(ASCDS_BLD_INSTALL)/bin/$(SHERPA_SCRIPT_PY); \
 	  fi; \
-	fi;
-	if [ -n "$(DOC_DIR)" -a -d "$(DOC_DIR)" ]; then \
-	  $(RM_F) $(DOC_DIR)/$(SL_HELP_FILE); \
 	fi;
 	cd tests; $(MAKE) $(MKMACROS) uninstall
 	cd doc; $(MAKE) $(MKMACROS) uninstall

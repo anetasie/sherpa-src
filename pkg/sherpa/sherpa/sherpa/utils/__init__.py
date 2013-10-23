@@ -27,41 +27,68 @@ from itertools import izip
 from types import FunctionType as function
 from types import MethodType as instancemethod
 import string
+import sys
 import numpy
 import numpy.random
 import numpytest
 import numpy.fft
 from sherpa.utils._utils import *
-from sherpa.utils._psf import convolve, extract_kernel, normalize, \
-    set_origin, clear_kernel_fft, pad_bounding_box
+from sherpa.utils._psf import extract_kernel, normalize, set_origin, \
+    pad_bounding_box
+
+import logging
+warning = logging.getLogger("sherpa").warning
+
+from sherpa import get_config
+from ConfigParser import ConfigParser, NoSectionError
+
+config = ConfigParser()
+config.read(get_config())
+
+_ncpu_val = "NONE"
+try:
+    _ncpu_val = config.get('parallel','numcores').strip().upper()
+except NoSectionError:
+    pass
+
+_ncpus = None
+if not _ncpu_val.startswith('NONE'):
+    _ncpus = int(_ncpu_val)
 
 _multi=False
-_ncpus=1
 
 try:
     import multiprocessing
     _multi=True
-    _ncpus = multiprocessing.cpu_count()
-except:
-    pass
+
+    if _ncpus is None:
+        _ncpus = multiprocessing.cpu_count()
+except Exception, e:
+    warning("parallel processing is unavailable,\n" +
+            "multiprocessing module failed with \n'%s'" % str(e))
+    _ncpus = 1
+    _multi = False
+
+del _ncpu_val, config, get_config, ConfigParser, NoSectionError
 
 
-__all__ = ('calc_ftest', 'calc_mlr', 'erf', 'igamc', 'lgam', 'sao_fcmp', 
-           'NoNewAttributesAfterInit', 'convolve', 'extract_kernel',
-           'SherpaTestCase', 'needs_data', 'SherpaTest',
-           'bool_cast', 'export_method', 'get_keyword_names',
-           'get_keyword_defaults', 'get_func_usage', 'get_num_args',
-           'print_fields', 'calc_total_error', 'poisson_noise', 'rebin',
-           'clear_kernel_fft', 'numpy_convolve', 'normalize', 'set_origin',
-           'is_binary_file', 'guess_amplitude', 'guess_amplitude2d', 'guess_fwhm',
-           'guess_reference', 'guess_position', 'guess_bounds', 'get_midpoint',
-           'get_peak', 'get_valley', 'get_fwhm', 'guess_radius','histogram1d',
-           'guess_amplitude_at_ref', 'get_position', 'histogram2d',
-           'sum_intervals', 'pad_bounding_box', 'interpolate', 'create_expr',
-           'dataspace1d', 'dataspace2d', 'parse_expr', 'gamma', 'igam',
-           'incbet', 'divide_run_parallel', 'param_apply_limits',
-           '_guess_ampl_scale', 'sao_arange', 'filter_bins',
-           'bisection', 'demuller', 'new_muller', 'apache_muller', 'zeroin')
+__all__ = ('NoNewAttributesAfterInit', 'SherpaTest', 'SherpaTestCase',
+           '_guess_ampl_scale', 'apache_muller', 'bisection', 'bool_cast',
+           'calc_ftest', 'calc_mlr', 'calc_total_error', 'create_expr',
+           'dataspace1d', 'dataspace2d', 'demuller',
+           'divide_run_parallel', 'erf', 'export_method', 'extract_kernel',
+           'filter_bins', 'gamma', 'get_func_usage', 'get_fwhm',
+           'get_keyword_defaults', 'get_keyword_names', 'get_midpoint',
+           'get_num_args', 'get_peak', 'get_position', 'get_valley',
+           'guess_amplitude', 'guess_amplitude2d', 'guess_amplitude_at_ref',
+           'guess_bounds', 'guess_fwhm', 'guess_position', 'guess_radius',
+           'guess_reference', 'histogram1d', 'histogram2d', 'igam', 'igamc',
+           'incbet', 'interpolate', 'is_binary_file', 'lgam', 'needs_data',
+           'neville', 'new_muller', 'normalize', 'numpy_convolve',
+           'pad_bounding_box', 'parallel_map', 'param_apply_limits',
+           'parse_expr', 'poisson_noise', 'print_fields', 'rebin',
+           'sao_arange', 'sao_fcmp', 'set_origin', 'sum_intervals', 'zeroin',
+           'multinormal_pdf', 'multit_pdf')
 
 _guess_ampl_scale = 1.e+3
 
@@ -558,6 +585,85 @@ def poisson_noise(x):
 
     return x_out
 
+def multinormal_pdf(x, mu, sigma):
+    """
+    The probability density function of a multivariate-normal
+
+    `X` = (X1, ..., Xk)
+
+    k-vector `mu` and a symmetric positive-definite kxk matrix `sigma`
+
+    http://en.wikipedia.org/wiki/Multivariate_normal_distribution
+    """
+    x = numpy.asarray(x)
+    mu = numpy.asarray(mu)
+    sigma = numpy.asarray(sigma)
+    if x.size != mu.size:
+        raise TypeError("x and mu sizes do not match")
+    if mu.size != sigma.diagonal().size:
+        raise TypeError("sigma shape does not match x")
+    if numpy.min( numpy.linalg.eigvalsh(sigma))<=0 :
+        raise ValueError("sigma is not positive definite")
+    if numpy.max( numpy.abs(sigma-sigma.T))>=1.e-9 :
+        raise ValueError("sigma is not symmetric")
+    rank     = mu.size
+    coeff    = 1./(numpy.power(2.*numpy.pi, rank/2.)*
+                   numpy.sqrt(numpy.abs(numpy.linalg.det(sigma))))
+    xmu      = numpy.mat(x-mu)
+    invsigma = numpy.mat(numpy.linalg.inv(sigma))
+
+    # The matrix multiplication looks backwards, but mu and x
+    # are passed in already transposed.
+    #
+    #  mu = [[a,b,c]]
+    #   x = [[d,e,f]]
+    #
+    return float(coeff*numpy.exp(-0.5*((xmu*invsigma)*xmu.T)))
+
+
+def multit_pdf(x, mu, sigma, dof):
+    """
+    The probability density function of a multivariate student-t
+
+    `X` = (X1, ..., Xp)
+    
+    `dof` = degrees of freedom
+
+    p-vector location `mu` and a symmetric positive-definite pxp matrix `sigma`
+
+    http://en.wikipedia.org/wiki/Multivariate_Student_distribution
+    """
+    n = float(dof)
+    x = numpy.asarray(x)
+    mu = numpy.asarray(mu)
+    sigma = numpy.asarray(sigma)
+
+    if x.size != mu.size:
+        raise TypeError("x and mu sizes do not match")
+    if mu.size != sigma.diagonal().size:
+        raise TypeError("sigma shape does not match x")
+    if numpy.min( numpy.linalg.eigvalsh(sigma))<=0 :
+        raise ValueError("sigma is not positive definite")
+    if numpy.max( numpy.abs(sigma-sigma.T))>=1.e-9 :
+        raise ValueError("sigma is not symmetric")
+
+    rank     = mu.size
+    np       = float(n+rank)
+    coeff    = (gamma(np/2.)/(gamma(n/2.)*numpy.power(n, rank/2.)*
+                              numpy.power(numpy.pi,rank/2.)*
+                              numpy.sqrt(numpy.abs(numpy.linalg.det(sigma)))))
+    xmu      = numpy.mat(x-mu)
+    invsigma = numpy.mat(numpy.linalg.inv(sigma))
+
+    # The matrix multiplication looks backwards, but mu and x
+    # are passed in already transposed.
+    #
+    #  mu = [[a,b,c]]
+    #   x = [[d,e,f]]
+    #
+    return float(coeff*numpy.power(1.+1./n*((xmu*invsigma)*xmu.T), -np/2.))
+
+
 def _convolve( a, b ):
     if len(a) != len(b):
         raise TypeError("Input arrays are not equal in length, a: %s b: %s" %
@@ -662,33 +768,39 @@ def histogram2d( x, y, x_grid, y_grid ):
     return vals.reshape( (len(x_grid),len(y_grid)) )
 
 
-def interpolate( x, xp, yp ):
-    n = len(xp)
-    if n != len(yp):
-        raise TypeError("input arrays are not of equal length")
+def interpolate(xout, xin, yin, method='linear'):
+    """
+    Interpolate the curve defined by (xin, yin) at points xout.
+    The array xin must be monotonically increasing.  The output
+    has the same data type as the input yin.
 
-    xp = numpy.asarray(xp, dtype=float)
-    xp.sort()
-    n1 = numpy.searchsorted(xp, x)
+    :param yin: y values of input curve
+    :param xin: x values of input curve
+    :param xout: x values of output interpolated curve
+    :param method: interpolation method ('linear' | 'nearest')
 
-    if n1 == 0:
-        return yp[n1]
+    @:rtype: numpy array with interpolated curve
+    """
+    lenxin = len(xin)
 
-    n0 = n1 - 1
-    if n1 == n:
-        if n0 == 0:
-            return yp[n0]
-        n1 = n0 - 1
+    i1 = numpy.searchsorted(xin, xout)
+    i1[ i1==0 ] = 1
+    i1[ i1==lenxin ] = lenxin-1
 
-    x0 = xp[n0]
-    x1 = xp[n1]
+    x0 = xin[i1-1]
+    x1 = xin[i1]
+    y0 = yin[i1-1]
+    y1 = yin[i1]
 
-    if x == x1:
-        return yp[n0]
-    if x1 == x0:
-        return yp[n0]
+    if method == 'linear':
+        return (xout - x0) / (x1 - x0) * (y1 - y0) + y0
+    elif method == 'nearest':
+        return numpy.where((numpy.abs(xout - x0) <
+                            numpy.abs(xout - x1)),
+                           y0, y1)
 
-    return yp[n0] + (yp[n1] - yp[n0]) / (x1 - x0) * ( x - x0 )
+    raise ValueError('Invalid interpolation method: %s' %
+                     method)
 
 
 def is_binary_file( filename ):
@@ -698,6 +810,7 @@ def is_binary_file( filename ):
     """
     fd = open( filename, 'r')
     lines = fd.readlines(1024)
+    fd.close()
 
     if len(lines) == 0:
         return False
@@ -743,6 +856,10 @@ def param_apply_limits(param_limits, par, limits=True, values=True):
     defaults for rollback.
 
     """
+    # only guess thawed parameters!
+    if par.frozen:
+        return
+
     if limits and values:
         default_val = par.val
         par.set(param_limits['val'], param_limits['min'], param_limits['max'], 
@@ -798,6 +915,14 @@ def get_amplitude_position(arr, mean=False):
         xmax = min/_guess_ampl_scale
         xmin = min*_guess_ampl_scale
         xval = min
+    elif (max == 0.0 and min == 0.0):
+        xpos = arr.argmax()
+        if mean:
+            xpos = numpy.where(arr==max)
+
+        xmax = 100.0/_guess_ampl_scale
+        xmin = 0.0
+        xval = 0.0
 
     return (xval, xmin, xmax, xpos)
 
@@ -817,8 +942,10 @@ def guess_amplitude(y, x, xhi=None):
 
     if xhi is not None:
         binsize = numpy.abs(xhi[pos] - x[pos])
-        min /= binsize
-        max /= binsize
+        if min is not None:
+            min /= binsize
+        if max is not None:
+            max /= binsize
         val /= binsize
 
     return { 'val' : val, 'min' : min, 'max' : max }
@@ -843,7 +970,7 @@ def guess_amplitude_at_ref(r, y, x, xhi=None):
     elif x[1] < x[0] and r < x[-1]:
         t = numpy.abs( y[-1] + y[-2])/2.0
     else:
-        for i in range(len(x)-1):
+        for i in xrange(len(x)-1):
             if ( ( r >= x[i] and r < x[i+1] ) or ( r >= x[i+1] and r < x[i] ) ):
                 t = numpy.abs(y[i] + y[i+1])/2.0
                 break
@@ -852,7 +979,7 @@ def guess_amplitude_at_ref(r, y, x, xhi=None):
         totband = 0.0
         dv = 0.0
         i = 1
-        for j in range(len(x)):
+        for j in xrange(len(x)-1):
             dv = x[i] - x[i-1]
             t += y[i]*dv
             totband += dv
@@ -862,7 +989,7 @@ def guess_amplitude_at_ref(r, y, x, xhi=None):
     return { 'val':t, 'min':t/_guess_ampl_scale, 'max':t*_guess_ampl_scale }
 
 
-def guess_amplitude2d(y, x0lo, x0hi, x1lo=None, x1hi=None):
+def guess_amplitude2d(y, x0lo, x1lo, x0hi=None, x1hi=None):
     """
     Guess 2D model parameter amplitude (val, min, max)
 
@@ -870,11 +997,13 @@ def guess_amplitude2d(y, x0lo, x0hi, x1lo=None, x1hi=None):
 
     limits = guess_amplitude(y, x0lo)
 
-    if x1lo is not None and x1hi is not None:
-        binsize = numpy.abs((x0hi[0]-x0lo[0])*(x1hi[0]-x1lo[0]))
-        limits['min'] /= binsize
-        limits['max'] /= binsize
-        limits['val'] /= binsize
+    # if (x0hi is not None and x1hi is not None):
+    #     binsize = numpy.abs((x0hi[0]-x0lo[0])*(x1hi[0]-x1lo[0]))
+    #     if limits['min'] is not None:
+    #         limits['min'] /= binsize
+    #     if limits['max'] is not None:
+    #         limits['max'] /= binsize
+    #     limits['val'] /= binsize
 
     return limits
 
@@ -919,24 +1048,24 @@ def get_position(y, x, xhi=None):
     return { 'val':val, 'min':min, 'max':max }
 
 
-def guess_position(y, x0lo, x0hi, x1lo=None, x1hi=None):
+def guess_position(y, x0lo, x1lo, x0hi=None, x1hi=None):
     """
     Guess 2D model parameter positions xpos, ypos ({val0, min0, max0},
                                                    {val1, min1, max1})
 
     """
-    if x1lo is None and x1hi is None:
-        x0, x1 = x0lo, x0hi
-    else:
-        x0, x1 = x0lo, x1lo
 
     #pos = int(y.argmax())
     # return the average of location of brightest pixels
     pos = numpy.where(y==y.max())
 
-    return tuple(({ 'val':numpy.mean(x0[pos]), 'min':x0.min(), 'max':x0.max() },
-                  { 'val':numpy.mean(x1[pos]), 'min':x1.min(), 'max':x1.max() }
-                  ))
+    x0, x1 = x0lo, x1lo
+    if x0hi is None and x1hi is None:
+        return ({ 'val':numpy.mean(x0[pos]), 'min':x0.min(), 'max':x0.max() },
+                { 'val':numpy.mean(x1[pos]), 'min':x1.min(), 'max':x1.max() })
+    else:
+        return ({ 'val':numpy.mean(x0[pos]), 'min':x0.min(), 'max':x0hi.max() },
+                { 'val':numpy.mean(x1[pos]), 'min':x1.min(), 'max':x1hi.max() })
 
 
 def guess_bounds(x, xhi=True):
@@ -956,13 +1085,13 @@ def guess_bounds(x, xhi=True):
     return { 'val':lo, 'min':min, 'max':max }
 
 
-def guess_radius(x0lo, x0hi, x1lo=None, x1hi=None):
+def guess_radius(x0lo, x1lo, x0hi=None, x1hi=None):
     """
     Guess 2D model parameter radius (val, min, max)
 
     """
-    if x1lo is None and x1hi is None:
-        x0, x1 = x0lo, x0hi
+    if x0hi is None and x1hi is None:
+        x0, x1 = x0lo, x1lo
     else:
         x0, x1 = x0lo, x1lo
 
@@ -970,6 +1099,141 @@ def guess_radius(x0lo, x0hi, x1lo=None, x1hi=None):
     rad = numpy.abs(10*delta)
 
     return { 'val':rad, 'min':rad/_guess_ampl_scale, 'max':rad*_guess_ampl_scale }
+
+
+def split_array(arr, m):
+    """Split array ``arr`` into ``m`` roughly equal chunks
+    >>> split_array(range(27), 6)
+    [[0, 1, 2, 3, 4],
+     [5, 6, 7, 8],
+     [9, 10, 11, 12, 13],
+     [14, 15, 16, 17],
+     [18, 19, 20, 21, 22],
+     [23, 24, 25, 26]]
+
+    >>> import numpy
+    >>> split_array(numpy.arange(25), 6)
+    [array([0, 1, 2, 3]),
+     array([4, 5, 6, 7]),
+     array([ 8,  9, 10, 11, 12]),
+     array([13, 14, 15, 16]),
+     array([17, 18, 19, 20]),
+     array([21, 22, 23, 24])]
+
+    >>> split_array(numpy.arange(30).reshape(5,-1), 3)
+    [array([[ 0,  1,  2,  3,  4,  5],
+           [ 6,  7,  8,  9, 10, 11]]),
+    array([[12, 13, 14, 15, 16, 17]]),
+    array([[18, 19, 20, 21, 22, 23],
+          [24, 25, 26, 27, 28, 29]])]
+
+    Author: Tom Aldcroft
+      split_array() - originated from Python users working group
+    """
+    n = len(arr)
+    idx = [int(round(i * n / float(m))) for i in range(m+1)]
+    return [arr[idx[i]:idx[i+1]] for i in range(m)]
+
+
+def worker(f, ii, chunk, out_q, err_q, lock):
+
+    try:
+        vals = map(f, chunk)
+    except Exception, e:
+        err_q.put(e)
+        return
+
+    # output the result and task ID to output queue
+    out_q.put( (ii, vals) )
+
+
+def run_tasks(procs, err_q, out_q, num):
+
+    die = (lambda vals : [val.terminate() for val in vals
+                          if val.exitcode is None])
+
+    try:
+        for proc in procs:
+            proc.start()
+
+        for proc in procs:
+            proc.join()
+
+    except KeyboardInterrupt, e:
+        # kill all slave processes on ctrl-C
+        die(procs)
+        raise e
+
+    if not err_q.empty():
+        die(procs)
+        raise err_q.get()
+
+    results=[None]*num;
+    while not out_q.empty():
+        idx, result = out_q.get()
+        results[idx] = result
+
+    #return list(numpy.concatenate(results))
+    # Remove extra dimension added by split
+    vals = []
+    [ vals.extend(result) for result in results ]
+    return vals
+
+
+def parallel_map(function, sequence, numcores=None):
+    """
+    A parallelized version of the native Python map function that
+    utilizes the Python multiprocessing module to divide and 
+    conquer sequence.
+
+    parallel_map does not yet support multiple argument sequences.
+
+    :param function: callable function that accepts argument from iterable
+    :param sequence: iterable sequence 
+    :param numcores: number of cores to use
+    """
+    if not callable(function):
+        raise TypeError("input function '%s' is not callable" %
+                           repr(function))
+
+    if not numpy.iterable(sequence):
+        raise TypeError("input '%s' is not iterable" %
+                           repr(sequence))
+
+    size = len(sequence)
+
+    if not _multi or size == 1 or (numcores is not None and numcores < 2):
+        return map(function, sequence)
+
+    if numcores is None:
+        numcores = _ncpus
+
+    # Returns a started SyncManager object which can be used for sharing 
+    # objects between processes. The returned manager object corresponds
+    # to a spawned child process and has methods which will create shared
+    # objects and return corresponding proxies.
+    manager = multiprocessing.Manager()
+
+    # Create FIFO queue and lock shared objects and return proxies to them.
+    # The managers handles a server process that manages shared objects that
+    # each slave process has access to.  Bottom line -- thread-safe.
+    out_q = manager.Queue()
+    err_q = manager.Queue()
+    lock  = manager.Lock()
+
+    # if sequence is less than numcores, only use len sequence number of 
+    # processes
+    if size < numcores:
+        numcores = size  
+
+    # group sequence into numcores-worth of chunks
+    sequence = split_array(sequence, numcores)
+
+    procs = [multiprocessing.Process(target=worker,
+                     args=(function, ii, chunk, out_q, err_q, lock))
+                 for ii, chunk in enumerate(sequence)]
+
+    return run_tasks(procs, err_q, out_q, numcores)
 
 
 def divide_run_parallel(func, array, *args, **kwargs):
@@ -1030,11 +1294,15 @@ def divide_run_parallel(func, array, *args, **kwargs):
                          args=(pid, q, err, func, array[start:stop+resid],
                                args, kwargs)))
 
-    for task in tasks:
-        task.start()
+    try:
+        for task in tasks:
+            task.start()
 
-    for task in tasks:
-        task.join()
+        for task in tasks:
+            task.join()
+    except KeyboardInterrupt, e:
+        die(tasks)
+        raise e
 
     if not err.empty():
         die(tasks)
@@ -1056,6 +1324,258 @@ def divide_run_parallel(func, array, *args, **kwargs):
 
     return numpy.concatenate([results[key] for key in range(ncpus)])
 
+################################## Hessian ####################################
+
+class NumDeriv:
+
+    def __init__( self, func, fval0 ):
+        self.nfev, self.func = func_counter( func )
+        self.fval_0 = fval0
+
+class NumDerivCentralOrdinary( NumDeriv ):
+    """
+    Subtract the following Taylor series expansion:
+
+                                             2
+                                  '         h  ''            3
+    f( x +/- h ) = f( x ) +/-  h f  ( x ) + - f  ( x ) + O( h  )
+                                            2
+    gives:
+                                              '            3
+               f( x + h ) - f( x - h ) = 2 h f ( x ) + O( h  )
+               
+                 ' 
+    solving for f ( x ):
+    
+                     '        f( x + h ) - f( x - h )       2
+                    f ( x ) = ----------------------- + O( h  )
+                                        2 h
+
+    In addition to the truncation error of order h^2, there is a round off
+    error due to the finite numerical precision ~ r f( x ).
+                                       
+             '        f( x + h ) - f( x - h )    r f( x )         2
+            f ( x ) = ----------------------- + ---------  +  O( h  )
+                                2 h                h
+
+                            r      2
+                 Error  ~=  -  + h 
+                            h
+    minimizing the error by differentiating wrt h, the solve for h:
+    h ~ r^1/3"""
+
+    def __init__( self, func, fval0=None ):
+        NumDeriv.__init__( self, func, fval0 )
+        
+    def __call__( self, x, h ):
+        if 0.0 == h:
+            return numpy.Inf
+        return ( self.func( x + h ) - self.func( x - h ) ) / ( 2.0 * h )
+
+
+class NumDerivFowardPartial( NumDeriv ):
+
+    def __init__( self, func, fval0 ):
+        NumDeriv.__init__( self, func, fval0 )
+
+    def __call__( self, x, h, *args ):
+
+        if 0.0 == h:
+            h = pow( numpy.float_(numpy.finfo(numpy.float32)).eps, 1.0 / 3.0 )
+
+        ith = args[0]
+        jth = args[1]
+
+        ei = numpy.zeros( len( x ), float )
+        ej = numpy.zeros( len( x ), float )        
+            
+        deltai = h * abs( x[ ith ] )
+        if 0.0 == deltai:
+            deltai = h
+        ei[ ith ] = deltai
+
+        deltaj = h * abs( x[ jth ] )
+        if 0.0 == deltaj:
+            deltaj = h
+        ej[ jth ] = deltaj
+
+        fval  = self.fval_0
+        fval += self.func( x + ei + ej )
+        fval -= self.func( x + ei )
+        fval -= self.func( x + ej )
+        fval /= deltai * deltaj
+        return fval
+
+class NumDerivCentralPartial( NumDeriv ):
+    """
+
+    Add the following Taylor series expansion:
+    
+                                             2
+                                  '         h  ''            3
+    f( x +/- h ) = f( x ) +/-  h f  ( x ) + - f  ( x ) + O( h  )
+                                            2
+                   ''
+    and solve for f  ( x ), gives:
+    
+              ''         f( x + h ) + f( x - h ) - 2 f( x )        2 
+             f  ( x ) = ------------------------------------ + O( h  )
+                                         2
+                                        h
+
+    In addition to the truncation error of order h^2, there is a round off
+    error due to the finite numerical precision ~ r f( x ).
+
+     ''         f( x + h ) + f( x - h ) - 2 f( x )    r f( x )       2 
+    f  ( x ) = ------------------------------------ + -------- + O( h  )
+                                2                        2
+                               h                        h
+
+                            r      2
+                 Error  ~=  -  + h
+                             2
+                            h
+                            
+    minimizing the error by differentiating wrt h, the solve for h:
+    h ~ r^1/4"""
+
+    def __init__( self, func, fval0 ):
+        NumDeriv.__init__( self, func, fval0 )
+
+    def __call__( self, x, h, *args ):
+
+        if 0.0 == h:
+            h = pow( numpy.float_(numpy.finfo(numpy.float32)).eps, 1.0 / 3.0 )
+
+        ith = args[0]
+        jth = args[1]
+
+        ei = numpy.zeros( len( x ), float )
+        
+        if ith == jth:
+
+            delta = h * abs( x[ ith ] )
+            if 0.0 == delta:
+                delta = h
+            ei[ ith ] = delta
+
+            fval = - 2.0 * self.fval_0
+            fval += self.func( x + ei ) + self.func( x - ei )
+            fval /= delta * delta
+            return fval
+
+        else:
+            
+            ej = numpy.zeros( len( x ), float )
+            
+            deltai = h * abs( x[ ith ] )
+            if 0.0 == deltai:
+                deltai = h
+            ei[ ith ] = deltai
+
+            deltaj = h * abs( x[ jth ] )
+            if 0.0 == deltaj:
+                deltaj = h
+            ej[ jth ] = deltaj
+            
+            fval  = self.func( x + ei + ej )
+            fval -= self.func( x + ei - ej )
+            fval -= self.func( x - ei + ej )
+            fval += self.func( x - ei - ej )
+            fval /= ( 4.0 * deltai * deltaj )
+            return fval
+
+class NoRichardsonExtrapolation:
+    
+    def __init__( self, sequence, verbose=False ):
+        self.sequence = sequence
+        self.verbose = verbose
+        
+    def __call__( self, x, t, tol, maxiter, h, *args ):
+        self.sequence( x, h, *args )
+        
+class RichardsonExtrapolation( NoRichardsonExtrapolation ):
+    """From Wikipedia, the free encyclopedia
+    In numerical analysis, Richardson extrapolation is a sequence acceleration
+    method, used to improve the rate of convergence of a sequence. It is named
+    after Lewis Fry Richardson, who introduced the technique in the early 20th
+    century.[1][2] In the words of Birkhoff and Rota, '... its usefulness for
+    practical computations can hardly be overestimated.'
+    1. Richardson, L. F. (1911). \"The approximate arithmetical solution by
+    finite differences of physical problems including differential equations,
+    with an application to the stresses in a masonry dam \". Philosophical
+    Transactions of the Royal Society of London, Series A 210. 
+    2. Richardson, L. F. (1927). \" The deferred approach to the limit \".
+    Philosophical Transactions of the Royal Society of London, Series A 226:"""
+    
+    def __init__( self, sequence, verbose=False ):
+        self.sequence = sequence
+        self.verbose = verbose
+        
+    def __call__( self, x, t, tol, maxiter, h, *args ):
+
+        richardson = numpy.zeros( (maxiter,maxiter), dtype=numpy.float_ )
+        richardson[ 0, 0 ] = self.sequence( x, h, *args )
+
+        t_sqr = t * t
+        for ii in xrange( 1, maxiter ):
+            h /= t
+            richardson[ ii, 0 ] = self.sequence( x, h, *args )
+            ii_1 = ii - 1
+            for jj in xrange( 1, ii + 1 ):
+                jjp1 = jj + 1
+                jj_1 = jj - 1
+                factor = pow( t_sqr, jj )
+                factor_1 = factor - 1
+                richardson[ ii, jj ] = ( factor * richardson[ ii, jj_1 ] -
+                                         richardson[ ii_1, jj_1 ] ) / \
+                                         factor_1
+                arg_jj = richardson[ ii, jj ]
+                arg_jj -= richardson[ ii, jj_1 ]
+                arg_ii = richardson[ ii, jj ]
+                arg_ii -= richardson[ ii_1, jj_1 ]
+                if Knuth_close( richardson[ ii, ii ],
+                                richardson[ ii_1, ii_1 ], tol ):
+                    if self.verbose:
+                        print_low_triangle( richardson, jj )
+                    return richardson[ ii, ii ]
+
+        if self.verbose:
+            print_low_triangle( richardson, maxiter - 1 )
+        return richardson[ maxiter - 1, maxiter - 1 ]
+    
+def hessian( func, par, extrapolation, algorithm, maxiter, h, tol, t ):
+
+    num_dif = algorithm( func, func( par ) )
+    deriv = extrapolation( num_dif )
+    npar = len( par )
+    Hessian = numpy.zeros( ( npar, npar ), dtype=numpy.float_ )
+    for ii in xrange( npar ):
+        for jj in xrange( ii + 1 ):
+            answer = deriv( par, t, tol, maxiter, h, ii, jj )
+            Hessian[ ii, jj ] = answer / 2.0
+            Hessian[ jj, ii ] = Hessian[ ii, jj ]
+    return Hessian, num_dif.nfev[ 0 ]
+
+def print_low_triangle( matrix, num ):
+    #print matrix
+    for ii in xrange( num ):
+        print matrix[ ii, 0 ],
+        for jj in xrange( 1, ii + 1 ):
+            print matrix[ ii, jj ],
+        print
+
+def symmetric_to_low_triangle( matrix, num ):
+    low_triangle = []
+    for ii in xrange( num ):
+        for jj in xrange( ii + 1 ):
+            low_triangle.append( matrix[ ii, jj ] )
+    #print_low_triangle( matrix, num )
+    #print low_triangle
+    return low_triangle
+
+
+################################## Hessian ####################################
 
 ############################### Root of all evil ##############################
 
@@ -1065,36 +1585,34 @@ def printf(format, *args):
     sys.stdout.write(str(format) % args)
     return if_(args, args[-1], format)
 
-def caller(n=1):
-    """Return the name of the calling function n levels up in the frame stack.
-    >>> caller(0)
-    'caller'
-    >>> def f():
-    ...     return caller()
-    >>> f()
-    'f'
-    """
-    import inspect
-    return  inspect.getouterframes(inspect.currentframe())[n][3]
-
-def func_wrapper( func, history ):
+def func_counter( func ):
+    '''A function wrapper to count the number of times being called'''
+    nfev = [0]
+    def func_counter_wrapper( x, *args ):
+        nfev[0] += 1
+        return func( x, *args )
+    return nfev, func_counter_wrapper
+    
+def func_counter_history( func, history ):
     '''A function wrapper to count the number of times beingg called'''
     nfev = [0]
-    def func_counter_history( x, *args ):
+    def func_counter_history_wrapper( x, *args ):
         nfev[0] += 1
         y = func( x, *args )
         history[ 0 ].append( x )
         history[ 1 ].append( y )
         return y
-    return nfev, func_counter_history
+    return nfev, func_counter_history_wrapper
 
 def is_in( arg, seq ):
     for x in seq:
-        if arg is x: return True
+        if arg == x:
+            return True
     return False
 
-def is_iterable( x ):
-    return isinstance(x, (list, tuple, numpy.ndarray)) or numpy.iterable( x )
+def is_iterable( arg ):
+    return isinstance( arg, list ) or isinstance( arg, tuple ) \
+           or isinstance( arg, numpy.ndarray ) or numpy.iterable( arg )
     
 def is_sequence( start, mid, end ):
     return (start < mid) and (mid < end)
@@ -1260,7 +1778,7 @@ class QuadEquaRealRoot:
 def bisection( fcn, xa, xb, fa=None, fb=None, args=(), maxfev=48, tol=1.0e-6 ):
 
     history = [ [], [] ]
-    nfev, myfcn = func_wrapper( fcn, history )
+    nfev, myfcn = func_counter_history( fcn, history )
 
     try:
 
@@ -1432,7 +1950,7 @@ def demuller( fcn, xa, xb, xc, fa=None, fb=None, fc=None, args=(),
     
 
     history = [ [], [] ]
-    nfev, myfcn = func_wrapper( fcn, history )
+    nfev, myfcn = func_counter_history( fcn, history )
 
     try:
      
@@ -1498,7 +2016,7 @@ def new_muller( fcn, xa, xb, fa=None, fb=None, args=(), maxfev=32, tol=1.e-6 ):
             return ( x0 + x1 ) / 2.0
         
     history = [ [], [] ]
-    nfev, myfcn = func_wrapper( fcn, history )
+    nfev, myfcn = func_counter_history( fcn, history )
 
     try:
 
@@ -1595,7 +2113,7 @@ def apache_muller( fcn, xa, xb, fa=None, fb=None, args=(), maxfev=32,
                    tol=1.0e-6 ):
 
     history = [ [], [] ]
-    nfev, myfcn = func_wrapper( fcn, history )
+    nfev, myfcn = func_counter_history( fcn, history )
 
     try:
 
@@ -1747,7 +2265,7 @@ def zeroin( fcn, xa, xb, fa=None, fb=None, args=(), maxfev=32, tol=1.0e-2 ):
     ************************************************************************"""
 
     history = [ [], [] ]
-    nfev, myfcn = func_wrapper( fcn, history )
+    nfev, myfcn = func_counter_history( fcn, history )
 
     try:
         

@@ -1,8 +1,12 @@
       SUBROUTINE NEWUOA (N,NPT,X,RHOBEG,RHOEND,IPRINT,MAXFUN,W,
+c     --dtn
      1 calfun,nf,f)
+c     --dtn
       IMPLICIT REAL*8 (A-H,O-Z)
       DIMENSION X(*),W(*)
+c     --dtn
       external calfun
+c     --dtn
 C
 C     This subroutine seeks the least value of a function of many variables,
 C     by a trust region method that forms quadratic models by interpolation.
@@ -66,7 +70,10 @@ C     W plus the space that is needed by the last array of NEWUOB.
 C
       CALL NEWUOB (N,NPT,X,RHOBEG,RHOEND,IPRINT,MAXFUN,W(IXB),
      1  W(IXO),W(IXN),W(IXP),W(IFV),W(IGQ),W(IHQ),W(IPQ),W(IBMAT),
-     2  W(IZMAT),NDIM,W(ID),W(IVL),W(IW),calfun,nf,f)
+     2  W(IZMAT),NDIM,W(ID),W(IVL),W(IW),
+c     --dtn
+     3  calfun,nf,f)
+c     --dtn
    20 RETURN
       END
 

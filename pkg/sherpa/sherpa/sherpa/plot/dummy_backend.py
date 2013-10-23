@@ -29,7 +29,8 @@ __all__ = ('clear_window', 'plot', 'contour', 'point', 'set_subplot',
            'get_fit_contour_defaults', 'get_resid_contour_defaults',
            'get_ratio_contour_defaults','get_confid_plot_defaults',
            'get_confid_contour_defaults', 'set_window_redraw', 'set_jointplot',
-           'get_histo_defaults', 'get_model_histo_defaults')
+           'get_histo_defaults', 'get_model_histo_defaults',
+           'get_component_plot_defaults', 'get_component_histo_defaults')
 
 def point(*args, **kwargs):
     pass
@@ -83,3 +84,5 @@ get_confid_point_defaults = get_dummy_defaults
 get_confid_plot_defaults = get_dummy_defaults
 get_confid_contour_defaults = get_dummy_defaults
 get_model_histo_defaults = get_dummy_defaults
+get_component_plot_defaults = get_dummy_defaults
+get_component_histo_defaults = get_dummy_defaults

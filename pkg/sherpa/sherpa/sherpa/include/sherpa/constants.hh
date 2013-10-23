@@ -157,19 +157,19 @@ namespace sherpa { namespace constants {
   |       Type ? for help.
   > f:= x-> exp( - 1/2 * ( (x-mu)/sigma)^2 );
 
-  2
-  (x - mu)
+                              2
+                      (x - mu)
   f := x -> exp(- 1/2 ---------)
-  2
-  sigma
+                             2
+                       sigma
 
   > f( mu - fwhm/2) = f(mu)/2;
 
-  2
-  fwhm
+                 2
+             fwhm
   exp(- 1/8 ------) = 1/2
-  2
-  sigma
+                 2
+            sigma
 
   > solve(",fwhm);
 

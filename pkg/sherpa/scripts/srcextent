@@ -53,16 +53,32 @@ def get_verbose():
 
 def get_parameters(filename):
     params = {}
-    try:
-        pfile = paramio.paramopen(filename, "rw", sys.argv)
-    except:
-        print "Error: could not open parameter file '%s'" % filename
-        raise
+
+    args = sys.argv[:]
+    if len(args) > 1 and args[1].startswith("@@"):
+        try:
+            pfile = paramio.paramopen(None, "rw", args)
+        except:
+            raise IOError("could not open parameter file '%s'" % filename)
+    else:
+        try:
+            pfile = paramio.paramopen(filename, "rwL", sys.argv)
+        except:
+            raise IOError("could not open parameter file '%s'" % filename)
+
 
     for key in ["srcfile", "psffile", "regfile", "outfile"]:
         pkey = key+'s'
         params[pkey] = paramio.pgetstr(pfile,key)
         params[pkey] = params[pkey].strip(string.whitespace+',').split(',')
+
+    params["x0"] = None
+    if paramio.pgetstr(pfile,"x0").strip().upper() != "INDEF":
+        params["x0"] = paramio.pgetd(pfile,"x0")
+
+    params["y0"] = None
+    if paramio.pgetstr(pfile,"y0").strip().upper() != "INDEF":
+        params["y0"] = paramio.pgetd(pfile,"y0")
 
     params["shape"]     = paramio.pgetstr(pfile,"shape")
     params["srcsize"]   = paramio.pgetd(pfile,"srcsize")
@@ -352,12 +368,14 @@ def parse_binary_regfile(regfile, _to_arcsecs=1.0):
 
 class MHO(lev3_mho.MHO):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, x0, y0, crude_src_size, img_size=0,
+                 bin_factor=0, min_counts=15, min_thresh=4):
         self._to_arcsecs = 1.0
         self._to_degrees = 180./numpy.pi
         self._units_size = 'pixel'
 
-        lev3_mho.MHO.__init__(self, *args, **kwargs)
+        lev3_mho.MHO.__init__(self, x0, y0, crude_src_size, img_size,
+                              bin_factor, min_counts, min_thresh)
 
 
     def setup_image(self, img, imgfile, regfile=None):
@@ -366,7 +384,7 @@ class MHO(lev3_mho.MHO):
         if((self.x0 is None) or (self.y0 is None) or (self.crude_src_size <= 0.0)):
             xx, yy, size = image_guess(x0, x1, y)
             if regfile is not None:
-                xx, yy, src = parse_regfile(regfile, self._to_arcsecs)
+                xx, yy, size = parse_regfile(regfile, self._to_arcsecs)
 
             if self.x0 is None:
                 self.x0 = xx
@@ -742,7 +760,7 @@ def write_file(outfile, srcfile, psffile, extended, int_d, src_d, psf_d,
 def do_source(params, id, srcfile, outfile, psffile, regfile=None):
 
     # Fit the PSF using guess
-    psf = MHO(None, None, params["srcsize"], 
+    psf = MHO(params["x0"], params["y0"], params["srcsize"], 
               img_size=params["imgsize"], bin_factor=params["binfactor"],
               min_counts=params["mincounts"], min_thresh=params["minthresh"])
 
@@ -760,7 +778,8 @@ def do_source(params, id, srcfile, outfile, psffile, regfile=None):
     x = None; y = None;
 
     # Fit the SRC using PSF fit
-    src = MHO(x, y, src_size, img_size=params["imgsize"], bin_factor=params["binfactor"],
+    src = MHO(params["x0"], params["y0"], src_size,
+              img_size=params["imgsize"], bin_factor=params["binfactor"],
               min_counts=params["mincounts"], min_thresh=params["minthresh"])
 
     x, y, pars, errs = src.mho_find_source_extent(srcfile,

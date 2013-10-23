@@ -256,6 +256,11 @@ namespace sherpa { namespace astro { namespace utils {
     if( EXIT_SUCCESS != mask.zeros( 1, n_grp.get_dims() ))
       return NULL;
 
+    grp_buf.reserve(size_t(n_grp.get_size()));
+    f_buf.reserve(size_t(f_chan.get_size()));
+    n_buf.reserve(size_t(n_chan.get_size()));
+    resp_buf.reserve(size_t(matrix.get_size()));
+
     if( EXIT_SUCCESS != _filter_resp( &noticed_chans[0],
 				      noticed_chans.get_size(),
 				      &n_grp[0], n_grp.get_size(), &f_chan[0],
@@ -387,6 +392,9 @@ namespace sherpa { namespace astro { namespace utils {
       return NULL;
     }
 
+    f_buf.reserve(size_t(f_chan.get_size()));
+    n_buf.reserve(size_t(n_chan.get_size()));
+    resp_buf.reserve(size_t(matrix.get_size()));
 
     // FOLD through once to eliminate zeros elements
     IntType num_chans, num_groups;

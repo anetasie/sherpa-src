@@ -19,7 +19,7 @@
 #
 
 #
-# SHERPA_VERSION 40201
+# SHERPA_VERSION 40301
 
 
 #***************************************************************************
@@ -34,6 +34,11 @@
 
 # include base config and only add some extras
 include ipythonrc
+
+# Move current working directory from front to back of sys.path
+# so that loading sherpa, etc. not fooled if file names like
+# "sherpa.py" exist in the current working directory
+execute import sys; sys.path.append(sys.path[0]); del sys.path[0]
 
 # Import os. Necessary for the load preference call below
 import_mod os
@@ -59,19 +64,14 @@ execute if sherpa_version > 0 and crates_version < 40201: print "Warning: Import
 # Warn of out-of-date ChIPS
 execute if sherpa_version > 0 and chips_version < 40201: print "Warning: Importing ChIPS version " + chips_version_str +"; ChIPS version 4.2.1 is now available,\n consider upgrading.\n"
 
-# Move current working directory from front to back of sys.path
-# so that loading sherpa, etc. not fooled if file names like
-# "sherpa.py" exist in the current working directory
-execute import sys; sys.path.append(sys.path[0]); del sys.path[0]
-
 # Import CRATES and ChIPS, including HLUI for each
 import_all pychips pycrates pychips.hlui pycrates.hlui
 
 # Load in chips preferences
 execute set_preference_autoload(True)
 
-# Import Sherpa UI 
-import_all sherpa.astro.ui
+# Import Sherpa UI -- do it this way to fix ./sherpa.py problem
+execute from sherpa.astro.ui import *
 
 # Restore current working directory to front of sys.path
 execute sys.path = [sys.path.pop()] + sys.path

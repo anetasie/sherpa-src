@@ -1,6 +1,6 @@
 #ifdef testLevMar
 
-#include "LevMar.hh"
+#include "levmar.hh"
 
 using namespace minpack;
 
@@ -76,21 +76,8 @@ void justdoit( Init init, Fct fct, int npars,
 
 int main( int argc, char* argv[] ) {
 
-    int c, passit = 0;
-    while ( --argc > 0 && (*++argv)[ 0 ] == '-' )
-      while ( c = *++argv[ 0 ] )
-	switch( c ) {
-	case 'p':
-	  passit = 1;
-	  break;
-	default:
-	  fprintf( stderr, "%s: illegal option '%c'\n", argv[ 0 ], c );
-	  fprintf( stderr, "Usage %s [ -p ] [ npars ]\n", argv[ 0 ] );
-	  return EXIT_FAILURE;
-      }
-
   int npars=16;
-  if ( argc == 1 )
+  if ( argc == 2 )
     npars = atoi( argv[1] );
 
   if ( npars % 2 || npars < 2 ) {

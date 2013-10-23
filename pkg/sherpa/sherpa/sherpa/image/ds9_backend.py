@@ -41,13 +41,19 @@ def delete_frames():
     except:
         raise DS9Err('delframe')
         
-def get_region():
+def get_region(coord):
     if not imager.isOpen():
         raise DS9Err('open')
     try:
-        imager.xpaset("regions format ciao")
-        imager.xpaset("regions strip yes")
-        return imager.xpaget("regions")
+        regionstr = "regions -format saoimage -strip yes"
+        if (coord != ''):
+            if (coord != 'image'):
+                regionstr = "regions -format ciao -strip yes -system " + str(coord)
+            else:
+                regionstr = "regions -format saoimage -strip yes -system image"
+            
+        regionstr = imager.xpaget(regionstr)
+        return regionstr
     except:
         raise DS9Err('retreg')
     
@@ -137,18 +143,22 @@ def wcs(keys):
 def open():
     imager.doOpen()
 
-def set_region(reg):
+def set_region(reg, coord):
     if not imager.isOpen():
         raise DS9Err('open')
     try:
-        imager.xpaset("regions format ciao")
-    except:
-        raise DS9Err('setreg')
-    try:
+        # Assume a region file defines everything correctly
         if (access(reg, R_OK) is True):
             imager.xpaset("regions load " + "'" + reg + "'")
         else:
-            imager.xpaset("regions command " + "'" + reg + "'")
+            # Assume region string has to be in CIAO format
+            regions = reg.split(";")
+            for region in regions:
+                if (region != ''):
+                    if (coord != ''):
+                        imager.xpaset("regions", data=str(coord) + ";" + region)
+                    else:
+                        imager.xpaset("regions", data=region)
     except:
         raise DS9Err('badreg', str(reg))
 
@@ -157,7 +167,7 @@ def xpaget(arg):
         raise DS9Err('open')
     return imager.xpaget(arg)
 
-def xpaset(arg):
+def xpaset(arg, data=None):
     if not imager.isOpen():
         raise DS9Err('open')
-    return imager.xpaset(arg)
+    return imager.xpaset(arg, data)

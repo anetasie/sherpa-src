@@ -68,11 +68,11 @@ class SpecRatio(object):
                               "b1" : "blackbody"
                               }
 
-        self.d_model_names = { "p1.phoindex" : "index",
+        self.d_model_names = { "p1.PhoIndex" : "index",
                                "p1.norm" : "alpha",
-                               "abs1.nh" : "nH",
+                               "abs1.nH" : "nH",
                                "b1.norm" : "norm",
-                               "b1.kt"   : "kT"
+                               "b1.kT"   : "kT"
                                }
 
         self.d_model_ids = { "p1" : "pl",
@@ -208,10 +208,10 @@ class SpecRatio(object):
             if not numpy.isnan(par.val):
                 format = "%s,r,h,%5.1f,,,\"%s %s, %s \"\n"
                 arg    = par.val
-                if par.name == "nh":
+                if par.name == "nH":
                     arg = arg*100.
 
-            if par.name == "nh":
+            if par.name == "nH":
                 par.units = "10^20 atoms / cm^2"
 
             self.d_fout.write(format % (self.d_model_names[par.fullname], arg, 
@@ -298,11 +298,11 @@ class SpecRatio(object):
         self.write_data()
 
         model = self.init_powlaw_model()
-        sherpa.set_model(model)
+        sherpa.set_source(model)
         self.do_ratio(model)
 
         model = self.init_bbody_model()
-        sherpa.set_model(model)
+        sherpa.set_source(model)
         self.do_ratio(self.b1)
 
         self.d_fout.close()

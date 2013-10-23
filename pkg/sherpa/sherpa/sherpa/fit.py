@@ -22,10 +22,10 @@ import logging
 import os
 import signal
 from numpy import power, arange, array, abs, iterable, sqrt, where, \
-     ones_like, isnan, isinf
+     ones_like, isnan, isinf, float, float32, finfo, nan, any
 from sherpa.utils import NoNewAttributesAfterInit, print_fields, erf, igamc, \
-    bool_cast, is_in, is_iterable, list_to_open_interval
-from sherpa.utils.err import FitErr, EstErr
+    bool_cast, is_in, is_iterable, list_to_open_interval, sao_fcmp
+from sherpa.utils.err import FitErr, EstErr, SherpaErr
 from sherpa.data import DataSimulFit
 from sherpa.estmethods import Covariance, EstNewMin
 from sherpa.models import SimulFitModel, Parameter
@@ -40,14 +40,76 @@ info = logging.getLogger(__name__).info
 __all__ = ('FitResults', 'ErrorEstResults', 'Fit')
 
 
+def evaluates_model(func):
+    """
+    Fit object decorator that runs model startup() and teardown()
+
+    """
+    def run(fit, *args, **kwargs):
+        fit.model.startup()
+        result = func(fit, *args, **kwargs)
+        fit.model.teardown()
+        return result
+
+    run.__name__ = func.__name__
+    run.__doc__ = func.__doc__
+    return run
+
+
+class StatInfoResults(NoNewAttributesAfterInit):
+
+    _fields = ('name', 'ids', 'bkg_ids', 'statname', 'statval',
+               'numpoints', 'dof', 'qval', 'rstat')
+
+    def __init__(self, statname, statval, numpoints, model, dof,
+                 qval=None, rstat=None):
+        self.name = ''
+        self.ids = None
+        self.bkg_ids = None
+
+        self.statname = statname
+        self.statval = statval
+        self.numpoints = numpoints
+        self.model = model
+        self.dof = dof
+        self.qval = qval
+        self.rstat = rstat
+
+    def __repr__(self):
+        return '<Statistic information results instance>'
+
+    def __str__(self):
+        return print_fields(self._fields, vars(self))
+
+    def format(self):
+        s = ''
+        if (self.ids is not None and self.bkg_ids is None):
+            if len(self.ids) == 1:
+                s = 'Dataset               = %s\n' % str(self.ids[0])
+            else:
+                s = 'Datasets              = %s\n' % str(self.ids).strip("()")
+        elif (self.ids is not None and self.bkg_ids is not None):
+                s = 'Background %s in Dataset = %s\n' % (str(self.bkg_ids[0]),
+                                                         str(self.ids[0]))
+        s += 'Statistic             = %s\n' % self.statname 
+        s += 'Fit statistic value   = %g\n' % self.statval
+        s += 'Data points           = %g\n' % self.numpoints
+        s += 'Degrees of freedom    = %g' % self.dof
+        if self.qval is not None:
+            s += '\nProbability [Q-value] = %g' % self.qval
+        if self.rstat is not None:
+            s += '\nReduced statistic     = %g' % self.rstat
+        return s
+
+
 class FitResults(NoNewAttributesAfterInit):
 
-    _fields = ('datasets', 'methodname', 'statname', 'succeeded',
-               'parnames', 'parvals', 'statval', 'istatval',
+    _fields = ('datasets', 'itermethodname', 'methodname', 'statname',
+               'succeeded', 'parnames', 'parvals', 'statval', 'istatval',
                'dstatval', 'numpoints', 'dof', 'qval', 'rstat', 'message',
                'nfev')
 
-    def __init__(self, fit, results, init_stat):
+    def __init__(self, fit, results, init_stat, param_warnings):
         _vals   = fit.data.eval_model_to_fit(fit.model)
         _dof    = len(_vals) - len(tuple(results[1]))
         _qval   = None
@@ -55,9 +117,11 @@ class FitResults(NoNewAttributesAfterInit):
         _covarerr = results[4].get('covarerr')
         if (isinstance(fit.stat, (CStat,Chi2)) and
             not isinstance(fit.stat, LeastSq)):
-            if results[2] >= 0.0:
+            if _dof > 0 and results[2] >= 0.0:
                 _qval = igamc(_dof/2., results[2]/2.)
-            _rstat = results[2]/_dof
+                _rstat = results[2]/_dof
+            else:
+                _rstat = nan
 
         self.succeeded    = results[0]
         self.parnames     = tuple(p.fullname for p in fit.model.pars
@@ -79,9 +143,18 @@ class FitResults(NoNewAttributesAfterInit):
         self.extra_output = results[4]
         self.modelvals    = _vals
         self.methodname   = type(fit.method).__name__.lower()
+        self.itermethodname = fit._iterfit.itermethod_opts['name']
         self.statname     = type(fit.stat).__name__.lower()
         self.datasets     = None # To be filled by calling function
+        self.param_warnings = param_warnings
         NoNewAttributesAfterInit.__init__(self)
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        if not state.has_key('itermethodname'):
+            self.__dict__['itermethodname'] = 'none'
+
 
     def __nonzero__(self):
         return self.succeeded
@@ -99,6 +172,8 @@ class FitResults(NoNewAttributesAfterInit):
                 s = 'Dataset               = %s\n' % str(self.datasets[0])
             else:
                 s = 'Datasets              = %s\n' % str(self.datasets).strip("()")
+        if (self.itermethodname != None and self.itermethodname != 'none'):
+            s += 'Iterative Fit Method  = %s\n' % self.itermethodname.capitalize()
         s += 'Method                = %s\n' % self.methodname
         s += 'Statistic             = %s\n' % self.statname 
         s += 'Initial fit statistic = %g\n' % self.istatval
@@ -122,13 +197,16 @@ class FitResults(NoNewAttributesAfterInit):
             for name, val, covarerr in izip(self.parnames, self.parvals, self.covarerr):
                 s += '\n   %-12s   %-12g +/- %-12g' % (name, val, covarerr)
 
+        if self.param_warnings != "":
+            s += "\n" + self.param_warnings
+
         return s
 
 class ErrorEstResults(NoNewAttributesAfterInit):
 
-    _fields = ('datasets', 'methodname', 'fitname', 'statname', 'sigma',
-               'percent', 'parnames', 'parvals', 'parmins', 'parmaxes',
-               'nfits')
+    _fields = ('datasets', 'methodname', 'iterfitname', 'fitname', 'statname',
+               'sigma', 'percent', 'parnames', 'parvals', 'parmins',
+               'parmaxes', 'nfits')
 
     def __init__(self, fit, results, parlist = []):
         if (parlist == []):
@@ -140,6 +218,7 @@ class ErrorEstResults(NoNewAttributesAfterInit):
         warning_hmax      = "hard maximum hit for parameter "
         self.datasets     = None # To be set by calling function
         self.methodname   = type(fit.estmethod).__name__.lower()
+        self.iterfitname  = fit._iterfit.itermethod_opts['name']
         self.fitname      = type(fit.method).__name__.lower()
         self.statname     = type(fit.stat).__name__.lower()
         self.sigma        = fit.estmethod.sigma
@@ -172,6 +251,12 @@ class ErrorEstResults(NoNewAttributesAfterInit):
 
         NoNewAttributesAfterInit.__init__(self)
 
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        if not state.has_key('iterfitname'):
+            self.__dict__['iterfitname'] = 'none'
+
     def __repr__(self):
         return '<%s results instance>' % self.methodname
 
@@ -186,6 +271,8 @@ class ErrorEstResults(NoNewAttributesAfterInit):
             else:
                 s = 'Datasets              = %s\n' % str(self.datasets).strip("()")
         s += 'Confidence Method     = %s\n' % self.methodname
+        if (self.iterfitname != None or self.iterfitname != 'none'):
+            s += 'Iterative Fit Method  = %s\n' % self.iterfitname.capitalize()
         s += 'Fitting Method        = %s\n' % self.fitname
         s += 'Statistic             = %s\n' % self.statname 
         
@@ -250,10 +337,344 @@ class ErrorEstResults(NoNewAttributesAfterInit):
         return myformat( hfmt, s, lowstr, lownum, highstr, highnum )
         
 
+class IterFit(NoNewAttributesAfterInit):
+    def __init__(self, data, model, stat, method, itermethod_opts={'name':'none'}):
+        # Even if there is only a single data set, I will
+        # want to treat the data and models I am given as
+        # collections of data and models -- so, put data and
+        # models into the objects needed for simultaneous fitting,
+        # if they are not already in such objects.
+        self.data = data
+        if (type(data) is not DataSimulFit):
+            self.data = DataSimulFit('simulfit data', (data,))
+        self.model = model
+        if (type(model) is not SimulFitModel):
+            self.model = SimulFitModel('simulfit model', (model,))
+        self.stat = stat
+        self.method = method
+        # Data set attributes needed to store fitting values between
+        # calls to fit
+        self._dep = None
+        self._staterror = None
+        self._syserror = None
+        self._nfev = 0
+        self._file = None
+        # Options to send to iterative fitting method
+        self.itermethod_opts = itermethod_opts
+        self.iterate = False
+        self.funcs = {'primini':self.primini, 'sigmarej':self.sigmarej}
+        self.current_func = None
+        if (itermethod_opts['name'] != 'none'):
+            self.current_func = self.funcs[itermethod_opts['name']]
+            self.iterate = True
+
+    # SIGINT (i.e., typing ctrl-C) can dump the user to the Unix prompt,
+    # when signal is sent from G95 compiled code.  What we want is to
+    # get to the Sherpa prompt instead.  Typically the user only thinks
+    # to interrupt during long fits or projection, so look for SIGINT
+    # here, and if it happens, raise the KeyboardInterrupt exception
+    # instead of aborting.
+    def _sig_handler(self, signum, frame):
+        raise KeyboardInterrupt()
+
+    def _get_callback(self, outfile=None, clobber=False):
+        if len(self.model.thawedpars) == 0:
+            #raise FitError('model has no thawed parameters')
+            raise FitErr( 'nothawedpar' )
+
+        # support Sherpa use with SAMP
+        try:
+            signal.signal(signal.SIGINT, self._sig_handler)
+        except ValueError, e:
+            warning(e)
+
+        self._dep, self._staterror, self._syserror = self.data.to_fit(self.stat.calc_staterror)
+
+        self._nfev = 0
+        if outfile is not None:
+            if os.path.isfile(outfile) and not clobber:
+                #raise FitError("'%s' exists, and clobber==False" % outfile)
+                raise FitErr( 'noclobererr', outfile )
+            self._file = file(outfile, 'w')
+            names = ['# nfev statistic']
+            names.extend(['%s' % par.fullname for par in self.model.pars
+                          if not par.frozen])
+            print >> self._file, ' '.join(names)
+
+        def cb(pars):
+            # We need to store the new parameter values in order to support
+            # linked parameters
+
+            self.model.thawedpars = pars
+            model = self.data.eval_model_to_fit(self.model)
+            stat = self.stat.calc_stat(self._dep, model, self._staterror, self._syserror)
+
+            if self._file is not None:
+                vals = ['%5e %5e' % (self._nfev, stat[0])]
+                vals.extend(['%5e' % val for val in self.model.thawedpars])
+                print >> self._file, ' '.join(vals)
+
+            self._nfev+=1
+            return stat
+
+        return cb
+
+    def primini(self, statfunc, pars, parmins, parmaxes, statargs = (),
+                statkwargs = {}):
+        # Primini's method can only be used with chi-squared;
+        # raise exception if it is attempted with least-squares,
+        # or maximum likelihood
+        if (isinstance(self.stat, Chi2) and
+            type(self.stat) is not LeastSq):
+            pass
+        else:
+            raise FitErr('needchi2', 'Primini\'s')
+        # Get tolerance, max number of iterations from the
+        # dictionary for Primini's method
+        tol = self.itermethod_opts['tol']
+        if (type(tol) != int and
+            type(tol) != float):
+            raise SherpaErr("'tol' value for Primini's method must be a number")        
+        maxiters = self.itermethod_opts['maxiters']
+        if (type(maxiters) != int):
+            raise SherpaErr("'maxiters' value for Primini's method must be an integer")
+
+        # Store original statistical errors for all data sets.
+        # Then, set all statistical errors equal to one, to
+        # prepare for Primini's method.
+        staterror_original = []
+            
+        for d in self.data.datasets:
+            st = d.get_staterror(filter=False)
+            staterror_original.append(st)
+            d.staterror = ones_like(st)
+
+        # Keep record of current and previous statistics;
+        # when these are within some tolerace, Primini's method
+        # is done.
+        previous_stat = float32(finfo(float32).max)
+        current_stat = statfunc(pars)[0]
+        nfev = 0
+        iters = 0
+
+        # This is Primini's method.  The essence of the method
+        # is to fit; then call the statistic's staterror function
+        # on model values (calculated with current parameter values);
+        # then call fit *again*.  Do this until the final fit
+        # statistic for the previous and current calls to fit
+        # agree to within tolerance.
+        final_fit_results = None
+        try:
+            while (sao_fcmp(previous_stat, current_stat, tol) != 0 and
+                   iters < maxiters):
+                final_fit_results = self.method.fit(statfunc,
+                                                    self.model.thawedpars,
+                                                    parmins, parmaxes,
+                                                    statargs, statkwargs)
+                previous_stat = current_stat
+                current_stat = final_fit_results[2]
+                nfev += final_fit_results[4].get('nfev')
+                iters += 1
+
+                # Call stat.staterror with *model*values*, not data
+                # Model values calculated using best-fit parameter
+                # values from the just-completed call to the fit
+                # function.
+                model_iterator = iter(self.model())
+                for d in self.data.datasets:
+                    d.staterror = self.stat.calc_staterror(
+                        d.eval_model(model_iterator.next()))
+
+            # Final number of function evaluations is the sum
+            # of the numbers of function evaluations from all calls
+            # to the fit function.
+            final_fit_results[4]['nfev'] = nfev
+        finally:
+            # Clean up *no*matter*what* -- we must always
+            # restore original statistical errors.
+            staterror_original.reverse()
+            for d in self.data.datasets:
+                d.staterror = staterror_original.pop()
+            
+        # Return results from Primini's iterative fitting method
+        return final_fit_results
+
+    def sigmarej(self, statfunc, pars, parmins, parmaxes, statargs = (),
+                 statkwargs = {}):
+        # Sigma-rejection can only be used with chi-squared;
+        # raise exception if it is attempted with least-squares,
+        # or maximum likelihood
+        if (isinstance(self.stat, Chi2) and
+            type(self.stat) is not LeastSq):
+            pass
+        else:
+            raise FitErr('needchi2', 'Sigma-rejection')
+
+        # Get maximum number of allowed iterations, high and low
+        # sigma thresholds for jrection of data points, and
+        # "grow" factor (i.e., how many surrounding data points
+        # to include with rejected data point).
+
+        maxiters = self.itermethod_opts['maxiters']
+        if (type(maxiters) != int):
+            raise SherpaErr("'maxiters' value for sigma rejection method must be an integer")
+        if (maxiters < 1):
+            raise SherpaErr("'maxiters' must be one or greater")
+        
+        hrej = self.itermethod_opts['hrej']
+        if (type(hrej) != int and
+            type(hrej) != float):
+            raise SherpaErr("'hrej' value for sigma rejection method must be a number")
+        if (not (hrej > 0)):
+            raise SherpaErr("'hrej' must be greater than zero") 
+        
+        lrej = self.itermethod_opts['lrej']
+        if (type(lrej) != int and
+            type(lrej) != float):
+            raise SherpaErr("'lrej' value for sigma rejection method must be a number")
+        if (not (lrej > 0)):
+            raise SherpaErr("'lrej' must be greater than zero") 
+        
+        grow = self.itermethod_opts['grow']
+        if (type(grow) != int):
+            raise SherpaErr("'grow' value for sigma rejection method must be an integer")
+        if (grow < 0):
+            raise SherpaErr("'grow' factor must be zero or greater")
+
+        # Keep record of current and previous statistics
+        previous_stat = float32(finfo(float32).max)
+        current_stat = statfunc(pars)[0]
+        nfev = 0
+        iters = 0
+        
+        # Store original masks (filters) for each data set.
+        mask_original = []
+
+        for d in self.data.datasets:
+            # If there's no filter, create a filter that is
+            # all True
+            if (iterable(d.mask) != True):
+                mask_original.append(d.mask)
+                d.mask = ones_like(array(d.get_dep(False), dtype=bool))
+            else:
+                mask_original.append(array(d.mask))
+                
+        self.model.teardown()
+        final_fit_results = None
+        rejected = True
+        try:
+            while (rejected == True and
+                   iters < maxiters):
+                # Update stored y, staterror and syserror values
+                # from data, so callback function will work properly
+                self._dep, self._staterror, self._syserror = self.data.to_fit(self.stat.calc_staterror)
+                self.model.startup()
+                final_fit_results = self.method.fit(statfunc,
+                                                    self.model.thawedpars,
+                                                    parmins, parmaxes,
+                                                    statargs, statkwargs)
+                model_iterator = iter(self.model())
+                rejected = False
+                
+                for d in self.data.datasets:
+                    # For each data set, compute
+                    # (data - model) / staterror
+                    # over filtered data space
+                    residuals = (d.get_dep(True) - d.eval_model_to_fit(model_iterator.next())) / d.get_staterror(True, self.stat.calc_staterror)
+
+                    # For each modeled value that exceeds
+                    # sigma thresholds, set the corresponding
+                    # filter value from True to False
+                    ressize = len(residuals)
+                    filsize = len(d.mask)
+                    newmask = d.mask
+                    
+                    j = 0
+                    kmin = 0
+                    for i in xrange(0, ressize):
+                        while (newmask[j] == False and
+                               j < filsize):
+                            j = j + 1
+                        if (j >= filsize):
+                            break
+                        if (residuals[i] <= -lrej or
+                            residuals[i] >= hrej):
+                            rejected = True
+                            kmin = j - grow
+                            if (kmin < 0):
+                                kmin = 0
+                            kmax = j + grow
+                            if (kmax >= filsize):
+                                kmax = filsize - 1
+                            for k in xrange(kmin, kmax + 1):
+                                newmask[k] = False
+                        j = j + 1
+
+                        # If we've masked out *all* data,
+                        # immediately raise fit error, clean up
+                        # on way out.
+                        if (any(newmask) == False):
+                            raise FitErr( 'nobins' )
+                        d.mask = newmask
+
+                # For data sets with backgrounds, correct that
+                # backgrounds have masks that match their sources
+                for d in self.data.datasets:
+                    if (hasattr(d, "background_ids") == True and
+                        hasattr(d, "get_background") == True):
+                        for bid in d.background_ids:
+                            b = d.get_background(bid)
+                            if (iterable(b.mask) == True and
+                                iterable(d.mask) == True):
+                                if (len(b.mask) == len(d.mask)):
+                                    b.mask = d.mask
+
+                # teardown model, get ready for next iteration
+                self.model.teardown()
+                iters = iters + 1
+                nfev += final_fit_results[4].get('nfev')
+                final_fit_results[4]['nfev'] = nfev
+        except:
+            # Clean up if exception occurred
+            mask_original.reverse()
+            for d in self.data.datasets:
+                d.mask = mask_original.pop()
+
+            # Update stored y, staterror and syserror values
+            # from data, so callback function will work properly
+            self._dep, self._staterror, self._syserror = self.data.to_fit(self.stat.calc_staterror)
+            self.model.startup()
+            raise
+
+        self._dep, self._staterror, self._syserror = self.data.to_fit(self.stat.calc_staterror)
+        self.model.startup()
+
+        ### N.B. -- If sigma-rejection in Sherpa 3.4 succeeded,
+        ### it did *not* restore the filter to its state before
+        ### sigma-rejection was called.  If points are filtered
+        ### out, they stay out.  So we emulate the same behavior
+        ### if our version of sigma-rejection succeeds.
+
+        ### Mind you, if sigma-rejection *fails*, then we *do*
+        ### restore the filter, and re-raise the exception in
+        ### the above exception block.
+        
+        # Return results from sigma rejection
+        return final_fit_results
+        
+    def fit(self, statfunc, pars, parmins, parmaxes, statargs=(), statkwargs={}):
+        if (self.iterate == False):
+            return self.method.fit(statfunc, pars, parmins, parmaxes,
+                                   statargs, statkwargs)
+        else:
+            return self.current_func(statfunc, pars, parmins, parmaxes,
+                                     statargs, statkwargs)
+                                
 
 class Fit(NoNewAttributesAfterInit):
 
-    def __init__(self, data, model, stat=None, method=None, estmethod=None):
+    def __init__(self, data, model, stat=None, method=None, estmethod=None,
+                 itermethod_opts={'name':'none'}):
         self.data = data
         self.model = model
 
@@ -287,10 +708,20 @@ class Fit(NoNewAttributesAfterInit):
         # that number equals self.estmethod.maxfits, cease all
         # further attempt to reminimize.
         self.refits = 0
-        self._file = None
-        self._nfev = 0
+
+        # Set up an IterFit object, so that the user can select
+        # an iterative fitting option.
+        self._iterfit = IterFit(self.data, self.model, self.stat, self.method,
+                                itermethod_opts)
         NoNewAttributesAfterInit.__init__(self)
-    
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        if not state.has_key('_iterfit'):
+            self.__dict__['_iterfit'] = IterFit(self.data, self.model, self.stat, self.method,
+                                                {'name':'none'})
+
     def __str__(self):
 	return (('data      = %s\n' +
                  'model     = %s\n' +
@@ -325,53 +756,26 @@ class Fit(NoNewAttributesAfterInit):
         stat = self.stat.calc_stat(dep, model, staterror, syserror)[1]
         return stat*stat
 
-    # SIGINT (i.e., typing ctrl-C) can dump the user to the Unix prompt,
-    # when signal is sent from G95 compiled code.  What we want is to
-    # get to the Sherpa prompt instead.  Typically the user only thinks
-    # to interrupt during long fits or projection, so look for SIGINT
-    # here, and if it happens, raise the KeyboardInterrupt exception
-    # instead of aborting.
-    def _sig_handler(self, signum, frame):
-        raise KeyboardInterrupt()
-    
-    def _get_callback(self, outfile=None, clobber=False):
-        if len(self.model.thawedpars) == 0:
-            #raise FitError('model has no thawed parameters')
-            raise FitErr( 'nothawedpar' )
-
-        signal.signal(signal.SIGINT, self._sig_handler)
-        
+    def calc_stat_info(self):
         dep, staterror, syserror = self.data.to_fit(self.stat.calc_staterror)
+        model = self.data.eval_model_to_fit(self.model)
+        stat, fvec = self.stat.calc_stat(dep, model, staterror, syserror)
 
-        self._nfev = 0
-        if outfile is not None:
-            if os.path.isfile(outfile) and not clobber:
-                #raise FitError("'%s' exists, and clobber==False" % outfile)
-                raise FitErr( 'noclobererr', outfile )
-            self._file = file(outfile, 'w')
-            names = ['# nfev statistic']
-            names.extend(['%s' % par.fullname for par in self.model.pars
-                          if not par.frozen])
-            print >> self._file, ' '.join(names)
+        qval = None
+        rstat = None
+        numpoints = len(model)
+        dof = numpoints - len(self.model.thawedpars)
+        if (isinstance(self.stat, (CStat,Chi2)) and
+            not isinstance(self.stat, LeastSq)):
+            if stat >= 0.0:
+                qval = igamc(dof/2., stat/2.)
+            rstat = stat/dof
 
-        def cb(pars):
-            # We need to store the new parameter values in order to support
-            # linked parameters
+        return StatInfoResults(self.stat.name, stat, numpoints, model,
+                               dof, qval, rstat)
 
-            self.model.thawedpars = pars
-            model = self.data.eval_model_to_fit(self.model)
-            stat = self.stat.calc_stat(dep, model, staterror, syserror)
 
-            if self._file is not None:
-                vals = ['%5e %5e' % (self._nfev, stat[0])]
-                vals.extend(['%5e' % val for val in self.model.thawedpars])
-                print >> self._file, ' '.join(vals)
-
-            self._nfev+=1
-            return stat
-
-        return cb
-
+    @evaluates_model
     def fit(self, outfile=None, clobber=False):
         dep, staterror, syserror = self.data.to_fit(self.stat.calc_staterror)
         if not iterable(dep) or len(dep) == 0:
@@ -394,23 +798,42 @@ class Fit(NoNewAttributesAfterInit):
 
 
         init_stat = self.calc_stat()
-        output = self.method.fit(self._get_callback(outfile, clobber),
-                                 self.model.thawedpars,
-                                 self.model.thawedparmins,
-                                 self.model.thawedparmaxes)
+        # output = self.method.fit ...
+        output = self._iterfit.fit(self._iterfit._get_callback(outfile, clobber),
+                                   self.model.thawedpars,
+                                   self.model.thawedparmins,
+                                   self.model.thawedparmaxes)
         # LevMar always calculate chisquare, so call calc_stat
         # just in case statistics is something other then chisquare
         self.model.thawedpars = output[1]
-        if self._file is not None:
-            self._file.close()
-            self._file=None
-
         tmp = list(output)
         tmp[2] = self.calc_stat()
         output = tuple(tmp)
         # end of the gymnastics 'cause one cannot write to a tuple
-        return FitResults(self, output, init_stat)
 
+        # check if any parameter values are at boundaries,
+        # and warn user.
+        tol = finfo(float32).eps
+        param_warnings = ""
+        for par in self.model.pars:
+            if not par.frozen:
+                if sao_fcmp(par.val, par.min, tol) == 0:
+                    param_warnings += ("WARNING: parameter value %s is at its minimum boundary %s\n" %
+                                      (par.fullname, str(par.min)))
+                if sao_fcmp(par.val, par.max, tol) == 0:
+                    param_warnings += ("WARNING: parameter value %s is at its maximum boundary %s\n" %
+                                      (par.fullname, str(par.max)))
+
+        if self._iterfit._file is not None:
+            vals = ['%5e %5e' % (self._iterfit._nfev, tmp[2])]
+            vals.extend(['%5e' % val for val in self.model.thawedpars])
+            print >> self._iterfit._file, ' '.join(vals)
+            self._iterfit._file.close()
+            self._iterfit._file=None
+
+        return FitResults(self, output, init_stat, param_warnings.strip("\n"))
+
+    @evaluates_model
     def simulfit(self, *others):
         if len(others) == 0:
             return self.fit()
@@ -422,6 +845,7 @@ class Fit(NoNewAttributesAfterInit):
         f = Fit(d, m, self.stat, self.method)
         return f.fit()
 
+    @evaluates_model
     def est_errors(self, methoddict=None, parlist=None):
         # Define functions to freeze and thaw a parameter before
         # we call fit function -- projection can call fit several
@@ -592,8 +1016,8 @@ class Fit(NoNewAttributesAfterInit):
         if (hasattr(self.estmethod, "remin")):
             oldremin = self.estmethod.remin
         try:
-            output = self.estmethod.compute(self._get_callback(),
-                                            self.method.fit,
+            output = self.estmethod.compute(self._iterfit._get_callback(),
+                                            self._iterfit.fit,
                                             self.model.thawedpars,
                                             startsoftmins,
                                             startsoftmaxs,

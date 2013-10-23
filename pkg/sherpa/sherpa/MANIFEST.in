@@ -13,18 +13,11 @@ include sherpa/astro/utils/src/_region.cc
 # WCS module sources
 include sherpa/astro/utils/src/_wcs.cc
 
-# S-Lang packages
-include slang/*.sl
-
-# Sherpa documentation
-include docs/*.hlp
-
 # Sherpa executable
 include sherpa/sherpa
 include sherpa/ipythonrc-sherpa
 include sherpa/sherpa_py
 include sherpa/sherpa.rc
-include sherpa/sherpa_slsh.sl
 
 # Sherpa distutils
 include _addons.py

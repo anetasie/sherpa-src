@@ -37,7 +37,9 @@ __all__ = ('clear_window', 'plot', 'histo', 'contour', 'point', 'set_subplot',
            'get_fit_contour_defaults', 'get_resid_contour_defaults',
            'get_ratio_contour_defaults','get_confid_plot_defaults',
            'get_confid_contour_defaults', 'set_window_redraw', 'set_jointplot',
-           'get_histo_defaults', 'get_model_histo_defaults')
+           'get_histo_defaults', 'get_model_histo_defaults',
+           'get_component_plot_defaults', 'get_component_histo_defaults',
+           'vline', 'hline')
 
 _initialized = False # Set this True first time begin() is called
 
@@ -76,9 +78,74 @@ def _point(x, y, overplot=True, clearwindow=False,
     for var in ('style','color', 'size', 'angle', 'fill'):
         val = locals()[var]
         if val is not None:
-            if var.startswith('color') and '0x' in val:
-                val = val.replace('0x','').rjust(6,'0')
+            if 'color' in var:
+                val = _check_hex_color(val)
             getattr(chips.advanced, 'set_point_' + var)(val)
+
+
+_attr_map = {
+    'linecolor' : 'color',
+    'linestyle' : 'style',
+    'linewidth' : 'thickness',
+    }
+
+_linestyle_map = {
+
+    'noline'  : chips.chips_noline,
+    'solid'   : chips.chips_solid,
+    'dot'     : chips.chips_shortdash,
+    'dash'    : chips.chips_longdash,
+    'dotdash' : chips.chips_dotlongdash,
+    }
+
+
+def _check_hex_color(val):
+    if type(val) in (str, numpy.string_) and val.startswith('0x'):
+        val = str(val).replace('0x','').rjust(6,'0')
+    return val
+
+def _vline(x, ymin=0, ymax=1,
+          linecolor=None,
+          linestyle=None,
+          linewidth=None,
+          overplot=False, clearwindow=True):
+
+    if (not overplot) and clearwindow:
+        _clear_window()
+
+    chips.add_vline(x)
+
+    for var in ('linecolor', 'linestyle', 'linewidth'):
+        val = locals()[var]
+        if val is not None:
+            if 'color' in var:
+                val = _check_hex_color(val)
+            elif 'style' in var:
+                val = _linestyle_map[val]
+            getattr(chips.advanced, 'set_line_' + _attr_map[var])(val)
+
+
+def _hline(y, xmin=0, xmax=1,
+          linecolor=None,
+          linestyle=None,
+          linewidth=None,
+          overplot=False, clearwindow=True):
+
+    if (not overplot) and clearwindow:
+        _clear_window()
+
+    chips.add_hline(y)
+
+    for var in ('linecolor', 'linestyle', 'linewidth'):
+        val = locals()[var]
+        if val is not None:
+            if 'color' in var:
+                val = _check_hex_color(val)
+            elif 'style' in var:
+                val = _linestyle_map[val]
+            getattr(chips.advanced, 'set_line_' + _attr_map[var])(val)
+
+
 
 
 def _plot(x, y, yerr=None, xerr=None, title=None, xlabel=None, ylabel=None,
@@ -117,8 +184,8 @@ def _plot(x, y, yerr=None, xerr=None, title=None, xlabel=None, ylabel=None,
                 'symbolfill', 'linethickness'):
         val = locals()[var]
         if val is not None:
-            if 'color' in var and '0x' in val:
-                val = val.replace('0x','').rjust(6,'0')
+            if 'color' in var:
+                val = _check_hex_color(val)
             getattr(chips.advanced, 'set_curve_' + var)(val)
 
     if not overplot:
@@ -145,7 +212,7 @@ def _plot(x, y, yerr=None, xerr=None, title=None, xlabel=None, ylabel=None,
     if ratioline:
         chips.add_hline(1);
 
-    chips.limits(chips.X_AXIS, 'AUTO', 'AUTO')
+    #chips.limits(chips.X_AXIS, 'AUTO', 'AUTO')
 
 
 def _histogram(xlo, xhi, y, yerr=None, title=None, xlabel=None, ylabel=None,
@@ -183,8 +250,8 @@ def _histogram(xlo, xhi, y, yerr=None, title=None, xlabel=None, ylabel=None,
                 'symbolstyle'):
         val = locals()[var]
         if val is not None:
-            if 'color' in var and '0x' in val:
-                val = val.replace('0x','').rjust(6,'0')
+            if 'color' in var:
+                val = _check_hex_color(val)
             getattr(chips.advanced, 'set_histogram_' + var)(val)
 
     if not overplot:
@@ -205,7 +272,7 @@ def _histogram(xlo, xhi, y, yerr=None, title=None, xlabel=None, ylabel=None,
             ylbl = ylabel.replace('_', '\\_')
             chips.set_plot_ylabel(ylbl)
 
-    chips.limits(chips.X_AXIS, 'AUTO', 'AUTO')
+    #chips.limits(chips.X_AXIS, 'AUTO', 'AUTO')
 
 
 def _contour(x0, x1, y, levels=None, title=None, xlabel=None, ylabel=None,
@@ -236,8 +303,8 @@ def _contour(x0, x1, y, levels=None, title=None, xlabel=None, ylabel=None,
     for var in ('style', 'color', 'thickness'):
         val = locals()[var]
         if val is not None:
-            if 'color' in var and '0x' in val:
-                val = val.replace('0x','').rjust(6,'0')
+            if 'color' in var:
+                val = _check_hex_color(val)
             getattr(chips.advanced, 'set_contour_' + var)(val)
 
     chips.advanced.set_axis_pad(axis_pad)
@@ -330,6 +397,11 @@ def set_window_redraw(*args, **kwargs):
 def point(*args, **kwargs):
     _chips_wrap(_point, *args, **kwargs)
 
+def vline(*args, **kwargs):
+    _chips_wrap(_vline, *args, **kwargs)
+
+def hline(*args, **kwargs):
+    _chips_wrap(_hline, *args, **kwargs)
 
 def plot(*args, **kwargs):
     _chips_wrap(_plot, *args, **kwargs)
@@ -466,4 +538,14 @@ def get_model_histo_defaults():
     d['linethickness'] = 2
     d['linecolor'] = 'red'
 
+    return d
+
+def get_component_plot_defaults():
+    d = get_model_plot_defaults()
+    d['linecolor'] = 'orange'
+    return d
+
+def get_component_histo_defaults():
+    d = get_model_histo_defaults()
+    d['linecolor'] = 'orange'
     return d

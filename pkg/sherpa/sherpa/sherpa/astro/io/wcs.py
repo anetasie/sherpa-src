@@ -27,9 +27,9 @@ class WCS(NoNewAttributesAfterInit):
                  crota=0.0, epoch=2000.0, equinox=2000.0):
         self.name = name
         self.type = type
-        self.crval = crval
-        self.crpix = crpix
-        self.cdelt = cdelt
+        self.crval = numpy.asarray(crval, dtype=float)
+        self.crpix = numpy.asarray(crpix, dtype=float)
+        self.cdelt = numpy.asarray(cdelt, dtype=float)
         self.crota = crota
         self.epoch = epoch
         self.equinox = equinox
@@ -54,14 +54,14 @@ class WCS(NoNewAttributesAfterInit):
 
         return '\n'.join(val)
 
-    def apply(self, vals):
-        res = pix2world(self.type, numpy.array(vals).ravel(),
-                        self.crpix, self.crval, self.cdelt,
-                        self.crota, self.equinox, self.epoch)
-        return res.reshape((res.size/2,2))
+    def apply(self, x0, x1):
+        x0, x1 = pix2world(self.type, x0, x1,
+                           self.crpix, self.crval, self.cdelt,
+                           self.crota, self.equinox, self.epoch)
+        return (x0, x1)
 
-    def invert(self, vals):
-        res = world2pix(self.type, numpy.array(vals).ravel(),
+    def invert(self, x0, x1):
+        x0, x1 = world2pix(self.type, x0, x1,
                         self.crpix, self.crval, self.cdelt,
                         self.crota, self.equinox, self.epoch)
-        return res.reshape((res.size/2,2))
+        return (x0, x1)

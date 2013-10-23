@@ -606,6 +606,54 @@ PyObject* sum_intervals( PyObject* self, PyObject* args )
   return model.return_new_ref();
 }
 
+template <typename ArrayType, typename DataType>
+PyObject* neville( PyObject* self, PyObject* args )
+{
+  
+  ArrayType xout;
+  ArrayType xin;
+  ArrayType yin;
+  ArrayType result;
+
+  if ( !PyArg_ParseTuple( args, (char*)"O&O&O&",
+			  CONVERTME(ArrayType),
+			  &xout,
+			  CONVERTME(ArrayType),
+			  &xin,
+			  CONVERTME(ArrayType),
+			  &yin))
+    return NULL;
+  
+  if ( xin.get_size() != yin.get_size()  ) {
+    std::ostringstream err;
+    err << "input array sizes do not match, "
+	<< "xin: " << xin.get_size() << " vs yin: " << yin.get_size();
+    PyErr_SetString( PyExc_TypeError, err.str().c_str() );
+    return NULL;
+  }
+
+  if ( EXIT_SUCCESS != result.zeros( xout.get_ndim(), xout.get_dims() ) )
+    return NULL;
+  
+  int nin = (int) xin.get_size();
+  int nout = (int) xout.get_size();
+
+  for(int ii = 0; ii < nout; ii++) {
+
+    if ( EXIT_SUCCESS != (sherpa::utils::neville<ArrayType, DataType>
+			  (nin, xin, yin, xout[ii], result[ii] ) ) ){
+
+      PyErr_SetString( PyExc_ValueError,
+		       (char*)"neville interpolation failed" );
+
+      return NULL;
+    }
+    
+  }
+  
+  return result.return_new_ref();
+}
+
 
 PyObject* sao_arange( PyObject* self, PyObject* args )
 {
@@ -694,6 +742,9 @@ static PyMethodDef UtilsFcts[] = {
 
   FCTSPEC(sum_intervals, (sum_intervals<SherpaFloatArray, IntArray,
 			  SherpaFloat, int, npy_intp>)),
+
+  //neville
+  { (char*) "neville",(PyCFunction)(neville<SherpaFloatArray, SherpaFloat>), METH_VARARGS, (char*) " neville interpolation\n\nExample:\nsherpa> yout = neville(xout, xin, yin)"},
 
   FCTSPEC(sao_arange, sao_arange),
   

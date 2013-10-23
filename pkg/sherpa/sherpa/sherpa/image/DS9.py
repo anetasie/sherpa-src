@@ -223,7 +223,7 @@ if errStr:
 	warnings.warn(errStr)
 
 _ArrayKeys = ("dim", "dims", "xdim", "ydim", "zdim", "bitpix", "skip", "arch")
-_DefTemplate = "ds9"
+_DefTemplate = "sherpa"
 
 _OpenCheckInterval = 0.2 # seconds
 _MaxOpenTime = 60.0 # seconds

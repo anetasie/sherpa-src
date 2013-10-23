@@ -24,11 +24,13 @@ python module lmdif__user__routines
 end python module lmdif__user__routines
 python module _minpack
     interface
-       double precision function enorm(n,x)
+! 
+      double precision function enorm(n,x)
             integer depend(x),intent(hide) :: n=len(x)
             double precision dimension(n) :: x
             double precision :: enorm
         end function enorm
+!
         subroutine lmpar(n,r,ldr,ipvt,diag,qtb,delta,par,x,sdiag,wa1,wa2)
           integer depend(x),intent(hide) :: n=len(x)
           double precision dimension(ldr,n),depend(ldr,n),intent(inout) :: r
@@ -43,7 +45,8 @@ python module _minpack
           double precision dimension(n),depend(n),intent(inout) :: wa1
           double precision dimension(n),depend(n),intent(inout) :: wa2
         end subroutine lmpar
-        subroutine mylmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,diag,mode,factor,nprint,info,nfev,fjac,ldfjac,ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub,fval,multicore,myfdjac,lowtri,ifault,covarerr)
+!
+        subroutine mylmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,diag,mode,factor,nprint,info,nfev,fjac,ldfjac,ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub,fval,multicore,myfdjac,covarerr)
             use lmdif__user__routines
             external fcn
             integer intent(in) :: m
@@ -74,45 +77,50 @@ python module _minpack
             double precision intent(out) :: fval
             integer intent(in) :: multicore
             external myfdjac
-            double precision dimension(n*(n+1)/2),depend(n),intent(hide) :: lowtri
-            integer intent(out):: ifault
+!            double precision dimension(n*(n+1)/2),depend(n),intent(hide) :: lowtri
+!           integer intent(out):: ifault
             double precision dimension(n),depend(n),intent(out) :: covarerr
         end subroutine mylmdif
-!!$        subroutine dtnlmdif(fcn,m,n,x,fvec,ftol,xtol,gtol,maxfev,epsfcn,diag,mode,factor,nprint,info,nfev,fjac,ldfjac,ipvt,qtf,wa1,wa2,wa3,wa4,lb,ub,fval,multicore,myfdjac,lowtri,ifault,covarerr)
+!
+!!$        subroutine mylm(fcn,m,n,x,fvec,fjac,ldfjac,ftol,xtol,gtol,maxfev,diag,mode,factor,nprint,info,nfev,ipvt,qtf,wa1,wa2,wa3,wa4,wa5,epsfcn,lb,ub,fval)
 !!$            use lmdif__user__routines
 !!$            external fcn
 !!$            integer intent(in) :: m
 !!$            integer depend(x),intent(hide) :: n=len(x)
 !!$            double precision dimension(n),intent(inout) :: x
 !!$            double precision dimension(m),intent(hide) :: fvec
+!!$            double precision dimension(n,n),depend(n,n),intent(hide) :: fjac
+!!$           integer depend(n),intent(hide) :: ldfjac=n
 !!$            double precision intent(in) :: ftol
 !!$            double precision intnt(in) :: xtol
 !!$            double precision intent(in) :: gtol
 !!$            integer intent(in) :: maxfev
-!!$            double precision intent(in) :: epsfcn
 !!$            double precision dimension(n),depend(n),intent(hide) :: diag
 !!$            integer intent(hide):: mode=1
 !!$            double precision intent(in) :: factor
 !!$            integer intent(in) :: nprint
 !!$            integer intent(out):: info
 !!$            integer intent(out):: nfev
-!!$            double precision dimension(m,n),depend(m,n),intent(hide) :: fjac
-!!$            integer depend(m),intent(hide) :: ldfjac=m
 !!$            integer dimension(n),depend(n),intent(hide) :: ipvt
 !!$            double precision dimension(n),depend(n),intent(hide) :: qtf
 !!$            double precision dimension(n),depend(n),intent(hide) :: wa1
 !!$            double precision dimension(n),depend(n),intent(hide) :: wa2
 !!$            double precision dimension(n),depend(n),intent(hide) :: wa3
 !!$            double precision dimension(m),depend(m),intent(hide) :: wa4
+!!$            double precision dimension(m),depend(m),intent(hide) :: wa5
+!!$            double precision intent(in) :: epsfcn
 !!$            double precision dimension(n),intent(in) :: lb
 !!$            double precision dimension(n),intent(in) :: ub
 !!$            double precision intent(out) :: fval
-!!$            integer intent(in) :: multicore
-!!$            external myfdjac
-!!$            double precision dimension(n*(n+1)/2),depend(n),intent(hide) :: lowtri
-!!$            integer intent(out):: ifault
-!!$            double precision dimension(n),depend(n),intent(out) :: covarerr
-!!$        end subroutine dtnlmdif
+!!$        end subroutine mylmstr
+!
+!!$        subroutine calccovar(n,wa,ifault,lowtri,covarerr)
+!!$          integer intent(in) :: n
+!!$          double precision dimension(n),intent(hide) :: wa
+!!$          integer intent(out) :: ifault
+!!$          double precision dimension(n*(n+1)/2),intent(in) :: lowtri
+!!$          double precision dimension(n),intent(out) :: covarerr
+!!$        end subroutine calccovar
         subroutine qrfac(m,n,a,lda,pivot,ipvt,lipvt,rdiag,acnorm,wa)
           integer intent(in) :: m
           integer intent(in) :: n

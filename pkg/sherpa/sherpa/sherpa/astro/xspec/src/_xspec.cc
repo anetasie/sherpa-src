@@ -26,14 +26,23 @@ int _sherpa_init_xspec_library();
 #include <fstream>
 #include "sherpa/astro/xspec_extension.hh"
 
+#define ABUND_SIZE (30) // number of elements in Solar Abundance table
+
 extern "C" {
 void init_xspec();
 
 // Lifted from XSPEC 12 include directory
 char* FGXSCT(void); 
 char* FGSOLR(void);
+
+char* FGMSTR(char* dname);
+float FGABND(char* element);
+
 void FPSOLR(const char* table, int* ierr);
 void FPXSCT(const char* csection, int* ierr);
+void FPMSTR(const char* value1, const char* value2);
+void FPSLFL(float rvalue[], int nvalue, int *ierr);
+
 void FNINIT(void);
 float csmgq0(void);
 float csmgh0(void);
@@ -51,8 +60,9 @@ void xsblbd_(float* ear, int* ne, float* param, int* ifl, float* photar, float* 
 void xsbbrd_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xsbexrav_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void C_xsbexriv(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
-void xsbplw_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
-void xsb2pl_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void C_brokenPowerLaw(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
+void C_broken2PowerLaw(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
+void C_sirf(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
 void xsbmc_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xsbrms_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xsbvpe_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
@@ -131,7 +141,7 @@ void xszbod_(float* ear, int* ne, float* param, int* ifl, float* photar, float* 
 void xszbrm_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xszgau_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void C_zpowerLaw(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
-void xsabsori_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
+void C_xsabsori(const double* energy, int nFlux, const double* params, int spectrumNumber, double* flux, double* fluxError, const char* initStr);
 void acisabs_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xscnst_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xscabs_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
@@ -178,8 +188,12 @@ void xszvph_(float* ear, int* ne, float* param, int* ifl, float* photar, float* 
 void xszabs_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 void xszwnb_(float* ear, int* ne, float* param, int* ifl, float* photar, float* photer);
 
-}
 
+void xsatbl(float* ear, int ne, float* param, const char* filenm, int ifl, 
+	    float* photar, float* photer);
+void xsmtbl(float* ear, int ne, float* param, const char* filenm, int ifl, 
+	    float* photar, float* photer);
+}
 
 // Sun's C++ compiler complains if this is declared static
 int _sherpa_init_xspec_library()
@@ -216,17 +230,21 @@ int _sherpa_init_xspec_library()
     // screen by default).  We still want such error messages to be
     // seen!  So do *not* redirect std::cerr.
 
+    
     cout_sbuf = std::cout.rdbuf();
     std::ofstream fout("/dev/null");
     if (cout_sbuf != NULL && fout != NULL)
       std::cout.rdbuf(fout.rdbuf()); // temporary redirect stdout to /dev/null
+    
 
     // Initialize XSPEC model library
     FNINIT();
 
+    
     // Get back original std::cout
     if (cout_sbuf != NULL)
       std::cout.rdbuf(cout_sbuf); 
+    
 
     // Try to minimize model chatter for normal operation.
     FPCHAT( 0 );
@@ -238,9 +256,11 @@ int _sherpa_init_xspec_library()
 
   } catch(...) {
 
+    
     // Get back original std::cout
     if (cout_sbuf != NULL)
       std::cout.rdbuf(cout_sbuf);
+    
 
     // Raise appropriate error message that XSPEC initialization failed.
     PyErr_SetString( PyExc_ImportError,
@@ -312,13 +332,18 @@ static PyObject* get_chatter( PyObject *self )
 }
 
 
-static PyObject* get_abund( PyObject *self )
+static PyObject* get_abund( PyObject *self, PyObject *args )
 { 
 
   if ( EXIT_SUCCESS != _sherpa_init_xspec_library() )
     return NULL;
 
   char* abund = NULL;
+  char* element = NULL;
+  PyObject *retval = NULL;
+
+  if ( !PyArg_ParseTuple( args, (char*)"|s", &element ) )
+    return NULL;
 
   try {
 
@@ -332,8 +357,53 @@ static PyObject* get_abund( PyObject *self )
 
   }
 
-  return Py_BuildValue( (char*)"s", abund );
+  if( !element ) {
 
+    retval = (PyObject*) Py_BuildValue( (char*)"s", abund );
+  
+  } else {
+
+    float abundVal = 0.0;
+    std::streambuf *cerr_sbuf = NULL;
+    std::ostringstream fout;
+    
+    try {
+      
+      cerr_sbuf = std::cerr.rdbuf();
+      
+      if (cerr_sbuf != NULL)
+	std::cerr.rdbuf(fout.rdbuf());
+      
+      abundVal = FGABND(element);
+      
+      // Get back original std::cerr
+      if (cerr_sbuf != NULL)
+	std::cerr.rdbuf(cerr_sbuf); 
+      
+      
+    } catch(...) {
+      
+      // Get back original std::cerr
+      if (cerr_sbuf != NULL)
+	std::cerr.rdbuf(cerr_sbuf);
+      
+      PyErr_Format( PyExc_RuntimeError,
+		    (char*)"could not get XSPEC abundance for '%s'",
+		  element);
+      return NULL;
+      
+    }
+    
+    if( fout.str().size() > 0 ) {
+      PyErr_Format( PyExc_TypeError,
+		    (char*)"could not find element '%s'", element);
+      return NULL;
+    }
+    
+    retval = (PyObject*) Py_BuildValue( (char*)"f", abundVal );
+  }
+
+  return retval;
 }
 
 
@@ -441,6 +511,49 @@ static PyObject* set_abund( PyObject *self, PyObject *args )
 
   }
 
+  // if abundance table name fails, try it as a filename
+  if( status ) {
+
+    std::ifstream fileStream(table);
+    std::vector<float> vals(ABUND_SIZE, 0);
+    size_t count(0);
+
+    try {
+      
+      float element;
+      fileStream.exceptions(std::ios_base::failbit);
+      
+      while (count < ABUND_SIZE && fileStream >> element) {
+	vals[count] = element;
+	++count;
+      }
+      
+      status = 0;
+    }
+    catch ( std::exception& ) {
+     
+      if( !fileStream.eof() ) {
+      	PyErr_Format( PyExc_ValueError, 
+                      (char*)"Cannot read file '%s'.  It may not exist or contains invalid data",
+                      table);
+	return NULL;
+      }
+      
+      status = 1;
+    }
+
+    try {
+      
+      FPSOLR((char*)"file", &status);
+      FPSLFL( &vals[0], ABUND_SIZE, &status );
+      
+    } catch(...) {
+      
+      status = 1;
+      
+    }
+  }
+
   if ( 0 != status ) {
     PyErr_SetString( PyExc_RuntimeError,
 		     (char*)"could not set XSPEC abundance" );
@@ -518,25 +631,97 @@ static PyObject* set_cross( PyObject *self, PyObject *args )
 }
 
 
+static PyObject* set_xset( PyObject *self, PyObject *args )
+{ 
+
+  if ( EXIT_SUCCESS != _sherpa_init_xspec_library() )
+    return NULL;
+
+  char* str_name = NULL;
+  char* str_value = NULL;
+  int status = 0;
+
+  if ( !PyArg_ParseTuple( args, (char*)"ss", &str_name, &str_value ) )
+    return NULL;
+
+  try {
+
+    FPMSTR( str_name, str_value );
+
+  } catch(...) {
+
+    status = 1;
+
+  }
+
+  if ( 0 != status ) {
+    PyErr_Format( PyExc_RuntimeError,
+		  (char*)"could not set XSPEC model strings '%s: %s'",
+		  str_name, str_value);
+    return NULL;
+  }
+
+  Py_RETURN_NONE;  
+
+}
+
+static PyObject* get_xset( PyObject *self, PyObject *args  )
+{ 
+
+  if ( EXIT_SUCCESS != _sherpa_init_xspec_library() )
+    return NULL;
+
+  char* str_name = NULL;
+  char* str_value = NULL;
+
+  if ( !PyArg_ParseTuple( args, (char*)"s", &str_name ) )
+    return NULL;
+
+  try {
+
+    str_value = FGMSTR( str_name );
+
+  } catch(...) {
+
+    PyErr_Format( PyExc_RuntimeError,
+		  (char*)"could not get XSPEC model string '%s'",
+		  str_name);
+    return NULL;
+
+  }
+
+  return Py_BuildValue( (char*)"s", str_value );
+
+}
+
 static PyMethodDef XSpecMethods[] = {
   { (char*)"get_xsversion", (PyCFunction)get_version, METH_NOARGS,
     (char*)"Get XSPEC version string." },
+
   { (char*)"get_xschatter", (PyCFunction)get_chatter, METH_NOARGS,
     (char*)"Get XSPEC chatter level." },
-  { (char*)"get_xsabund", (PyCFunction)get_abund, METH_NOARGS,
-    (char*)"Get XSPEC solar abundance." },
-  { (char*)"get_xscosmo", (PyCFunction)get_cosmo, METH_NOARGS,
-    (char*)"Get XSPEC cosmology settings (H0, q0, L0)." },
-  { (char*)"get_xsxsect", (PyCFunction)get_cross, METH_NOARGS,
-    (char*)"Get XSPEC photoelectric cross-section." },
   { (char*)"set_xschatter", (PyCFunction)set_chatter, METH_VARARGS,
     (char*)"Set XSPEC chatter level." },
+
+  { (char*)"get_xsabund", (PyCFunction)get_abund, METH_VARARGS,
+    (char*)"Get XSPEC solar abundance." },
   { (char*)"set_xsabund", (PyCFunction)set_abund, METH_VARARGS,
     (char*)"Set XSPEC solar abundance." },
+
   { (char*)"set_xscosmo", (PyCFunction)set_cosmo, METH_VARARGS,
     (char*)"Set XSPEC cosmology settings (H0, q0, L0)." },
+  { (char*)"get_xscosmo", (PyCFunction)get_cosmo, METH_NOARGS,
+    (char*)"Get XSPEC cosmology settings (H0, q0, L0)." },
+
+  { (char*)"get_xsxsect", (PyCFunction)get_cross, METH_NOARGS,
+    (char*)"Get XSPEC photoelectric cross-section." },
   { (char*)"set_xsxsect", (PyCFunction)set_cross, METH_VARARGS,
     (char*)"Set XSPEC photoelectric cross-section." },
+
+  { (char*)"set_xsxset", (PyCFunction)set_xset, METH_VARARGS,
+    (char*)"Set XSPEC XSET <string name> <string value>" },
+  { (char*)"get_xsxset", (PyCFunction)get_xset, METH_VARARGS,
+    (char*)"Get XSPEC XSET <string name>" },
 
   XSPECMODELFCT_NORM( xsaped, 4 ),
   XSPECMODELFCT_NORM( xsbape, 5 ),
@@ -544,8 +729,9 @@ static PyMethodDef XSpecMethods[] = {
   XSPECMODELFCT_NORM( xsbbrd, 2 ),
   XSPECMODELFCT_NORM( xsbexrav, 10 ),
   XSPECMODELFCT_C_NORM( C_xsbexriv, 12 ),
-  XSPECMODELFCT_NORM( xsbplw, 4 ),
-  XSPECMODELFCT_NORM( xsb2pl, 6 ),
+  XSPECMODELFCT_C_NORM( C_brokenPowerLaw, 4 ),
+  XSPECMODELFCT_C_NORM( C_broken2PowerLaw, 6 ),
+  XSPECMODELFCT_C_NORM( C_sirf, 10 ),
   XSPECMODELFCT_NORM( xsbmc, 4 ),
   XSPECMODELFCT_NORM( xsbrms, 2 ),
   XSPECMODELFCT_NORM( xsbvpe, 17 ),
@@ -624,7 +810,7 @@ static PyMethodDef XSpecMethods[] = {
   XSPECMODELFCT_NORM( xszbrm, 3 ),
   XSPECMODELFCT_NORM( xszgau, 4 ),
   XSPECMODELFCT_C_NORM( C_zpowerLaw, 3 ),
-  XSPECMODELFCT( xsabsori, 6 ),
+  XSPECMODELFCT_C( C_xsabsori, 6 ),
   XSPECMODELFCT( acisabs, 8 ),
   XSPECMODELFCT( xscnst, 1 ),
   XSPECMODELFCT( xscabs, 1 ),
@@ -670,6 +856,8 @@ static PyMethodDef XSpecMethods[] = {
   XSPECMODELFCT( xszvph, 19 ),
   XSPECMODELFCT( xszabs, 2 ),
   XSPECMODELFCT( xszwnb, 3 ),
+  XSPECTABLEMODEL_NORM( xsatbl ),
+  XSPECTABLEMODEL_NORM( xsmtbl ),
 
   { NULL, NULL, 0, NULL }
 

@@ -340,13 +340,12 @@ c
 c     --dtn
      +     ,ub)
       implicit none
+      external fcn
+      double precision ub(n)
 c     --dtn
       integer m,n,ldfjac,iflag
       double precision epsfcn
       double precision x(n),fvec(m),fjac(ldfjac,n),wa(m)
-c     --dtn
-      double precision ub(n)
-c     --dtn
 c     **********
 c
 c     subroutine fdjac2
@@ -461,7 +460,7 @@ c
      *                 diag,mode,factor,nprint,info,nfev,fjac,ldfjac,
      *                 ipvt,qtf,wa1,wa2,wa3,wa4,
 c     --dtn
-     *     lb,ub,multicore,myfdjac,lowtri)
+     *     lb,ub,multicore,myfdjac)
       implicit none
 c     --dtn
       integer m,n,maxfev,mode,nprint,info,nfev,ldfjac
@@ -470,8 +469,10 @@ c     --dtn
       double precision x(n),fvec(m),diag(n),fjac(ldfjac,n),qtf(n),
      *                 wa1(n),wa2(n),wa3(n),wa4(m)
 c     --dtn
-      double precision lb(n),ub(n),lowtri(n*(n+1)/2)
+      double precision lb(n),ub(n)
+c     double preicion lowtri(n*(n+1)/2)
       integer multicore
+c     external symmatmul
       external myfdjac
 c     --dtn
       external fcn
@@ -711,7 +712,7 @@ c     --dtn
          else
             call myfdjac(m,n,x,fvec,fjac,ub,iflag,epsfcn)
          endif
-         call symmatmult(m,n,fjac,fjac,lowtri)
+c         call symmatmult(m,n,fjac,fjac,lowtri)
 c     --dtn
          nfev = nfev + n
          if (iflag .lt. 0) go to 300
@@ -829,17 +830,17 @@ c     (lb,ub) then set the model function to a very large number.
 c
             do i = 1, n
                wa2(i) = dmax1(lb(i),dmin1(wa2(i),ub(i)))
-               if ( wa2(i) .lt. lb(i) .or. wa2(i) .gt. ub(i) ) then
-                  do j = 1, m
+c               if ( wa2(i) .lt. lb(i) .or. wa2(i) .gt. ub(i) ) then
+c                  do j = 1, m
 c
 c                    Since dbl_max = 1.79769313485d+308,
 c                    so in theory the 'ideal' val for wa4
 c                    should be: wa4(j) = dsqrt( 1.79769313485d+308 ) / m
 c
-                     wa4(j) = 1.0d+128 / ( m + 10.0 )
-                  end do
-                  go to 215
-               end if
+c                     wa4(j) = 1.0d+128 / ( m + 10.0 )
+c                  end do
+c                  go to 215
+c               end if
             end do
 c     --dtn
 c
@@ -850,7 +851,7 @@ c
             nfev = nfev + 1
             if (iflag .lt. 0) go to 300
 c     --dtn
- 215        continue
+c 215        continue
 c     --dtn
             fnorm1 = enorm(m,wa4)
 c

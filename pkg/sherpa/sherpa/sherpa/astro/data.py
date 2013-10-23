@@ -24,7 +24,7 @@ Classes for storing, inspecting, and manipulating astronomical data sets
 from itertools import izip
 import os.path
 import numpy
-from sherpa.data import BaseData, Data1DInt, Data2D, Data1D
+from sherpa.data import BaseData, Data1DInt, Data2D, Data1D, DataND
 from sherpa.utils.err import DataErr, ImportErr
 from sherpa.utils import SherpaFloat, pad_bounding_box, interpolate, \
     create_expr, bool_cast, rebin, filter_bins
@@ -43,7 +43,7 @@ except:
             + '\nDynamic grouping functions will not be available.')
 
 
-__all__ = ('DataARF', 'DataRMF', 'DataPHA', 'DataIMG')
+__all__ = ('DataARF', 'DataRMF', 'DataPHA', 'DataIMG', 'DataIMGInt')
 
 def _notice_resp(chans, arf, rmf):
     bin_mask=None
@@ -80,9 +80,17 @@ class DataARF(Data1DInt):
 
     mask = property(BaseData._get_mask, BaseData._set_mask)
 
+    def _get_specresp(self):
+        return self._specresp
+
+    def _set_specresp(self, val):
+        self._specresp = val
+        self._rsp = val
+
+    specresp = property(_get_specresp, _set_specresp)
+
     def __init__(self, name, energ_lo, energ_hi, specresp, bin_lo=None,
                  bin_hi=None, exposure=None, header=None):
-        self._rsp = specresp
         self._lo = energ_lo
         self._hi = energ_hi
         BaseData.__init__(self)
@@ -92,8 +100,7 @@ class DataARF(Data1DInt):
         old = self._fields
         ss = old
         try:
-            self._fields = ('header',) + filter((lambda x: x!='header'),
-                                              self._fields)
+            self._fields = filter((lambda x: x!='header'), self._fields)
             ss = BaseData.__str__(self)
         finally:
             self._fields = old
@@ -104,6 +111,10 @@ class DataARF(Data1DInt):
         if not state.has_key('header'):
             self.header=None
         self.__dict__.update(state)
+        
+        if not state.has_key('_specresp'):
+            self.__dict__['_specresp'] = state.get('specresp',None)
+            self.__dict__['_rsp'] = state.get('specresp',None)
 
 
     def apply_arf(self, src, *args, **kwargs):
@@ -160,8 +171,7 @@ class DataRMF(Data1DInt):
         old = self._fields
         ss = old
         try:
-            self._fields = ('header',) + filter((lambda x: x!='header'),
-                                              self._fields)
+            self._fields = filter((lambda x: x!='header'), self._fields)
             ss = BaseData.__str__(self)
         finally:
             self._fields = old
@@ -262,21 +272,29 @@ class DataPHA(Data1DInt):
         if units == 'bin':
             units = 'channel'
 
-        if units == 'channel':
+        if units.startswith('chan'):
             self._to_channel   = (lambda x: x)
             self._from_channel = (lambda x: x)
-        elif units == 'energy':
+            units = 'channel'
+
+        elif units.startswith('ener'):
             self._to_channel   = self._energy_to_channel
             self._from_channel = self._channel_to_energy
-        elif units == 'wavelength':
+            units = 'energy'
+
+        elif units.startswith('wave'):
             self._to_channel   = self._wavelength_to_channel
             self._from_channel = self._channel_to_wavelength
+            units = 'wavelength'
+
         else:
             raise DataErr('bad', 'quantity', val)
 
         for id in self.background_ids:
-            if self.get_background(id).get_response() != (None,None):
-                self.get_background(id).units = units
+            bkg = self.get_background(id)
+            if (bkg.get_response() != (None,None) or
+                (bkg.bin_lo is not None and bkg.bin_hi is not None)):
+                bkg.units = units
 
         self._units = units
 
@@ -349,8 +367,6 @@ class DataPHA(Data1DInt):
         self._backgrounds = {}
         self._rate=True
         self._plot_fac=0
-        self._multi_resp_grid=None
-
         self.units = 'channel'
         self.quality_filter = None
         BaseData.__init__(self)
@@ -360,8 +376,7 @@ class DataPHA(Data1DInt):
         old = self._fields
         ss = old
         try:
-            self._fields = ('header',) + filter((lambda x: x!='header'),
-                                              self._fields)
+            self._fields = filter((lambda x: x!='header'), self._fields)
             ss = BaseData.__str__(self)
         finally:
             self._fields = old
@@ -379,15 +394,39 @@ class DataPHA(Data1DInt):
         self._backgrounds = state['_backgrounds']
         self._set_units(state['_units'])
 
-        if not state.has_key('_multi_resp_grid'):
-            self._multi_resp_grid=None
         if not state.has_key('header'):
             self.header=None
         self.__dict__.update(state)
-        self._multi_resp_grid=None
 
  
     primary_response_id = 1
+
+
+    def set_analysis(self, quantity, type='rate', factor=0):
+        self.plot_fac = factor
+
+        type = str(type).strip().lower()
+        if not (type.startswith('counts') or type.startswith('rate')):
+            raise DataErr("plottype", type, "'rate' or 'counts'")
+
+        self.rate = (type=='rate')
+
+        arf, rmf = self.get_response()
+        if rmf is not None and rmf.detchans != len(self.channel):
+            raise DataErr("incompatibleresp", rmf.name, self.name)
+
+        if ( (rmf is None and arf is None) and
+             (self.bin_lo is None and self.bin_hi is None) and quantity != 'channel'):
+            raise DataErr('noinstr', self.name)
+
+        if (rmf is None and arf is not None and quantity != 'channel' and 
+            len(arf.energ_lo) != len(self.channel)):
+            raise DataErr("incompleteresp", self.name)
+
+        self.units = quantity
+
+    def get_analysis(self):
+        return self.units
 
     def _fix_response_id(self, id):
         if id is None:
@@ -440,8 +479,7 @@ class DataPHA(Data1DInt):
             elo, ehi = arf.get_indep()
             lo, hi = self._get_ebins(group=False)
 
-            newarf = numpy.asarray([interpolate(val,elo,specresp)
-                                    for val in lo], dtype=SherpaFloat)
+            newarf = interpolate(lo, elo, specresp)
             newarf[newarf<=0]=1.
 
             if filter:
@@ -489,6 +527,62 @@ class DataPHA(Data1DInt):
             ehi = self.apply_grouping(ehi, self._max)
 
         return (elo, ehi)
+
+
+    def get_indep(self, filter=True):
+        if filter:
+            return (self.get_noticed_channels(),)
+
+        return (self.channel,)
+
+
+    def _get_indep(self, filter=False):
+        if (self.bin_lo is not None) and (self.bin_hi is not None):
+            elo = self.bin_lo
+            ehi = self.bin_hi
+            if (elo[0] > elo[-1]) and (ehi[0] > ehi[-1]):
+                if self.units == 'wavelength':
+                    return (elo, ehi)
+
+                elo = self._hc / self.bin_hi
+                ehi = self._hc / self.bin_lo
+
+        else:
+            energylist = []
+            for id in self.response_ids:
+                arf, rmf = self.get_response(id)
+                lo = None; hi = None
+
+                if rmf is not None:
+                    lo = rmf.energ_lo
+                    hi = rmf.energ_hi
+                    if filter:
+                        lo, hi = rmf.get_indep()
+
+                elif arf is not None:
+                    lo = arf.energ_lo
+                    hi = arf.energ_hi
+                    if filter:
+                        lo, hi = arf.get_indep()
+
+                energylist.append((lo,hi))
+
+            if len(energylist) > 1:
+                elo, ehi, lookuptable = compile_energy_grid(energylist)
+            elif (not energylist or
+                  ( len(energylist) == 1 and
+                    energylist[0] == (None,None) )):
+                raise DataErr('noenergybins', 'Response')
+            else:
+                elo, ehi = energylist[0]
+
+        lo, hi = elo, ehi
+        if self.units == 'wavelength':
+            lo = self._hc/ehi
+            hi = self._hc/elo
+
+        return (lo,hi)
+
 
     def _channel_to_energy(self, val, group=True, response_id=None):
         elo, ehi = self._get_ebins(response_id=response_id, group=group)
@@ -578,6 +672,13 @@ class DataPHA(Data1DInt):
             ids.remove(id)
         self.background_ids = ids
 
+
+    def get_background_scale(self):
+        if len(self.background_ids) == 0:
+            return None
+        return self.sum_background_data(lambda key, bkg: 1.)
+
+
     def apply_filter(self, data, groupfunc=numpy.sum):
         """
 
@@ -585,7 +686,16 @@ class DataPHA(Data1DInt):
         (using groupfunc) and then applying the general filters
         
         """
-
+        if (data is None):
+            return data
+        elif len(data) != len(self.counts):
+            counts = numpy.zeros(len(self.counts), dtype=SherpaFloat)
+            mask = self.get_mask()
+            if mask is not None:
+                counts[mask] = numpy.asarray(data, dtype=SherpaFloat)
+                data = counts
+#            else:
+#                raise DataErr('mismatch', "filter", "data array")
         return Data1DInt.apply_filter(self,
                                       self.apply_grouping(data, groupfunc))
 
@@ -644,6 +754,20 @@ class DataPHA(Data1DInt):
 
 
     def _dynamic_group(self, group_func, *args, **kwargs):
+
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id)
+            if(len(self.counts) == len(bkg.counts) and
+               self.grouped == bkg.grouped and self.units == bkg.units):
+                if self.grouped and not numpy.all(self.grouping==bkg.grouping):
+                    continue
+                bkg.notice()
+
+        keys = kwargs.keys()[:]
+        for key in keys:
+            if kwargs[key] is None:
+                kwargs.pop(key)
+
         self.grouping, self.quality = group_func(*args, **kwargs)
         self.group()
         self._original_groups = False
@@ -658,123 +782,49 @@ class DataPHA(Data1DInt):
     #
     # The groupstatus check thus has to be done in *each* of the following
     # group functions.
-    def group_bins(self, num):
+    def group_bins(self, num, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpNumBins, len(self.channel), num)
+        self._dynamic_group(pygroup.grpNumBins, len(self.channel), num,
+                            tabStops=tabStops)
 
-    def group_width(self, val):
+    def group_width(self, val, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpBinWidth, len(self.channel), val)
+        self._dynamic_group(pygroup.grpBinWidth, len(self.channel), val,
+                            tabStops=tabStops)
 
-    def group_counts(self, num):
+    def group_counts(self, num, maxLength=None, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpNumCounts, self.counts, num)
+        self._dynamic_group(pygroup.grpNumCounts, self.counts, num,
+                            maxLength=maxLength, tabStops=tabStops)
 
-    def group_snr(self, snr):
+    def group_snr(self, snr, maxLength=None, tabStops=None, errorCol=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpSnr, self.counts, snr)
+        self._dynamic_group(pygroup.grpSnr, self.counts, snr,
+                            maxLength=maxLength, tabStops=tabStops,
+                            errorCol=errorCol)
 
-    def group_adapt(self, min):
+    def group_adapt(self, min, maxLength=None, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpAdaptive, self.counts, min)
+        self._dynamic_group(pygroup.grpAdaptive, self.counts, min,
+                            maxLength=maxLength, tabStops=tabStops)
 
-    def group_adapt_snr(self, min):
+    def group_adapt_snr(self, min, maxLength=None, tabStops=None, errorCol=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpAdaptiveSnr, self.counts, min)
+        self._dynamic_group(pygroup.grpAdaptiveSnr, self.counts, min,
+                            maxLength=maxLength, tabStops=tabStops,
+                            errorCol=errorCol)
 
     def eval_model(self, modelfunc):
-        if len(self._responses) < 2:
-            lo, hi = self.get_indep()
-            return modelfunc(lo, hi)
-
-        if self._multi_resp_grid is None:
-            arglist = tuple(self._get_indep(filter, response_id=id)
-                            for id in self.response_ids)
-
-            grid, htable = compile_energy_grid(arglist)
-
-            (lo, hi) = grid
-
-            if self.units == 'wavelength':
-                bin_lo = self._hc / hi
-                bin_hi = self._hc / lo
-                (lo, hi) = (bin_lo, bin_hi)
-
-            self._multi_resp_grid = (lo, hi, htable)
-
-        return modelfunc(self._multi_resp_grid)
-
+        return modelfunc(*self.get_indep(filter=False))
 
     def eval_model_to_fit(self, modelfunc):
-        # DataPHA has its own set of rules for filtering, which happens in two
-        # stages, energy_bins are filtered out of the response in RMF or ARF.
-        # Detchans remains the same so, channels/channel_groups are filtered
-        # out from the convolved model after folding.
-        return self.apply_filter(self.eval_model(modelfunc))
-
-
-    def _get_indep(self, filter=True, response_id=None):
-
-        filter=bool_cast(filter)
-        (lo, hi) = self._get_ebins(group=False)
-
-        (arf, rmf) = self.get_response(response_id)
-
-        if arf is not None:
-
-            (lo, hi) = arf.energ_lo, arf.energ_hi
-            if filter:
-                (lo, hi) = arf.get_indep()
-
-        elif rmf is not None:
-
-            (lo, hi) = rmf.energ_lo, rmf.energ_hi
-            if filter:
-                (lo, hi) = rmf.get_indep()
-
-        return (lo, hi)
-
-    def get_indep(self, filter=True, response_id=None):
-
-        filter=bool_cast(filter)
-        lo = None
-        hi = None
-        if len(self._responses) < 2:
-            (lo, hi) = self._get_indep(filter, response_id)
-
-        else:
-            arglist = numpy.asarray([self._get_indep(filter, response_id=id)
-                                    for id in self.response_ids])
-
-            (elo, ehi) = numpy.column_stack(arglist)
-
-            elo = numpy.unique(elo)
-            ehi = numpy.unique(ehi)
-
-            in_elo = numpy.setdiff1d(elo,ehi)
-            in_ehi = numpy.setdiff1d(ehi,elo)
-            if len(in_elo) > 1:
-                ehi = numpy.concatenate((ehi, in_elo[-(len(in_elo)-1):]))
-            if len(in_ehi) > 1:
-                elo = numpy.concatenate((elo, in_ehi[0:len(in_ehi)-1]))
-
-            elo.sort()
-            ehi.sort()
-
-            (lo, hi) = (elo, ehi)
-
-        if self.units == 'wavelength':
-            bin_lo = self._hc / hi
-            bin_hi = self._hc / lo
-            (lo, hi) = (bin_lo, bin_hi)
-
-        return (lo, hi)
+        return self.apply_filter(modelfunc(*self.get_indep(filter=True)))
 
 
     def sum_background_data(self,
@@ -1166,10 +1216,10 @@ class DataPHA(Data1DInt):
         return (self.get_filter(format='%.4f', delim='-') +
                 ' ' + self.get_xlabel())
 
-    def notice_response(self, notice_resp=True):
-        noticed_chans=None
+    def notice_response(self, notice_resp=True, noticed_chans=None):
         notice_resp=bool_cast(notice_resp)
-        if notice_resp:
+
+        if notice_resp and noticed_chans is None:
             noticed_chans = self.get_noticed_channels()
 
         for id in self.response_ids:
@@ -1206,10 +1256,10 @@ class DataPHA(Data1DInt):
         for bkg_id in self.background_ids:
             bkg = self.get_background(bkg_id)
             if(len(self.counts) == len(bkg.counts) and
-               self.grouped == bkg.grouped and
-               numpy.asarray((self.grouping==bkg.grouping)).all() and
-               self.units == bkg.units):
-                bkg.mask = numpy.array(self.mask)
+               self.grouped == bkg.grouped and self.units == bkg.units):
+                if self.grouped and not numpy.all(self.grouping==bkg.grouping):
+                    continue
+                bkg.mask = self.mask
 
 
     def to_guess(self):
@@ -1222,7 +1272,10 @@ class DataPHA(Data1DInt):
             elo = lo; ehi = hi
         cnt = self.get_dep(True)
         arf = self.get_specresp(filter=True)
-        y = cnt/(ehi-elo)/self.exposure  # photons/keV/sec or
+
+        y = cnt/(ehi-elo)
+        if self.exposure is not None:
+            y /= self.exposure           # photons/keV/sec or
                                          # photons/Ang/sec
         #y = cnt/arf/self.exposure
         if arf is not None:
@@ -1279,23 +1332,14 @@ class DataIMG(Data2D):
         coord = str(val).strip().lower()
 
         if coord in ('logical', 'image'):
-            self._get_logical  = self.get_indep
-            self._get_physical = self._logical_to_physical
-            self._get_world    = self._logical_to_world
             coord = 'logical'
 
         elif coord in ('physical',):
             self._check_physical_transform()
-            self._get_logical  = self._physical_to_logical
-            self._get_physical = self.get_indep
-            self._get_world    = self._physical_to_world
             coord = 'physical'
             
         elif coord in ('world','wcs'):
             self._check_world_transform()
-            self._get_logical  = self._world_to_logical
-            self._get_physical = self._world_to_physical
-            self._get_world    = self.get_indep
             coord = 'world'
 
         else:
@@ -1320,8 +1364,7 @@ class DataIMG(Data2D):
         old = self._fields
         ss = old
         try:
-            self._fields = ('header',) + filter((lambda x: x!='header'),
-                                              self._fields)
+            self._fields = filter((lambda x: x!='header'), self._fields)
             ss = BaseData.__str__(self)
         finally:
             self._fields = old
@@ -1333,9 +1376,9 @@ class DataIMG(Data2D):
         # Function pointers to methods of the class
         # (of type 'instancemethod') are NOT picklable
         # remove them and restore later with a coord init
-        del state['_get_logical']
-        del state['_get_physical']
-        del state['_get_world']
+        #del state['_get_logical']
+        #del state['_get_physical']
+        #del state['_get_world']
 
         # PyRegion objects (of type 'extension') are NOT picklable, yet.
         # preserve the region string and restore later with constructor
@@ -1345,9 +1388,9 @@ class DataIMG(Data2D):
     def __setstate__(self, state):
         # Populate the function pointers we deleted at pickle time with
         # no-ops.
-        self.__dict__['_get_logical']=(lambda : None)
-        self.__dict__['_get_physical']=(lambda : None)
-        self.__dict__['_get_world']=(lambda : None)
+        #self.__dict__['_get_logical']=(lambda : None)
+        #self.__dict__['_get_physical']=(lambda : None)
+        #self.__dict__['_get_world']=(lambda : None)
 
         if not state.has_key('header'):
             self.header=None
@@ -1366,100 +1409,114 @@ class DataIMG(Data2D):
         if self.eqpos is None:
             raise DataErr('nocoord', self.name, 'world')
 
-    def _logical_to_physical(self, axes=None):
-        if axes is None:
-            axes = self.get_indep()
-        vals = numpy.transpose(axes)
+    def _logical_to_physical(self, x0=None, x1=None):
+        if x0 is None or x1 is None:
+            x0, x1 = self.get_indep()
 
         self._check_shape()
         self._check_physical_transform()
 
         # logical -> physical
-        out = self.sky.apply( vals )
+        x0, x1 = self.sky.apply(x0, x1)
 
-        return numpy.transpose(out)
+        return (x0, x1)
 
-    def _logical_to_world(self, axes=None):
-        if axes is None:
-            axes = self.get_indep()
-        vals = numpy.transpose(axes)
+    def _logical_to_world(self, x0=None, x1=None):
+        if x0 is None or x1 is None:
+            x0, x1 = self.get_indep()
 
         self._check_shape()
         self._check_world_transform()
 
         # logical -> physical
         if self.sky is not None:
-            vals = self.sky.apply( vals )
+            x0, x1 = self.sky.apply(x0, x1)
 
         # physical -> world
-        out1 = self.eqpos.apply( vals )
+        x0, x1 = self.eqpos.apply(x0, x1)
 
-        return numpy.transpose(out1)
+        return (x0, x1)
 
-    def _physical_to_logical(self, axes=None):
-        if axes is None:
-            axes = self.get_indep()
-        vals = numpy.transpose(axes)
+    def _physical_to_logical(self, x0=None, x1=None):
+        if x0 is None or x1 is None:
+            x0, x1 = self.get_indep()
 
         self._check_shape()
         self._check_physical_transform()
 
         # physical -> logical
-        out = self.sky.invert( vals )
+        x0, x1 = self.sky.invert(x0, x1)
 
-        return numpy.transpose(out)
+        return (x0, x1)
 
-    def _physical_to_world(self, axes=None):
-        if axes is None:
-            axes = self.get_indep()
-        vals = numpy.transpose(axes)
+    def _physical_to_world(self, x0=None, x1=None):
+        if x0 is None or x1 is None:
+            x0, x1 = self.get_indep()
 
         self._check_shape()
         self._check_world_transform()
 
         # physical -> world
-        out = self.eqpos.apply( vals )
+        x0, x1 = self.eqpos.apply(x0, x1)
 
-        return numpy.transpose(out)
+        return (x0, x1)
 
-    def _world_to_logical(self, axes=None):
-        if axes is None:
-            axes = self.get_indep()
-        vals = numpy.transpose(axes)
-        
+    def _world_to_logical(self, x0=None, x1=None):
+        if x0 is None or x1 is None:
+            x0, x1 = self.get_indep()
+
         self._check_shape()
         self._check_world_transform()
 
         # world -> physical
-        vals = self.eqpos.invert( vals )
-        
+        x0, x1 = self.eqpos.invert(x0, x1)
+
         # physical -> logical
         if self.sky is not None:
-            vals = self.sky.invert( vals )
+            x0, x1 = self.sky.invert(x0, x1)
 
-        return numpy.transpose(vals)
+        return (x0, x1)
 
-    def _world_to_physical(self, axes=None):
-        if axes is None:
-            axes = self.get_indep()
-        vals = numpy.transpose(axes)
-        
+    def _world_to_physical(self, x0=None, x1=None):
+        if x0 is None or x1 is None:
+            x0, x1 = self.get_indep()
+
         self._check_shape()
         self._check_world_transform()
 
         # world -> physical
-        out = self.eqpos.invert( vals )
+        x0, x1 = self.eqpos.invert(x0, x1)
 
-        return numpy.transpose(out)
+        return (x0, x1)
 
     def get_logical(self):
-        return self._get_logical()
+        coord = self.coord
+        x0, x1 = self.get_indep()
+        if coord is not 'logical':
+            x0 = x0.copy()
+            x1 = x1.copy()
+            x0, x1 = getattr(self, '_'+coord+'_to_logical')(x0, x1)
+        return (x0, x1)
 
     def get_physical(self):
-        return self._get_physical()
+        coord = self.coord
+        x0, x1 = self.get_indep()
+        if coord is not 'physical':
+            x0 = x0.copy()
+            x1 = x1.copy()
+            x0, x1 = getattr(self, '_'+coord+'_to_physical')(x0, x1)
+        return (x0, x1)
+
 
     def get_world(self):
-        return self._get_world()
+        coord = self.coord
+        x0, x1 = self.get_indep()
+        if coord is not 'world':
+            x0 = x0.copy()
+            x1 = x1.copy()
+            x0, x1 = getattr(self, '_'+coord+'_to_world')(x0, x1)
+        return (x0, x1)
+
 
     # For compatibility with old Sherpa keywords
     get_image = get_logical
@@ -1472,9 +1529,15 @@ class DataIMG(Data2D):
         if coord not in good:
             raise DataErr('bad', 'coordinates', coord)
 
-        self.x0, self.x1 = eval('self.get_'+coord+'()')
+        if coord.startswith('wcs'):
+            coord = 'world'
+        elif coord.startswith('image'):
+            coord = 'logical'
+
+        self.x0, self.x1 = getattr(self, 'get_'+coord)()
         self._x0 = self.apply_filter(self.x0)
         self._x1 = self.apply_filter(self.x1)
+
         self._set_coord(coord)
 
     def get_filter_expr(self):
@@ -1531,6 +1594,7 @@ class DataIMG(Data2D):
 
             shape = mask[x0_lo:x0_hi+1,x1_lo:x1_hi+1].shape
             mask = mask[x0_lo:x0_hi+1,x1_lo:x1_hi+1]
+
             mask = mask.ravel()
         return mask, shape
 
@@ -1564,21 +1628,21 @@ class DataIMG(Data2D):
         dummy1 = numpy.ones(axis1.size, dtype=float)
 
         if self.coord == 'physical':
-            axis0, dummy = self._logical_to_physical([axis0, dummy0])
-            dummy, axis1 = self._logical_to_physical([dummy1, axis1])
+            axis0, dummy = self._logical_to_physical(axis0, dummy0)
+            dummy, axis1 = self._logical_to_physical(dummy1, axis1)
 
         elif self.coord == 'world':
-            axis0, dummy = self._logical_to_world([axis0, dummy0])
-            dummy, axis1 = self._logical_to_world([dummy1, axis1])
+            axis0, dummy = self._logical_to_world(axis0, dummy0)
+            dummy, axis1 = self._logical_to_world(dummy1, axis1)
 
         return (axis0, axis1)
 
     def get_x0label(self):
         "Return label for first dimension in 2-D view of independent axis/axes"
         if self.coord in ('logical', 'image'):
-            return 'x0 (pixels)'
+            return 'x0'
         elif self.coord in ('physical',):
-            return 'x0 (mm)'
+            return 'x0 (pixels)'
         elif self.coord in ('world', 'wcs'):
             return 'RA (deg)'
         else:
@@ -1589,9 +1653,9 @@ class DataIMG(Data2D):
         Return label for second dimension in 2-D view of independent axis/axes
         """        
         if self.coord in ('logical', 'image'):
-            return 'x1 (pixels)'
+            return 'x1'
         elif self.coord in ('physical',):
-            return 'x1 (mm)'
+            return 'x1 (pixels)'
         elif self.coord in ('world', 'wcs'):
             return 'DEC (deg)'
         else:
@@ -1619,3 +1683,151 @@ class DataIMG(Data2D):
             filter[~self.mask]=numpy.nan
             return data*filter
         return data
+
+class DataIMGInt(DataIMG):
+
+    def _set_mask(self, val):
+        DataND._set_mask(self, val)
+        try:
+            self._x0lo = self.apply_filter(self.x0lo)
+            self._x0hi = self.apply_filter(self.x0hi)
+            self._x1lo = self.apply_filter(self.x1lo)
+            self._x1hi = self.apply_filter(self.x1hi)
+        except DataErr:
+            self._x0lo = self.x0lo
+            self._x1lo = self.x1lo
+            self._x0hi = self.x0hi
+            self._x1hi = self.x1hi
+
+    mask = property(DataND._get_mask, _set_mask,
+                    doc='Mask array for dependent variable')
+
+    def __init__(self, name, x0lo, x1lo, x0hi, x1hi, y, shape=None, 
+                 staterror=None, syserror=None, sky=None, eqpos=None,
+                 coord='logical', header=None):
+        self._x0lo = x0lo
+        self._x1lo = x1lo
+        self._x0hi = x0hi
+        self._x1hi = x1hi
+        self._region = None
+        BaseData.__init__(self)
+
+    def set_coord(self, coord):
+        coord = str(coord).strip().lower()
+        # Destroys original data to conserve memory for big imgs
+        good = ('logical','image','physical','world','wcs')
+        if coord not in good:
+            raise DataErr('bad', 'coordinates', coord)
+
+        if coord.startswith('wcs'):
+            coord = 'world'
+        elif coord.startswith('image'):
+            coord = 'logical'
+
+        self.x0lo, self.x1lo, self.x0hi, self.x1hi = getattr(self, 'get_'+coord)()
+        self._x0lo = self.apply_filter(self.x0lo)
+        self._x0hi = self.apply_filter(self.x0hi)
+        self._x1lo = self.apply_filter(self.x1lo)
+        self._x1hi = self.apply_filter(self.x1hi)
+        self._set_coord(coord)
+
+    def get_logical(self):
+        coord = self.coord
+        x0lo, x1lo, x0hi, x1hi = self.get_indep()
+        if coord is not 'logical':
+            x0lo = x0lo.copy()
+            x1lo = x1lo.copy()
+            x0lo, x1lo = getattr(self, '_'+coord+'_to_logical')(x0lo, x1lo)
+
+            x0hi = x0hi.copy()
+            x1hi = x1hi.copy()
+            x0hi, x1hi = getattr(self, '_'+coord+'_to_logical')(x0hi, x1hi)
+
+        return (x0lo, x1lo, x0hi, x1hi)
+
+    def get_physical(self):
+        coord = self.coord
+        x0lo, x1lo, x0hi, x1hi = self.get_indep()
+        if coord is not 'physical':
+            x0lo = x0lo.copy()
+            x1lo = x1lo.copy()
+            x0lo, x1lo = getattr(self, '_'+coord+'_to_physical')(x0lo, x1lo)
+
+            x0hi = x0hi.copy()
+            x1hi = x1hi.copy()
+            x0hi, x1hi = getattr(self, '_'+coord+'_to_physical')(x0hi, x1hi)
+
+        return (x0lo, x1lo, x0hi, x1hi)
+
+    def get_world(self):
+        coord = self.coord
+        x0lo, x1lo, x0hi, x1hi = self.get_indep()
+        if coord is not 'world':
+            x0lo = x0lo.copy()
+            x1lo = x1lo.copy()
+            x0lo, x1lo = getattr(self, '_'+coord+'_to_world')(x0lo, x1lo)
+
+            x0hi = x0hi.copy()
+            x1hi = x1hi.copy()
+            x0hi, x1hi = getattr(self, '_'+coord+'_to_world')(x0hi, x1hi)
+
+        return (x0lo, x1lo, x0hi, x1hi)
+
+
+    # def get_indep(self, filter=False):
+    #     x0, x1 = DataIMG.get_indep(self, filter=filter)
+        
+    #     halfwidth = numpy.array([.5,.5])
+    #     if self.coord == 'physical' and self.sky is not None:
+    #         halfwidth = numpy.array(self.sky.cdelt)/2.
+    #     elif self.coord == 'world' and self.eqpos is not None:
+    #         halfwidth = numpy.array(self.eqpos.cdelt)/2.
+
+    #     return (x0-halfwidth[0],x1-halfwidth[1],
+    #             x0+halfwidth[0],x1+halfwidth[1])
+
+
+    def get_indep(self, filter=False):
+        filter=bool_cast(filter)
+        if filter:
+            return (self._x0lo, self._x1lo, self._x0hi, self._x1hi)
+	return (self.x0lo, self.x1lo, self.x0hi, self.x1hi)
+
+    def get_x0(self, filter=False):
+        indep = self.get_indep(filter)
+        return (indep[0] + indep[2]) / 2.0
+
+    def get_x1(self, filter=False):
+        indep = self.get_indep(filter)
+        return (indep[1] + indep[3]) / 2.0
+
+
+    def get_axes(self):
+        # FIXME: how to filter an axis when self.mask is size of self.y?
+        self._check_shape()
+
+        # dummy placeholders needed b/c img shape may not be square!
+        axis0lo = numpy.arange(self.shape[1], dtype=float)-0.5
+        axis1lo = numpy.arange(self.shape[0], dtype=float)-0.5
+
+        axis0hi = numpy.arange(self.shape[1], dtype=float)+0.5
+        axis1hi = numpy.arange(self.shape[0], dtype=float)+0.5
+
+        dummy0 = numpy.ones(axis0lo.size, dtype=float)
+        dummy1 = numpy.ones(axis1lo.size, dtype=float)
+
+        if self.coord == 'physical':
+            axis0lo, dummy = self._logical_to_physical(axis0lo, dummy0)
+            axis0hi, dummy = self._logical_to_physical(axis0hi, dummy0)
+
+            dummy, axis1lo = self._logical_to_physical(dummy1, axis1lo)
+            dummy, axis1hi = self._logical_to_physical(dummy1, axis1hi)
+
+        elif self.coord == 'world':
+            axis0lo, dummy = self._logical_to_world(axis0lo, dummy0)
+            axis0hi, dummy = self._logical_to_world(axis0hi, dummy0)
+
+            dummy, axis1lo = self._logical_to_world(dummy1, axis1lo)
+            dummy, axis1hi = self._logical_to_world(dummy1, axis1hi)
+
+        return (axis0lo, axis1lo, axis0hi, axis1hi)

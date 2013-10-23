@@ -68,14 +68,15 @@ namespace sherpa {
     // The nearly universal choices used in the standard Nelder-Mead
     // algorithm are
     //
-    // reflection=1.0, expansion=2.0, contraction=0.5, shrink=0.5
+    // reflection(rho)=1.0, expansion(chi)=2.0, 
+    // contraction(gamma)=0.5, shrink(sigma)=0.5
+    // 
     //
-    
+
     virtual int operator( )( double* model_par, int verbose, int initsimplex,
-			     std::vector< int >& finalsimplex,
-			     double tolerance,
-			     const double* step, int maxnfev, int& nfev,
-			     double& fmin, double* g, double* h ) = 0;
+			     std::vector< int >& finalsimplex, 
+			     double tolerance, const double* step, int maxnfev,
+			     int& nfev, double& fmin ) = 0;
 
   protected:
 
@@ -176,17 +177,6 @@ namespace sherpa {
 
   private:
 
-    bool are_func_vals_close_enough( double tolerance ) const {
-
-      if ( _sao_fcmp( this->simplex.get_smallest_func_val( ), 
-		      this->simplex.get_largest_func_val( ), tolerance ) == 0 )
-	return true;
-      
-      return false;
-
-    }
-
-
     //
     // reflection_coef > 0, expansion_coef > 1,
     // expansion_coef > reflection_coef, 0 < contraction_coef < 1,
@@ -214,48 +204,6 @@ namespace sherpa {
       }
 
     }                                                            // dtn_simplex
-
-
-    bool is_max_length_small_enough( double tol, int index ) const {
-
-      double maxof_x_i_minus_x_min = -1.0; // norm is always a positive number.
-      for ( int ii = 0; ii <= NPAR; ++ii ) {
-	double tmp = 0.0;
-	if ( ii != this->index_smallest )
-	  for ( int jj = 0; jj < NPAR; ++jj )
-	    tmp += ( simplex[ ii ][ jj ] -
-		     simplex( this->index_smallest, jj ) ) *
-	      ( simplex[ ii ][ jj ] - simplex( this->index_smallest, jj ) );
-	
-	maxof_x_i_minus_x_min = std::max( maxof_x_i_minus_x_min, tmp );
-
-      }
-      double norm_min = 0.0;
-      for ( int ii = 0; ii < NPAR; ++ii )
-	norm_min += simplex( this->index_smallest, ii ) *
-	  simplex( this->index_smallest, ii );
-      norm_min = norm_min > 1.0 ? norm_min : 1.0;
-      if ( maxof_x_i_minus_x_min <= tol * norm_min )
-	return true;
-      
-      return false;
-
-    }                                             // is_max_length_small_enough
-
-
-    bool is_stddev_small_enough( std::vector< double >& funcvals,
-				 double tolerance, double tol_sqr )  {
-
-      simplex.copy_col( NPAR, &funcvals[0] );
-      double std_dev_sqr =
-	calc_standard_deviation_square( NPAR + 1 ,
-					&funcvals[0] );
-      if ( _sao_fcmp( std_dev_sqr, tol_sqr, tolerance ) <= 0 )
-	return true;
-
-      return false;
-
-    }                                                 // is_stddev_small_enough
 
 
     //

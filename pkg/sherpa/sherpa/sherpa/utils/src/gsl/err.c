@@ -23,9 +23,9 @@
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_integration.h>
 
-static double rescale_error (double err, const double result_abs, const double result_asc) ;
+double rescale_error (double err, const double result_abs, const double result_asc);
 
-static double
+double
 rescale_error (double err, const double result_abs, const double result_asc)
 {
   err = fabs(err) ;

@@ -30,15 +30,11 @@ warning = logging.getLogger(__name__).warning
 __all__ = ('OptMethod', 'LevMar', 'MonCar', 'NelderMead')
 
 
-#class OptMethodError(SherpaError):
-#    pass
-
 class OptMethod(NoNewAttributesAfterInit):
 
-    def __init__(self, name, optfunc, use_deviates=False):
+    def __init__(self, name, optfunc):        
         self.name = name
 	self._optfunc = optfunc
-	self._use_deviates = use_deviates
         self.config = self.default_config
         NoNewAttributesAfterInit.__init__(self)
 
@@ -94,19 +90,9 @@ class OptMethod(NoNewAttributesAfterInit):
 
     def fit(self, statfunc, pars, parmins, parmaxes, statargs=(),
             statkwargs={}):
-	if self._use_deviates:
-	    def cb(pars):
-		dev = statfunc(pars, *statargs, **statkwargs)[1]
-                if dev is None:
-                    raise FitErr( 'needchi2', self.__class__.__name__)
-                    #raise OptMethodError(('%s method requires a deviates ' +
-                    #                      'array; use a chi-square ' +
-                    #                      'statistic') %
-                    #                     self.__class__.__name__)
-                return dev
-	else:
-	    def cb(pars):
-		return statfunc(pars, *statargs, **statkwargs)[0]
+
+        def cb(pars):
+            return statfunc(pars, *statargs, **statkwargs)
 
 	output = self._optfunc(cb, pars, parmins, parmaxes, **self.config)
 
@@ -311,7 +297,7 @@ class LevMar(OptMethod):
 
 
     def __init__(self, name='levmar'):
-	OptMethod.__init__(self, name, lmdif, True)
+	OptMethod.__init__(self, name, lmdif)
 
 
 class MonCar(OptMethod):
@@ -326,13 +312,78 @@ class NelderMead(OptMethod):
     def __init__(self, name='simplex'):
 	OptMethod.__init__(self, name, neldermead)
 
-#class cLevMar(OptMethod):
-#
-#    def __init__(self, name='clevmar'):
-#	OptMethod.__init__(self, name, optfcts.lmdifc, True)
+###############################################################################
+
+## import sherpa.optmethods.myoptfcts
+## from sherpa.optmethods.fminpowell import *
+## from sherpa.optmethods.nmpfit import *
+
+## def myall( targ, arg ):
+##     fubar = list( targ )
+##     fubar.append( arg )
+##     return tuple( fubar )
+
+## __all__ = myall( __all__, 'Bobyqa' )
+## __all__ = myall( __all__, 'cLevMar' )
+## __all__ = myall( __all__, 'Dif_Evo' )
+## __all__ = myall( __all__, 'MarLev' )
+## __all__ = myall( __all__, 'MyMinim' )
+## __all__ = myall( __all__, 'Nelder_Mead' )
+## __all__ = myall( __all__, 'NMPFIT' )        
+## __all__ = myall( __all__, 'Newuoa' )
+## __all__ = myall( __all__, 'OdrPack' )
+## __all__ = myall( __all__, 'PortChi' )
+## __all__ = myall( __all__, 'PortFct' )    
+## __all__ = myall( __all__, 'ScipyPowell' )
+
+## class Bobyqa(OptMethod):
+##     def __init__(self, name='bobyqa'):
+##         OptMethod.__init__(self, name, myoptfcts.bobyqa)
+
+## class cLevMar(OptMethod):
+
+##    def __init__(self, name='clevmar'):
+## 	OptMethod.__init__(self, name, optfcts.lmdifc)
     
-#class MyNelderMead(OptMethod):
-#
-#    def __init__(self, name='myneldermead'):
-#	OptMethod.__init__(self, name, optfcts.myneldermead)
+## class Dif_Evo(OptMethod):
+##     def __init__(self, name='dif_evo'):
+##         OptMethod.__init__(self, name, myoptfcts.dif_evo)
+                 
+## class MarLev(OptMethod):
+##     def __init__(self, name='marlev'):
+##         OptMethod.__init__(self, name, myoptfcts.marquadt_levenberg)
+
+## class MyMinim(OptMethod):
+
+##     def __init__(self, name='simplex'):
+## 	OptMethod.__init__(self, name, minim)
+
+## class Nelder_Mead(OptMethod):
+##     def __init__(self, name='nelder_mead'):
+##         OptMethod.__init__(self, name, myoptfcts.nelder_mead)
+
+## class Newuoa(OptMethod):
+##     def __init__(self, name='newuoa'):
+##         OptMethod.__init__(self, name, myoptfcts.newuoa)
+
+## class NMPFIT(OptMethod):
+##     def __init__(self, name='pytools_nmpfit'):
+##         OptMethod.__init__(self, name, nmpfit.pytools_nmpfit)
+
+## class OdrPack(OptMethod):
+##     def __init__(self, name='odrpack'):
+##         OptMethod.__init__(self, name, myoptfcts.odrpack)
+
+## class PortChi(OptMethod):
+##     def __init__(self, name='dn2fb'):
+##         OptMethod.__init__(self, name, myoptfcts.dn2fb)
+
+## class PortFct(OptMethod):
+##     def __init__(self, name='dmnfb'):
+##         OptMethod.__init__(self, name, myoptfcts.dmnfb)
     
+## class ScipyPowell(OptMethod):
+##     def __init__(self, name='scipypowell'):
+##         OptMethod.__init__(self, name, my_fmin_powell)
+        
+###############################################################################

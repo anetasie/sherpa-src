@@ -21,6 +21,8 @@ import numpy
 import sherpa.astro.xspec as xs
 from sherpa.utils import SherpaTestCase
 
+import logging
+error = logging.getLogger(__name__).error
 
 def is_proper_subclass(obj, cls):
     if type(cls) is not tuple:
@@ -46,7 +48,7 @@ class test_xspec(SherpaTestCase):
                 m = cls()
                 count += 1
 
-        self.assertEqual(count, 132)
+        self.assertEqual(count, 133)
 
     def test_evaluate_model(self):
         m = xs.XSbbody()
@@ -64,12 +66,24 @@ class test_xspec(SherpaTestCase):
         models.remove('XSModel')
         models.remove('XSMultiplicativeModel')
         models.remove('XSAdditiveModel')
+        models.remove('XSTableModel')
 
-        xx = numpy.arange(0.1,11.01,0.01, dtype=float)
+        xx = numpy.arange(0.1, 11.01, 0.01, dtype=float)
         xlo = numpy.array(xx[:-1])
         xhi = numpy.array(xx[1:])
         for model in models:
-            foo = eval('xs.'+model+'("foo")')        
+            cls = getattr(xs, model)
+            foo = cls('foo')
             vals = foo(xlo,xhi)
-            self.assert_(not numpy.isnan(vals).any() and
-                         not numpy.isinf(vals).any() )
+            try:
+                self.assert_(not numpy.isnan(vals).any() and
+                             not numpy.isinf(vals).any() )
+            except AssertionError:
+                error('XS%s model evaluation failed' % model)
+                raise
+
+
+if __name__ == '__main__':
+
+    from sherpa.utils import SherpaTest
+    SherpaTest(xs).test()

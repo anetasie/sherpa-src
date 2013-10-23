@@ -1,10 +1,14 @@
       SUBROUTINE NEWUOB (N,NPT,X,RHOBEG,RHOEND,IPRINT,MAXFUN,XBASE,
      1  XOPT,XNEW,XPT,FVAL,GQ,HQ,PQ,BMAT,ZMAT,NDIM,D,VLAG,W,
+c     --dtn
      2  calfun,nf,f)
+c     --dtn
       IMPLICIT REAL*8 (A-H,O-Z)
       DIMENSION X(*),XBASE(*),XOPT(*),XNEW(*),XPT(NPT,*),FVAL(*),
      1  GQ(*),HQ(*),PQ(*),BMAT(NDIM,*),ZMAT(NPT,*),D(*),VLAG(*),W(*)
+c     --dtn
       external calfun
+c     --dtn
 C
 C     The arguments N, NPT, X, RHOBEG, RHOEND, IPRINT and MAXFUN are identical
 C       to the corresponding arguments in SUBROUTINE NEWUOA.

@@ -38,13 +38,13 @@ import logging
 import os
 import os.path
 import sys
-from sherpa.utils import SherpaTest
+
 
 
 __all__ = ('banner', 'get_include', 'test')
 
-__versionstr__ = '4.2.1'
-__version__ = 40201
+__versionstr__ = '4.3.1'
+__version__ = 40301
 
 class Formatter(logging.Formatter):
     def format(self, record):
@@ -67,14 +67,17 @@ _banner = """
 -----------------------------------------------------
 Welcome to Sherpa: CXC's Modeling and Fitting Package
 -----------------------------------------------------
-Version: CIAO %s
+Version: Sherpa %s Monday, July 19, 2010
 """ % __versionstr__
 
 
-def banner(file=sys.stdout):
+def _banner_fancy(file=sys.stdout):
     "Print a welcome message to the specified file object"
     print >> file, _banner
 
+def banner(file=sys.stdout):
+    "No-op function; override with fancier version if desired to print banner"
+    pass
 
 def get_include():
     "Get the root path for installed Sherpa header files"
@@ -121,4 +124,5 @@ def test(level=1, verbosity=1, datadir=None):
 
     import sherpa.all
     import sherpa.astro.all
+    from sherpa.utils import SherpaTest
     SherpaTest().test(level, verbosity, datadir)

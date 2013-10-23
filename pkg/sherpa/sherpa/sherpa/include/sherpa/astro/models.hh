@@ -879,8 +879,8 @@ namespace sherpa { namespace astro { namespace models {
       return EXIT_FAILURE;
     else {
       register DataType gammaratio = EXP(LGAMMA(p[2]-0.5)-LGAMMA(p[2]));
-      register DataType norm = p[3]/(p[1]*SQRT(PI)*gammaratio);
-      val = norm*POW((1.0+(x-p[0])*(x-p[0])/p[1]/p[1]),-p[3]);
+      register DataType norm = p[3]/(p[1]*SQRT_PI*gammaratio);
+      val = norm*POW((1.0+(x-p[0])*(x-p[0])/p[1]/p[1]),-p[2]);
       return EXIT_SUCCESS;
     }
 
@@ -928,7 +928,7 @@ namespace sherpa { namespace astro { namespace models {
 
     register DataType r;
   
-    if( EXIT_SUCCESS != sherpa::utils::radius(p, x0, x1, r)) {
+    if( EXIT_SUCCESS != sherpa::utils::radius2(p, x0, x1, r)) {
       return EXIT_FAILURE;
     }
 
@@ -936,7 +936,7 @@ namespace sherpa { namespace astro { namespace models {
       // val = NAN;
       return EXIT_FAILURE;
     else {
-      val = p[5] / (POW(1.0 + (r/p[0]) * (r/p[0]), p[6]));
+      val = p[5] * (POW(1.0 + r/(p[0]*p[0]), -p[6]));
       return EXIT_SUCCESS;
     }
 
@@ -949,8 +949,11 @@ namespace sherpa { namespace astro { namespace models {
   {
   
     register DataType r;
-    sherpa::utils::radius(p,x0,x1,r);
-  
+
+    if( EXIT_SUCCESS != sherpa::utils::radius(p,x0,x1,r)) {
+      return EXIT_FAILURE;
+    }
+
     if( p[0] == 0.0 )
       return EXIT_FAILURE;
     else {
@@ -968,14 +971,14 @@ namespace sherpa { namespace astro { namespace models {
   
     register DataType r;
 
-    if( EXIT_SUCCESS != sherpa::utils::radius(p, x0, x1, r)) {
+    if( EXIT_SUCCESS != sherpa::utils::radius2(p, x0, x1, r)) {
       return EXIT_FAILURE;
     }
     if( p[0] == 0.0 )
       // val = NAN;
       return EXIT_FAILURE;
     else {
-      val = p[5]/((r/p[0]+1.0)*(r/p[0]+1.0));
+      val = p[5]/(r/((p[0]+1.0)*(p[0]+1.0)));
       return EXIT_SUCCESS;
     }
 
@@ -989,14 +992,14 @@ namespace sherpa { namespace astro { namespace models {
   
     register DataType r;
   
-    if( EXIT_SUCCESS != sherpa::utils::radius(p,x0,x1, r)) {
+    if( EXIT_SUCCESS != sherpa::utils::radius2(p,x0,x1, r)) {
       return EXIT_FAILURE;
     }
     if( p[0] == 0.0 && r == 0.0 )
       return EXIT_FAILURE;
     else {
       val = p[5] * ( p[0] / 2.0 ) * ( p[0] / 2.0 ) /
-	( r * r + ( p[0] / 2.0 ) * ( p[0] / 2.0 ) );
+	( r + ( p[0] / 2.0 ) * ( p[0] / 2.0 ) );
       return EXIT_SUCCESS;
     }
 

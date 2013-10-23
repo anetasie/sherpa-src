@@ -609,12 +609,13 @@ namespace sherpa { namespace models {
   {
 
     // p[1] is an always frozen parameter, currently initialized to 1
-    if ( x > 0.0 )
+    if ( x > 0.0 ) {
       val = p[2] * POW( x / p[ 1 ], - p[ 0 ] );
-    else
-      val = 0.0;
-  
-    return EXIT_SUCCESS;
+      return EXIT_SUCCESS;
+    }
+    
+    val = 0.0;
+    return EXIT_FAILURE;
 
   }
 
@@ -637,8 +638,34 @@ namespace sherpa { namespace models {
     }
 
     val = 0.0;
-    return EXIT_SUCCESS;
+    return EXIT_FAILURE;
 
+  }
+
+
+  //
+  //                                    /  x \ - p[1] - p[2] * log10(x/p[0])
+  //                               p[3] |----|
+  //                                    \p[0]/
+  // 
+  template <typename DataType, typename ConstArrayType>
+  inline int logparabola_point( const ConstArrayType& p, DataType x,
+			      DataType& val )
+  {
+
+    if ( p[0] != 0 ) {
+      
+      register DataType frac = (x / p[0]);
+      
+      if ( frac > 0.0 ) {
+	val = p[3] * POW( frac, - p[1] - p[2] * LOG10( frac ) );
+	return EXIT_SUCCESS;
+      }
+
+    }
+    
+    val = 0.0;
+    return EXIT_FAILURE;
   }
 
 
@@ -914,15 +941,15 @@ namespace sherpa { namespace models {
 			    DataType x0, DataType x1, DataType& val )
   {
   
-    register DataType r;
+    register DataType r = 0.0;
   
-    if( EXIT_SUCCESS != sherpa::utils::radius(p, x0, x1, r)) {
+    if( EXIT_SUCCESS != sherpa::utils::radius2(p, x0, x1, r)) {
       return EXIT_FAILURE;
     }
     if( p[0] == 0.0 )
       return EXIT_FAILURE;
     else {
-      val = p[5]*EXP(-(r/p[0])*(r/p[0])*GFACTOR);
+      val = p[5]*EXP(-r/(p[0]*p[0])*GFACTOR);
       return EXIT_SUCCESS;
     }
 
@@ -986,6 +1013,27 @@ namespace sherpa { namespace models {
 
   }
   */
+
+
+  template <typename DataType, typename ConstArrayType>
+  inline int ngauss2d_point( const ConstArrayType& p,
+			     DataType x0, DataType x1, DataType& val )
+  {
+  
+    register DataType r = 0.0;
+  
+    if( EXIT_SUCCESS != sherpa::utils::radius2(p, x0, x1, r)) {
+      return EXIT_FAILURE;
+    }
+    if( p[0] == 0.0 )
+      return EXIT_FAILURE;
+    else {
+      register DataType norm = (PI/GFACTOR)*p[0]*p[0]*SQRT(1.0 - (p[3]*p[3]));
+      val = (p[5]/norm)*EXP(-r/(p[0]*p[0])*GFACTOR);
+      return EXIT_SUCCESS;
+    }
+
+  }
 
 
   template <typename DataType, typename ConstArrayType>

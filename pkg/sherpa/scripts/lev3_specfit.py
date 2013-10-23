@@ -73,10 +73,10 @@ class SpecFit(object):
                               "b1" : "blackbody"
                               }
 
-        self.d_model_names = { "phoindex" : "PhoIndx",
+        self.d_model_names = { "PhoIndex" : "PhoIndx",
                                "norm" : "norm",
-                               "nh" : "nH",
-                               "kt"   : "kT"
+                               "nH" : "nH",
+                               "kT"   : "kT"
                                }
         
         self.d_model_ids = { "p1" : "pl",
@@ -309,7 +309,7 @@ class SpecFit(object):
 
                 param_name = (self.d_model_names[par.name] +
                               "_" + self.d_model_ids[id])
-                if par.name == "nh":
+                if par.name == "nH":
                     # convert nh from 10^22 to 10^20
                     val = _check_if_nan(par.val*100.)
                     if par.val == par.hard_min or par.val == par.hard_max:
@@ -339,14 +339,14 @@ class SpecFit(object):
 
                param_name = (self.d_model_names[par.name] +
                              "_" + self.d_model_ids[id])
-               if par.name == "nh":
+               if par.name == "nH":
                    param_name = (self.d_model_names[par.name] +
                                  "_" + self.d_model_ids[id] + "_" +
                                  self.d_model_ids[model.rhs.name])
 
                format = "%s,r,h,%s,,,\"%s %s, %s\"\n"
                val = _check_if_nan(par.val)
-               if par.name == "nh":
+               if par.name == "nH":
                    # convert nh from 10^22 to 10^20
                    val = _check_if_nan(par.val*100.)
                    par.units="10^20 atoms / cm^2"
@@ -364,7 +364,7 @@ class SpecFit(object):
 
                if lo is not None:
                    arg = "%.4e" % (par.val - numpy.abs(lo))
-                   if par.name == "nh":
+                   if par.name == "nH":
                        # convert nh from 10^22 to 10^20
                        arg = "%.4e" % ((par.val - numpy.abs(lo))*100.)
                if (numpy.isnan(par.val) or numpy.isinf(par.val) or
@@ -382,7 +382,7 @@ class SpecFit(object):
 
                if hi is not None:
                    arg = "%.4e" % (par.val + numpy.abs(hi))
-                   if par.name == "nh":
+                   if par.name == "nH":
                        # convert nh from 10^22 to 10^20
                        arg = "%.4e" % ((par.val + numpy.abs(hi))*100.)
                if (numpy.isnan(par.val) or numpy.isinf(par.val) or
@@ -571,7 +571,7 @@ class SpecFit(object):
     def do_fit(self, src_model):
         """ do fitting  """
 
-        sherpa.set_model(src_model)
+        sherpa.set_source(src_model)
 
         if self.get_verbose() >= 3:
             print(" ---")

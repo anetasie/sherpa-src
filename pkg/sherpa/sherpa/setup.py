@@ -50,6 +50,26 @@ conf = {
     'fortran_library_dir' : None
     }
 
+#
+# To store f2py temp files somewhere they can be easily removed,
+# create the "build" directory if it doesn't exist, and set the
+# tempfile module to use "./build" as the directory to store
+# temp files.  (This covers request not to leave temp files in
+# /tmp, where they would otherwise just accumulate over the
+# course of many builds.)
+#
+
+import tempfile
+tempfile.tempdir='./build'
+try:
+    os.mkdir("./build",0775)
+except OSError, e:
+    # This error means the directory already exists,
+    # so pass
+    if (e.errno == 17):
+        pass
+    else:
+        raise e
 
 #
 # Process 'var=value' command-line arguments, replacing the defaults with
@@ -184,6 +204,17 @@ if platform.system() == 'Darwin':
 
     GnuFCompiler.get_libraries = get_libraries_gnuf
     GnuFCompiler.get_library_dirs = get_library_dirs
+
+    # Block gfortran from adding superfluous -arch flags
+    def _universal_flags(self, cmd):
+        # These need to come from CCEXTRA_ARGS, without setting
+        # LDFLAGS
+        return ['-arch', 'i386', '-arch', 'x86_64']
+
+    from numpy.distutils.fcompiler.gnu import Gnu95FCompiler
+    Gnu95FCompiler._universal_flags = _universal_flags
+
+
     # If on the Intel Mac, must use g95 to compile Fortran
     # Use gcc as linker, because g95 just isn't helping us make
     # bundles on OS X
@@ -340,9 +371,9 @@ extension_modules = [
     # sherpa.optmethods._minpack
     Extension('sherpa.optmethods._minpack',
               ['sherpa/optmethods/src/minpack/_minpack.pyf',
+               'sherpa/optmethods/src/minpack/covar.f',               
                'sherpa/optmethods/src/minpack/lmdif.f',
-               'sherpa/optmethods/src/minpack/mylmdif.f',
-               'sherpa/optmethods/src/syminv.f']),
+               'sherpa/optmethods/src/minpack/mylmdif.f']),
 
     # simplex <==> neldermead
     # leave minim here for debug purpose only
@@ -352,15 +383,39 @@ extension_modules = [
                'sherpa/optmethods/src/minim.f',
                'sherpa/optmethods/src/syminv.f']),
 
-    # newuoa
-    #Extension('sherpa.optmethods._newuoa',
-    #          ['sherpa/optmethods/src/newuoa/_newuoa.pyf',
-    #           'sherpa/optmethods/src/newuoa/bigden.f',
-    #           'sherpa/optmethods/src/newuoa/biglag.f',
-    #           'sherpa/optmethods/src/newuoa/trsapp.f',
-    #           'sherpa/optmethods/src/newuoa/update.f',
-    #           'sherpa/optmethods/src/newuoa/newuoa.f',
-    #           'sherpa/optmethods/src/newuoa/newuob.f']),
+###############################################################################
+##     # powell: bobyqa & newuoa 
+##     Extension('sherpa.optmethods._powell',
+##               ['sherpa/optmethods/src/powell/_powell.pyf',
+##                'sherpa/optmethods/src/powell/altmov.f',
+##                'sherpa/optmethods/src/powell/bigden.f',
+##                'sherpa/optmethods/src/powell/biglag.f',
+##                'sherpa/optmethods/src/powell/bobyqa.f',
+##                'sherpa/optmethods/src/powell/bobyqb.f',
+##                'sherpa/optmethods/src/powell/bupdate.f',
+##                'sherpa/optmethods/src/powell/newuoa.f',
+##                'sherpa/optmethods/src/powell/newuob.f',
+##                'sherpa/optmethods/src/powell/prelim.f',
+##                'sherpa/optmethods/src/powell/rescue.f',
+##                'sherpa/optmethods/src/powell/trsapp.f',
+##                'sherpa/optmethods/src/powell/trsbox.f',
+##                'sherpa/optmethods/src/powell/update.f']),
+
+##     # sherpa.optmethods._odrpack
+##     Extension('sherpa.optmethods._odrpack',
+##               ['sherpa/optmethods/src/odrpack/_odrpack.pyf',
+##                'sherpa/optmethods/src/odrpack/real_precision.f90',
+##                'sherpa/optmethods/src/odrpack/odrpack.f90',
+##                'sherpa/optmethods/src/odrpack/lpkbls.f90',
+##                'sherpa/optmethods/src/odrpack/odr.f90']),
+
+##     # sherpa.optmethods._port
+##     Extension('sherpa.optmethods._port',
+##               ['sherpa/optmethods/src/port/_port.pyf',
+##                'sherpa/optmethods/src/port/port.f',
+##                'sherpa/optmethods/src/port/myport.f',
+##                'sherpa/optmethods/src/port/dpptri.f']),
+###############################################################################
 
     # sherpa.optmethods._saoopt
     Extension('sherpa.optmethods._saoopt',
@@ -543,9 +598,9 @@ overloadedCommands = {
     'install_lib' : install_lib,
     }
 
-# CIAO 4.2 release, Sherpa package 1
+# CIAO 4.3 release, Sherpa package 1
 setup(name='sherpa',
-      version='4.2.1',
+      version='4.3.1',
       author='Smithsonian Astrophysical Observatory / Chandra X-Ray Center',
       author_email='cxchelp@head.cfa.harvard.edu',
       url='http://cxc.harvard.edu/sherpa/',

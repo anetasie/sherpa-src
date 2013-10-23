@@ -38,8 +38,9 @@ def _check_args( size, dstype ):
     req_args = (get_num_args( dstype.__init__ )[1] - 2)
 
     if size < req_args:
-        raise IOErr('badargs', dstype.__name__, req_args)
-
+        #raise IOErr('badargs', dstype.__name__, req_args)
+        raise TypeError("data set '%s' takes at least %s args" % 
+                        (dstype.__name__, req_args))
 
 def read_file_data(filename, sep=' ', comment='#'):
 
@@ -168,7 +169,12 @@ def read_arrays(*args):
     if _is_subclass(args[-1], BaseData):
         dstype = args.pop()
 
-    return dstype('', *get_column_data(*args))
+    args = get_column_data(*args)
+
+    # Determine max number of args for dataset constructor
+    _check_args( len(args), dstype )
+
+    return dstype('', *args)
 
 
 def write_arrays(filename, args, fields=None, sep=' ', comment='#',

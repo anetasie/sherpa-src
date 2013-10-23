@@ -47,8 +47,7 @@ __all__ = ('get_table_data', 'get_image_data', 'get_arf_data', 'get_rmf_data',
 def _open_crate(type, args):
     crate = type(*args)
     if crate.get_status() == pycrates.dmFAILURE:
-        raise IOErr('openfailed', crate.get_filename(),
-                    crate.get_status_message())
+        raise IOErr('openfailed',crate.get_status_message().strip('ERROR').strip(' - ').strip())
     return crate
 
 def _try_hdr_key(crate, name, dtype=str):
@@ -238,6 +237,74 @@ def _require_image(crate, make_copy=False, fix_type=False, dtype=SherpaFloat):
 
 ## Read Functions ##
 
+def get_header_data( arg, blockname=None, hdrkeys=None ):
+
+    filename = ''
+    if type(arg) == str and pycrates.Crate(arg).is_image()==0:
+
+        filename = arg
+
+        isbinary = True
+        colnames = True
+        dmsyn = ''
+
+        if '[' in filename and ']' in filename:
+            parts = filename.split('[')
+            filename = parts.pop(0)
+            if parts:
+                dmsyn = parts.pop(0).lower()
+
+        if not is_binary_file(filename):
+            isbinary = False
+            fd = open(filename, 'r')
+            try:
+                last=None
+                line = fd.readline().strip()
+                while len(line) > 0 and line[0] in '#%':
+                    last = line
+                    line = fd.readline().strip()
+                if (last is not None and
+                    (len(last.split(' ')) != len(line.split(' ')) )):
+                    colnames = False
+            finally:
+                fd.close()
+
+        if blockname is not None:
+            arg += "[%s]" % str(blockname).upper()
+
+        if (not isbinary) and (not colnames) and (not 'cols' in dmsyn):
+            arg += "[opt colnames=none]"
+
+        try:
+            tbl = _open_crate(pycrates.TABLECrate, [arg])
+        except Exception, e:
+            try:
+                tbl =  _open_crate(pycrates.IMAGECrate, [arg])
+            except:
+                raise e
+
+        filename = tbl.get_filename()
+
+        # Make a copy of the data, since we don't know that pycrates will
+        # do something sensible wrt reference counting
+    elif isinstance(arg, pycrates.TABLECrate):
+        tbl = arg
+        filename = arg.get_filename()
+        make_copy=False
+    else:
+        raise IOErr('badfile', arg, 'TABLECrate obj')
+
+    hdr = {}
+    if hdrkeys is not None:
+        for key in hdrkeys:
+            hdr[key] = _require_hdr_key(tbl, key)
+    else:
+        for key in tbl.get_keynames():
+           hdr[key] = _require_hdr_key(tbl, key) 
+
+    return hdr
+
+
 def get_column_data( *args ):
     """
     get_column_data( *NumPy_args )
@@ -272,16 +339,19 @@ def get_ascii_data(filename, ncols=2, colkeys=None, **kwargs):
     """
     get_table_data( filename [, ncols=2 [, colkeys=None [, **kwargs ]]] ) 
     """
-    return get_table_data( filename, ncols, colkeys )    
+    return get_table_data( filename, ncols, colkeys )[:3]
 
-def get_table_data( arg, ncols=1, colkeys=None, make_copy=False):
+
+def get_table_data( arg, ncols=1, colkeys=None, make_copy=True, fix_type=True,
+                    blockname=None, hdrkeys=None):
     """
-    get_table_data( filename , ncols=1 [, colkeys=None [, make_copy=False ]])
+    get_table_data( filename , ncols=1 [, colkeys=None [, make_copy=True [,
+                    fix_type=True [, blockname=None [, hdrkeys=None ]]]]])
 
-    get_table_data( TABLECrate , ncols=1 [, colkeys=None [, make_copy=False ]])
+    get_table_data( TABLECrate , ncols=1 [, colkeys=None [, make_copy=True [,
+                    fix_type=True [, blockname=None [, hdrkeys=None ] ]]]])
     """
     filename = ''
-    fix_type = False
     if type(arg) == str and pycrates.Crate(arg).is_image()==0:
 
         filename = arg
@@ -299,15 +369,20 @@ def get_table_data( arg, ncols=1, colkeys=None, make_copy=False):
         if not is_binary_file(filename):
             isbinary = False
             fd = open(filename, 'r')
-            last=None
-            line = fd.readline().strip()
-            while len(line) > 0 and line[0] in '#%':
-                last = line
+            try:
+                last=None
                 line = fd.readline().strip()
-            if (last is not None and
-                (len(last.split(' ')) != len(line.split(' ')) )):
-                colnames = False
-            fd.close()
+                while len(line) > 0 and line[0] in '#%':
+                    last = line
+                    line = fd.readline().strip()
+                if (last is not None and
+                    (len(last.split(' ')) != len(line.split(' ')) )):
+                    colnames = False
+            finally:
+                fd.close()
+
+        if blockname is not None:
+            arg += "[%s]" % str(blockname).upper()
 
         if (not isbinary) and (not colnames) and (not 'cols' in dmsyn):
             arg += "[opt colnames=none]"
@@ -318,11 +393,10 @@ def get_table_data( arg, ncols=1, colkeys=None, make_copy=False):
 
         # Make a copy of the data, since we don't know that pycrates will
         # do something sensible wrt reference counting
-        make_copy = True
-        fix_type = True
     elif isinstance(arg, pycrates.TABLECrate):
         tbl = arg
         filename = arg.get_filename()
+        make_copy=False
     else:
         raise IOErr('badfile', arg, 'TABLECrate obj')
 
@@ -350,29 +424,30 @@ def get_table_data( arg, ncols=1, colkeys=None, make_copy=False):
         for col in _require_tbl_col(tbl, name, cnames, make_copy, fix_type):
             cols.append(col)
 
-    return colkeys, cols, filename
+    hdr={}
+    if hdrkeys is not None:
+        for key in hdrkeys:
+            hdr[key] = _require_hdr_key(tbl, key)
+
+    return colkeys, cols, filename, hdr
 
 
-def get_image_data(arg, make_copy=False):
+def get_image_data(arg, make_copy=True, fix_type=True):
     """
-    get_image_data ( filename [, make_copy=False ])
+    get_image_data ( filename [, make_copy=True, fix_type=True ])
 
-    get_image_data ( IMAGECrate [, make_copy=False ])
+    get_image_data ( IMAGECrate [, make_copy=True, fix_type=True ])
     """
     filename = ''
-    fix_type = False
     if type(arg) == str and pycrates.Crate(arg).is_image()==1:
         #img = pycrates.read_file(arg)
         img = _open_crate(pycrates.IMAGECrate, [arg])
         filename = arg
 
-        # Make a copy of the data, since we don't know that pycrates will
-        # do something sensible wrt reference counting
-        make_copy=True
-        fix_type=True
     elif isinstance(arg, pycrates.IMAGECrate):
         img = arg
         filename = arg.get_filename()
+        make_copy=False
     else:
         raise IOErr('badfile', arg, "IMAGECrate obj")
 
@@ -387,6 +462,12 @@ def get_image_data(arg, make_copy=False):
     elif img.get_axis('SKY') is not None:
         sky = pycrates.get_transform(img, 'SKY')
 
+    elif img.get_axis('pos') is not None:
+        sky = pycrates.get_transform(img, 'pos')
+        
+    elif img.get_axis('POS') is not None:
+        sky = pycrates.get_transform(img, 'POS')
+    
     wcs = None
     if img.get_axis('EQPOS') is not None:
         wcs = pycrates.get_transform(img, 'EQPOS')
@@ -427,11 +508,11 @@ def get_image_data(arg, make_copy=False):
     return data, filename
 
 
-def get_arf_data(arg, make_copy=False):
+def get_arf_data(arg, make_copy=True):
     """
-    get_arf_data( filename [, make_copy=False ])
+    get_arf_data( filename [, make_copy=True ])
 
-    get_arf_data( ARFCrate [, make_copy=False ])
+    get_arf_data( ARFCrate [, make_copy=True ])
     """
     filename = ''
     if type(arg) == str:
@@ -441,10 +522,10 @@ def get_arf_data(arg, make_copy=False):
 
         # Make a copy of the data, since we don't know that pycrates will
         # do something sensible wrt reference counting
-        make_copy = True
     elif pycrates.is_arf(arg) == pycrates.dmSUCCESS:
         arf = arg
         filename = arg.get_filename()
+        make_copy=False
     else:
         raise IOErr('badfile', arg, "ARFCrate obj")
 
@@ -472,11 +553,11 @@ def get_arf_data(arg, make_copy=False):
     return data, filename
 
 
-def get_rmf_data(arg, make_copy=False):
+def get_rmf_data(arg, make_copy=True):
     """
-    get_rmf_data( filename [, make_copy=False ])
+    get_rmf_data( filename [, make_copy=True ])
 
-    get_rmf_data( RMFCrate [, make_copy=False ])
+    get_rmf_data( RMFCrate [, make_copy=True ])
     """
     filename = ''
     if type(arg) == str:
@@ -486,10 +567,10 @@ def get_rmf_data(arg, make_copy=False):
 
         # Make a copy of the data, since we don't know that pycrates will
         # do something sensible wrt reference counting
-        make_copy = True
     elif pycrates.is_rmf(arg) == pycrates.dmSUCCESS:
         rmf = arg
-        filename = arg.get_filename()
+        filename = arg.get_filename() 
+        make_copy = False
     else:
         raise IOErr('badfile', arg, "RMFCrate obj")
 
@@ -514,7 +595,8 @@ def get_rmf_data(arg, make_copy=False):
     data['detchans'] = _require_hdr_key(rmf, 'DETCHANS', SherpaInt)
     data['energ_lo'] = _require_col(rmf.energ_lo, make_copy, fix_type=True)
     data['energ_hi'] = _require_col(rmf.energ_hi, make_copy, fix_type=True)
-    data['n_grp'] = _require_col(rmf.n_grp, make_copy)
+    data['n_grp'] = _require_col(rmf.n_grp, make_copy,
+                                 dtype=SherpaUInt, fix_type=True)
     fcbuf = _require_col(rmf.f_chan, make_copy)
     ncbuf = _require_col(rmf.n_chan, make_copy)
     respbuf = _require_col_list(rmf.matrix, 1, make_copy)
@@ -568,11 +650,11 @@ def get_rmf_data(arg, make_copy=False):
     return data, filename
 
 
-def get_pha_data(arg, make_copy=False, use_background=False):
+def get_pha_data(arg, make_copy=True, use_background=False):
     """
-    get_pha_data( filename [, make_copy=False [, use_background=False]])
+    get_pha_data( filename [, make_copy=True [, use_background=False]])
 
-    get_pha_data( PHACrate [, make_copy=False [, use_background=False]])
+    get_pha_data( PHACrate [, make_copy=True [, use_background=False]])
     """
     filename = ''
     if type(arg) == str:
@@ -583,10 +665,10 @@ def get_pha_data(arg, make_copy=False, use_background=False):
 
         # Make a copy of the data, since we don't know that pycrates will
         # do something sensible wrt reference counting
-        make_copy=True
     elif pycrates.is_pha(arg) == pycrates.dmSUCCESS:
         pha = arg
         filename = arg.get_filename()
+        make_copy=False
     else:
         raise IOErr('badfile', arg, "PHACrate obj")
 
@@ -651,8 +733,8 @@ def get_pha_data(arg, make_copy=False, use_background=False):
             data['counts'] = _require_col(pha.rate, make_copy, fix_type=True)*data['exposure']
         data['staterror']       = _try_col(pha.stat_err, make_copy)
         data['syserror']        = _try_col(pha.sys_err, make_copy)
-        data['background_up']   = _try_col(pha.background_up, make_copy)
-        data['background_down'] = _try_col(pha.background_down, make_copy)
+        data['background_up']   = _try_col(pha.background_up, make_copy, fix_type=True)
+        data['background_down'] = _try_col(pha.background_down, make_copy, fix_type=True)
         data['bin_lo']          = _try_col(pha.bin_lo, make_copy,fix_type=True)
         data['bin_hi']          = _try_col(pha.bin_hi, make_copy,fix_type=True)
         data['grouping']        = _try_col(pha.grouping, make_copy)

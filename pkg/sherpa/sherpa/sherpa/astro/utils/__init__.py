@@ -67,16 +67,19 @@ def compile_energy_grid(arglist):
     if len(in_ehi) > 1:
         elo = numpy.concatenate((elo, in_ehi[0:len(in_ehi)-1]))
 
+    # FIXME since numpy.unique calls sort() underneath, may not need to
+    # sort again here...
     elo.sort()
     ehi.sort()
 
     # determine index intervals using binary search in large src model
     # for n_th ARF energy bounds and populate a table to use later for
     # integration over said intervals
-    htable = [(numpy.searchsorted(elo, arg[0]),
-               numpy.searchsorted(ehi, arg[1])) for arg in arglist]
+    htable = [(numpy.searchsorted(elo, arg[0]).astype(numpy.int32),
+               numpy.searchsorted(ehi, arg[1]).astype(numpy.int32))
+              for arg in arglist]
 
-    return [(elo,ehi), htable]
+    return [elo, ehi, htable]
 
 def bounds_check(lo, hi):
     if lo is not None and hi is not None and lo > hi:
@@ -96,17 +99,11 @@ _charge_e = 1.60217653e-09 #elementary charge [ergs] 1 keV, nist.gov
 def _flux( data, lo, hi, src, eflux=False, srcflux=False):
     lo, hi = bounds_check(lo, hi)
 
-    # filter_rsp = getattr(data, 'notice_response', None)
-    # if filter_rsp is not None:
-    #     filter_rsp(False)
-
-    axislist = data.get_indep(filter=False)
-
-#     if hasattr(data, 'response_ids') and len(data.response_ids) > 2:
-#         arglist = tuple([data.get_indep(response_id=id)
-#                          for id in data.response_ids])
-#         axislist = compile_energy_grid(arglist)[0]
-###        y = data.eval_model(src) # data.get_indep() used underneath
+    axislist = None
+    if hasattr(data, '_get_indep'):
+        axislist = data._get_indep(filter=False)
+    else:
+        axislist = data.get_indep(filter=False)
 
     y = src(*axislist)
 
@@ -155,9 +152,9 @@ def _counts( data, lo, hi, func, *args):
     try:
         data.notice()  # save and clear filter
         data.filter=None
-        filter_rsp = getattr(data, 'notice_response', None)
-        if filter_rsp is not None:
-            filter_rsp(False)
+        # filter_rsp = getattr(data, 'notice_response', None)
+        # if filter_rsp is not None:
+        #     filter_rsp(False)
 
         data.notice(lo, hi)
         counts = func(*args).sum()
@@ -228,7 +225,7 @@ def eqwidth(data, model, combo, lo=None, hi=None):
     num = None
     eqw = 0.0
     if hasattr(data, 'get_response'):
-        xlo, xhi = data.get_indep(filter=False)
+        xlo, xhi = data._get_indep(filter=False)
         my = model(xlo,xhi)
         cy = combo(xlo,xhi)
         num = len(xlo)
@@ -273,8 +270,7 @@ def calc_kcorr(data, model, z, obslo, obshi, restlo=None, resthi=None):
 
     if( obslo <= 0 or restlo <=0 or obshi <= obslo or resthi <= restlo ):
         raise IOErr('erange')
-    
-    elo,ehi = data.get_indep()
+
     if hasattr(data, 'get_response'):
         arf, rmf = data.get_response()
         elo = data.bin_lo
@@ -285,6 +281,8 @@ def calc_kcorr(data, model, z, obslo, obshi, restlo=None, resthi=None):
         elif rmf is not None:
             elo = rmf.energ_lo
             ehi = rmf.energ_hi
+    else:
+        elo,ehi = data.get_indep()
 
     if elo is None or ehi is None:
         raise DataErr('noenergybins', data.name)

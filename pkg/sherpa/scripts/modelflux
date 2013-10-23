@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # 
-#  Copyright (C) 2009  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -45,11 +45,22 @@ def _check_if_nan(arg, format="%.4e"):
 
 def read_param_file(filename):
 
-    try:
-        pfile = paramio.paramopen(filename, "rwL", sys.argv)
-    except:
-        print "Error: could not open parameter file '%s'" % filename
-        raise
+    # try:
+    #     pfile = paramio.paramopen(filename, "rwL", sys.argv)
+    # except:
+    #     raise IOError("could not open parameter file '%s'" % filename)
+
+    args = sys.argv[:]
+    if len(args) > 1 and args[1].startswith("@@"):
+        try:
+            pfile = paramio.paramopen(None, "rw", args)
+        except:
+            raise IOError("could not open parameter file '%s'" % filename)
+    else:
+        try:
+            pfile = paramio.paramopen(filename, "rwL", sys.argv)
+        except:
+            raise IOError("could not open parameter file '%s'" % filename)
 
     params = {}
 
@@ -131,29 +142,36 @@ def write_params(pfile, rate, pflux, flux):
     paramio.paramclose(pfile)
 
 
-if __name__ == "__main__":
+
+def main():
 
     params={}
     params, file = read_param_file("modelflux.par")
 
     set_verbose(params["verbose"])
 
+    if params["rmf"] == "" or params["rmf"].upper() == "INDEF":
+        raise IOError("an RMF file is required")
+
     rmf = sherpa.unpack_rmf(params["rmf"])
-    arf = sherpa.unpack_arf(params["arf"])
 
     counts = numpy.zeros(rmf.detchans)
     channel = numpy.arange(1, rmf.detchans+1)
     data = sherpa.DataPHA('', channel, counts)
-    data.set_response(arf,rmf)
     sherpa.set_data(data)
+    sherpa.set_rmf(rmf)
 
-#    By not setting an exposure time for DataPHA, the convolved model returns
-#    the predicted count rate, not predicted counts.
+    if not (params["arf"] == "" or params["arf"].upper() == "INDEF"):
+        arf = sherpa.unpack_arf(params["arf"])
 
-#    set_exposure(arf.exposure)
+        # By not setting an exposure time for DataPHA, the convolved model returns
+        # the predicted count rate, not predicted counts.
+        arf.exposure = None
+        sherpa.set_arf(arf)
+
 
     sherpa.set_analysis("energy")
-    sherpa.set_model(params["mdl"])
+    sherpa.set_source(params["mdl"])
     exec params["vals"]
 
     calc_cnt_rate = sherpa.calc_model_sum(lo=params["oemin"], # counts sec^-1
@@ -191,3 +209,16 @@ if __name__ == "__main__":
                  params["emax"])
 
     write_params(file, params["rate"], params["pflux"], params["flux"])
+
+
+if __name__ == "__main__":
+
+    import sys
+
+    try:
+    
+        main()
+    
+    except Exception,e:
+        sys.stderr.write("modelflux: ERROR: %s\n" % str(e))
+        sys.exit(1)

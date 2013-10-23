@@ -1,5 +1,7 @@
+#!/usr/bin/env python
+#
 # 
-#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -17,9 +19,11 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+
 from itertools import izip
 import logging
 import numpy
+import hashlib
 from sherpa.utils import SherpaFloat, NoNewAttributesAfterInit
 from sherpa.utils.err import ModelErr
 
@@ -30,8 +34,45 @@ warning = logging.getLogger(__name__).warning
 
 __all__ = ('Model', 'CompositeModel', 'SimulFitModel',
            'ArithmeticConstantModel', 'ArithmeticModel',
-           'UnaryOpModel', 'BinaryOpModel', 'FilterModel',
+           'UnaryOpModel', 'BinaryOpModel', 'FilterModel', 'modelCacher1d',
            'ArithmeticFunctionModel', 'NestedModel', 'MultigridSumModel')
+
+def modelCacher1d(func):
+
+    def cache_model(cls, pars, xlo, *args, **kwargs):
+        use_caching = cls._use_caching
+        cache = cls._cache
+        queue = cls._queue
+
+        digest = ''
+        if use_caching:
+
+            data = [ numpy.array(pars).tostring(), str(kwargs.get('integrate',0)), 
+                     numpy.asarray(xlo).tostring() ]
+            if args:
+                data.append( numpy.asarray(args[0]).tostring() )
+
+            token = ''.join(data)
+            digest = hashlib.sha256(token).digest()
+            if digest in cache:
+                return cache[digest]
+
+        vals = func(cls, pars, xlo, *args, **kwargs)
+
+        if use_caching:
+            # remove first item in queue and remove from cache
+            key = queue.pop(0)
+            cache.pop(key, None)
+
+            # append newest model values to queue
+            queue.append(digest)
+            cache[digest] = vals
+
+        return vals
+
+    cache_model.__name__ = func.__name__
+    cache_model.__doc__ = func.__doc__
+    return cache_model
 
 
 class Model(NoNewAttributesAfterInit):
@@ -85,7 +126,7 @@ class Model(NoNewAttributesAfterInit):
         if (par is not None) and isinstance(par, Parameter):
             return par
         # this must be AttributeError for 'getattr' to work
-        raise AttributeError("'%s'object has no attribute '%s'" %
+        raise AttributeError("'%s' object has no attribute '%s'" %
                              (type(self).__name__, name))
 
     def __setattr__(self, name, val):
@@ -95,8 +136,14 @@ class Model(NoNewAttributesAfterInit):
 	else:
 	    NoNewAttributesAfterInit.__setattr__(self, name, val)
 
+    def startup(self):
+        raise NotImplementedError
+
     def calc(self, p, *args, **kwargs):
 	raise NotImplementedError
+
+    def teardown(self):
+        raise NotImplementedError
 
     def guess(self, dep, *args, **kwargs):
 	raise NotImplementedError
@@ -107,7 +154,7 @@ class Model(NoNewAttributesAfterInit):
         # model is made automatically callable
         if (len(args) == 0 and len(kwargs) == 0):
             return self
-	return self.calc([p.val for p in self.pars], *args, **kwargs)
+        return self.calc([p.val for p in self.pars], *args, **kwargs)
 
     def _get_thawed_pars(self):
 	return [p.val for p in self.pars if not p.frozen]
@@ -234,11 +281,33 @@ class CompositeModel(Model):
 
         return parts
 
+    def startup(self):
+        #print 'Starting up %s...' % type(self).__name__
+        pass
+
+    def teardown(self):
+        #print 'Tearing down %s...' % type(self).__name__
+        pass
+
 
 class SimulFitModel(CompositeModel):
 
     def __iter__(self):
         return iter(self.parts)
+
+
+    def startup(self):
+        #print 'Starting up %s...' % type(self).__name__
+        for part in self:
+            part.startup()
+        CompositeModel.startup(self)
+
+
+    def teardown(self):
+        #print 'Tearing down %s...' % type(self).__name__
+        for part in self:
+            part.teardown()
+        CompositeModel.teardown(self)
 
 
 class ArithmeticConstantModel(Model):
@@ -250,8 +319,16 @@ class ArithmeticConstantModel(Model):
 	self.val = SherpaFloat(val)
 	Model.__init__(self, self.name)
 
+    def startup(self):
+        #print 'Starting up %s...' % type(self).__name__
+        pass
+
     def calc(self, p, *args, **kwargs):
 	return self.val
+
+    def teardown(self):
+        #print 'Tearing down %s...' % type(self).__name__
+        pass
 
 
 def _make_unop(op, opstr):
@@ -271,6 +348,13 @@ class ArithmeticModel(Model):
 
     def __init__(self, name, pars=()):
         self.integrate=True
+
+        # Model caching ability
+        # queue memory of maximum size
+        self.cache = 5
+        self._use_caching = False  # FIXME: reduce number of variables?
+        self._queue = ['']
+        self._cache = {}
         Model.__init__(self, name, pars)
 
     # Unary operations
@@ -287,8 +371,36 @@ class ArithmeticModel(Model):
     __mod__, __rmod__ = _make_binop(numpy.remainder, '%')
     __pow__, __rpow__ = _make_binop(numpy.power, '**')
 
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        if not state.has_key('_use_caching'):
+            self.__dict__['_use_caching'] = False
+
+        if not state.has_key('_queue'):
+            self.__dict__['_queue'] = ['']
+
+        if not state.has_key('_cache'):
+            self.__dict__['_cache'] = {}
+
+        if not state.has_key('cache'):
+            self.__dict__['cache'] = 5
+
+
     def __getitem__(self, filter):
         return FilterModel(self, filter)
+
+    def startup(self):
+        self._queue = ['']
+        self._cache = {}
+        if int(self.cache) > 0:
+            self._queue = ['']*int(self.cache)
+            frozen = numpy.array([par.frozen for par in self.pars], dtype=bool)
+            if len(frozen) > 0 and frozen.all():
+                self._use_caching = True
+
+    def teardown(self):
+        self._use_caching = False
 
     def apply(self, outer, *otherargs, **otherkwargs):
         return NestedModel(outer, self, *otherargs, **otherkwargs)
@@ -322,11 +434,30 @@ class BinaryOpModel(CompositeModel, ArithmeticModel):
                                  (self.lhs.name, opstr, self.rhs.name)),
                                 (self.lhs, self.rhs))
 
+
+    def startup(self):
+        self.lhs.startup()
+        self.rhs.startup()
+        CompositeModel.startup(self)
+
+
+    def teardown(self):
+        self.lhs.teardown()
+        self.rhs.teardown()
+        CompositeModel.teardown(self)
+
+
     def calc(self, p, *args, **kwargs):
 	nlhs = len(self.lhs.pars)
-	return self.op(self.lhs.calc(p[:nlhs], *args, **kwargs),
-		       self.rhs.calc(p[nlhs:], *args, **kwargs))
-
+        lhs = self.lhs.calc(p[:nlhs], *args, **kwargs)
+        rhs = self.rhs.calc(p[nlhs:], *args, **kwargs)
+        try:
+            val = self.op(lhs, rhs)
+        except ValueError:
+            raise ValueError("shape mismatch between '%s: %i' and '%s: %i'" %
+                             (type(self.lhs).__name__, len(lhs),
+                              type(self.rhs).__name__, len(rhs)))
+        return val
 
 class FilterModel(CompositeModel, ArithmeticModel):
 
@@ -378,6 +509,14 @@ class ArithmeticFunctionModel(Model):
     def calc(self, p, *args, **kwargs):
 	return self.func(*args, **kwargs)
 
+    def startup(self):
+        #print 'Starting up %s...' % type(self).__name__
+        pass
+
+    def teardown(self):
+        #print 'Tearing down %s...' % type(self).__name__
+        pass
+
 
 class NestedModel(CompositeModel, ArithmeticModel):
 
@@ -396,6 +535,19 @@ class NestedModel(CompositeModel, ArithmeticModel):
                                 ('%s(%s)' %
                                  (self.outer.name, self.inner.name)),
                                 (self.outer, self.inner))
+
+
+    def startup(self):
+        self.inner.startup()
+        self.outer.startup()
+        CompositeModel.startup(self)
+
+
+    def teardown(self):
+        self.inner.teardown()
+        self.outer.teardown()
+        CompositeModel.teardown(self)
+
 
     def calc(self, p, *args, **kwargs):
 	nouter = len(self.outer.pars)

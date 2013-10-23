@@ -1,32 +1,32 @@
 
 imager = None
 
-def close():
+def close(*args, **kwargs):
     pass
 
-def delete_frames():
+def delete_frames(*args, **kwargs):
     pass
         
-def get_region():
+def get_region(*args, **kwargs):
     pass
     
-def image(arr, newframe=False, tile=False):
+def image(*args, **kwargs):
     pass
 
-def _set_wcs(keys):
+def _set_wcs(*args, **kwargs):
     pass
 
-def wcs(keys):
+def wcs(*args, **kwargs):
     pass
 
-def open():
+def open(*args, **kwargs):
     pass
 
-def set_region(reg):
+def set_region(*args, **kwargs):
     pass
 
-def xpaget(arg):
+def xpaget(*args, **kwargs):
     pass
 
-def xpaset(arg):
+def xpaset(*args, **kwargs):
     pass

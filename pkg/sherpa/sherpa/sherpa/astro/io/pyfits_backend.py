@@ -42,6 +42,14 @@ __all__ = ('get_table_data', 'get_image_data', 'get_arf_data', 'get_rmf_data',
            'get_pha_data', 'set_table_data', 'set_image_data', 'set_pha_data',
            'get_column_data', 'get_ascii_data')
 
+try:
+    # pyfits-1.3 support
+    _VLF = pyfits.NP_pyfits._VLF
+except AttributeError:
+    # pyfits-2.3.1 support
+    _VLF = pyfits.core._VLF
+
+
 def _has_hdu(hdulist, id):
     try:
         hdulist[id]
@@ -102,7 +110,7 @@ def _try_col(hdu, name, dtype=SherpaFloat, fix_type=False):
 
     col = hdu.data.field(name)
 
-    if isinstance(col, pyfits.NP_pyfits._VLF):
+    if isinstance(col, _VLF):
         col = numpy.concatenate([numpy.asarray(row) for row in col])
     else:
         col = numpy.asarray(col).ravel()
@@ -118,7 +126,7 @@ def _try_tbl_col(hdu, name, dtype=SherpaFloat, fix_type=False):
 
     col = hdu.data.field(name)
 
-    if isinstance(col, pyfits.NP_pyfits._VLF):
+    if isinstance(col, _VLF):
         col = numpy.concatenate([numpy.asarray(row) for row in col])
     else:
         col = numpy.asarray(col)
@@ -134,7 +142,7 @@ def _try_vec(hdu, name, size=2, dtype=SherpaFloat, fix_type=False):
 
     col = hdu.data.field(name)
 
-    if isinstance(col, pyfits.NP_pyfits._VLF):
+    if isinstance(col, _VLF):
         col = numpy.concatenate([numpy.asarray(row) for row in col])
     else:
         col = numpy.asarray(col)
@@ -155,7 +163,7 @@ def _require_col(hdu, name, dtype=SherpaFloat, fix_type=False):
 
 def _require_tbl_col(hdu, name, dtype=SherpaFloat, fix_type=False):
     col = _try_tbl_col(hdu, name, dtype, fix_type)
-    if col.any() is None:
+    if len(col) > 0 and col[0]==None:
         raise IOErr('reqcol', name, hdu._file.name)
     return col
 
@@ -176,6 +184,50 @@ def _try_vec_or_key(hdu, name, size, dtype=SherpaFloat, fix_type=False):
     if col is not None:
         return col
     return numpy.array([_try_key(hdu, name, fix_type, dtype)]*size)
+
+
+def get_header_data( arg, blockname=None, hdrkeys=None ):
+
+    filename = ''
+    if type(arg) == str and is_binary_file(arg):
+        tbl = pyfits.open(arg)
+        filename = arg        
+    elif ( (type(arg) is pyfits.HDUList) and
+           (len(arg) > 0) and
+           (arg[0].__class__ is pyfits.PrimaryHDU) ):
+        tbl = arg
+        filename = tbl[0]._file.name
+    else:
+        raise IOErr('badfile', arg, "a binary FITS table or a PyFITS.BinTableHDU list")
+
+    hdr={}
+    try:
+        # Use the first binary table extension we find.  Throw an exception
+        # if there aren't any.
+        for hdu in tbl:
+            if blockname is None:
+                if hdu.__class__ is pyfits.BinTableHDU:
+                    break
+                else:
+                    continue
+            elif (hdu.name.lower() == str(blockname).strip().lower()):
+                break
+
+        else:
+            raise IOErr('badext', filename)
+
+        if hdrkeys is not None:
+            for key in hdrkeys:
+                hdr[key] = _require_key(hdu, key, dtype=str)
+        else:
+            for key in hdu.header.keys():
+                hdr[key] = _require_key(hdu, key, dtype=str)
+
+    finally:
+        tbl.close()
+
+    return hdr
+
 
 def get_column_data( *args ):
     """
@@ -198,11 +250,12 @@ def get_column_data( *args ):
 
     return cols    
 
-def get_table_data(arg, ncols=1, colkeys=None, make_copy=False):
+def get_table_data(arg, ncols=1, colkeys=None, make_copy=False, fix_type=False,
+                   blockname = None, hdrkeys=None):
     """
-    get_table_data( filename , ncols=1 [, colkeys=None [, make_copy=False ]])
+    get_table_data( filename , ncols=1 [, colkeys=None [, make_copy=False [, blockname=None [, hdrkeys=None ]]]])
 
-    get_table_data( [PrimaryHDU, BinTableHDU] , ncols=1 [, colkeys=None [, make_copy=False ]])
+    get_table_data( [PrimaryHDU, BinTableHDU] , ncols=1 [, colkeys=None [, make_copy=False [, blockname=None [, hdrkeys=None ]]]])
     """
     filename = ''
     if type(arg) == str and is_binary_file(arg):
@@ -220,8 +273,15 @@ def get_table_data(arg, ncols=1, colkeys=None, make_copy=False):
         # Use the first binary table extension we find.  Throw an exception
         # if there aren't any.
         for hdu in tbl:
-            if hdu.__class__ is pyfits.BinTableHDU:
+            if blockname is None:
+                if hdu.__class__ is pyfits.BinTableHDU:
+                    break
+                else:
+                    continue
+            elif (hdu.name.lower() == str(blockname).strip().lower() and
+                  hdu.__class__ is pyfits.BinTableHDU):
                 break
+
         else:
             raise IOErr('badext', filename)        
 
@@ -239,13 +299,18 @@ def get_table_data(arg, ncols=1, colkeys=None, make_copy=False):
 
         cols = []
         for name in colkeys:
-            for col in _require_tbl_col(hdu, name):
+            for col in _require_tbl_col(hdu, name, fix_type=fix_type):
                 cols.append(col)
-        
+
+        hdr={}
+        if hdrkeys is not None:
+            for key in hdrkeys:
+                hdr[key] = _require_key(hdu, key)
+
     finally:
         tbl.close()
-    
-    return colkeys, cols, filename
+
+    return colkeys, cols, filename, hdr
 
 
 def get_image_data(arg, make_copy=False):
@@ -256,13 +321,13 @@ def get_image_data(arg, make_copy=False):
     """
     filename = ''
     if type(arg) == str and is_binary_file(arg):
-        img = pyfits.open(arg)
+        hdu = pyfits.open(arg)
         filename = arg        
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0 ) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
-        img = arg
-        filename = img[0]._file.name
+        hdu = arg
+        filename = hdu[0]._file.name
     else:
         raise IOErr('badfile', arg, "a binary FITS file or a PyFITS.PrimaryHDU list")
 
@@ -298,14 +363,21 @@ def get_image_data(arg, make_copy=False):
 
     try: 
         data = {}
-        data['y'] = numpy.asarray(img[0].data)
+        
+        img = hdu[0]
+        if hdu[0].data is None:
+            img = hdu[1]
+            if hdu[1].data is None:
+                raise IOErr('badimg', '')
 
-        cdeltp = _get_wcs_key(img[0], 'CDELT1P', 'CDELT2P')
-        crpixp = _get_wcs_key(img[0], 'CRPIX1P', 'CRPIX2P')
-        crvalp = _get_wcs_key(img[0], 'CRVAL1P', 'CRVAL2P')
-        cdeltw = _get_wcs_key(img[0], 'CDELT1', 'CDELT2')
-        crpixw = _get_wcs_key(img[0], 'CRPIX1', 'CRPIX2')
-        crvalw = _get_wcs_key(img[0], 'CRVAL1', 'CRVAL2')
+        data['y'] = numpy.asarray(img.data)
+
+        cdeltp = _get_wcs_key(img, 'CDELT1P', 'CDELT2P')
+        crpixp = _get_wcs_key(img, 'CRPIX1P', 'CRPIX2P')
+        crvalp = _get_wcs_key(img, 'CRVAL1P', 'CRVAL2P')
+        cdeltw = _get_wcs_key(img, 'CDELT1', 'CDELT2')
+        crpixw = _get_wcs_key(img, 'CRPIX1', 'CRPIX2')
+        crvalw = _get_wcs_key(img, 'CRVAL1', 'CRVAL2')
 
         # proper calculation of cdelt wrt PHYSICAL coords
         if (( cdeltw != () ) and ( cdeltp != () ) ):
@@ -326,7 +398,7 @@ def get_image_data(arg, make_copy=False):
 
         data['sky'] = sky
         data['eqpos'] = eqpos
-        data['header'] = _get_meta_data(img[0])
+        data['header'] = _get_meta_data(img)
 
         keys = ['MTYPE1','MFORM1','CTYPE1P','CTYPE2P','WCSNAMEP','CDELT1P',
                 'CDELT2P','CRPIX1P','CRPIX2P','CRVAL1P','CRVAL2P',
@@ -340,7 +412,7 @@ def get_image_data(arg, make_copy=False):
                 pass
 
     finally:
-        img.close()
+        hdu.close()
 
     return data, filename
 
@@ -430,10 +502,14 @@ def get_rmf_data(arg, make_copy=False):
         data['detchans'] = SherpaUInt(_require_key(hdu, 'DETCHANS'))
         data['energ_lo'] = _require_col(hdu, 'ENERG_LO', fix_type=True)
         data['energ_hi'] = _require_col(hdu, 'ENERG_HI', fix_type=True)
-        data['n_grp']    = _require_col(hdu, 'N_GRP', dtype=SherpaUInt)
-        data['f_chan']   = _require_vec(hdu, 'F_CHAN', dtype=SherpaUInt)
-        data['n_chan']   = _require_vec(hdu, 'N_CHAN', dtype=SherpaUInt)
-        data['matrix']   = _require_col(hdu, 'MATRIX')
+        data['n_grp']    = _require_col(hdu, 'N_GRP', fix_type=True,
+                                        dtype=SherpaUInt)
+        data['f_chan']   = _require_vec(hdu, 'F_CHAN', fix_type=True,
+                                        dtype=SherpaUInt)
+        data['n_chan']   = _require_vec(hdu, 'N_CHAN', fix_type=True,
+                                        dtype=SherpaUInt)
+        data['matrix']   = _require_col(hdu, 'MATRIX', fix_type=True,
+                                        dtype=SherpaFloat)
         data['header']     = _get_meta_data(hdu)
         data['header'].pop('DETCHANS')
 
@@ -504,7 +580,7 @@ def get_pha_data(arg, make_copy=False, use_background=False):
         pha = arg
         filename = pha[0]._file.name
     else:
-        raise IOErr('badfile', args, "a binary FITS spectrum or a PyFITS.BinTableHDU list")
+        raise IOErr('badfile', arg, "a binary FITS spectrum or a PyFITS.BinTableHDU list")
 
     try:
         if _has_hdu(pha, 'SPECTRUM'):
@@ -542,20 +618,20 @@ def get_pha_data(arg, make_copy=False, use_background=False):
             data['areascal'] = _try_col_or_key(hdu, 'AREASCAL', fix_type=True)
             
             # Columns
-            data['channel']         = _require_col(hdu, 'CHANNEL')
+            data['channel']         = _require_col(hdu, 'CHANNEL', fix_type=True)
             #Make sure channel numbers not indices
             chan = list(hdu.columns.names).index('CHANNEL') + 1
             tlmin = _try_key(hdu, 'TLMIN'+str(chan), True, SherpaUInt)
             if (tlmin is not None) and tlmin == 0:
                 data['channel'] = data['channel']+1
             
-            data['counts']      = _try_col(hdu, 'COUNTS')
+            data['counts']      = _try_col(hdu, 'COUNTS', fix_type=True)
             if data['counts'] is None:
-                data['counts']  = _require_col(hdu, 'RATE') * data['exposure']
+                data['counts']  = _require_col(hdu, 'RATE', fix_type=True) * data['exposure']
             data['staterror']       = _try_col(hdu, 'STAT_ERR')
             data['syserror']        = _try_col(hdu, 'SYS_ERR')
-            data['background_up']   = _try_col(hdu, 'BACKGROUND_UP')
-            data['background_down'] = _try_col(hdu, 'BACKGROUND_DOWN')
+            data['background_up']   = _try_col(hdu, 'BACKGROUND_UP', fix_type=True)
+            data['background_down'] = _try_col(hdu, 'BACKGROUND_DOWN', fix_type=True)
             data['bin_lo']          = _try_col(hdu, 'BIN_LO', fix_type=True)
             data['bin_hi']          = _try_col(hdu, 'BIN_HI', fix_type=True)
             data['grouping']        = _try_col(hdu, 'GROUPING', SherpaInt)
@@ -579,29 +655,29 @@ def get_pha_data(arg, make_copy=False, use_background=False):
 
             specnum = _try_col_or_key(hdu, 'SPEC_NUM')
             num = len(specnum)
-            
+
             # Keywords
             exposure = _try_key(hdu, 'EXPOSURE', True, SherpaFloat)
             #poisserr = _try_key(hdu, 'POISSERR', True, bool)
             backfile = _try_key(hdu, 'BACKFILE')
             arffile  = _try_key(hdu, 'ANCRFILE')
             rmffile  = _try_key(hdu, 'RESPFILE')
-            
+
             # Keywords or columns
             backscal = _try_vec_or_key(hdu, 'BACKSCAL', num, fix_type=True)
             backscup = _try_vec_or_key(hdu, 'BACKSCUP', num, fix_type=True)
             backscdn = _try_vec_or_key(hdu, 'BACKSCDN', num, fix_type=True)
             areascal = _try_vec_or_key(hdu, 'AREASCAL', num, fix_type=True)
-            
+
             # Columns
-            channel         = _require_vec(hdu, 'CHANNEL', num)
-            counts =  _try_vec(hdu, 'COUNTS', num)
+            channel         = _require_vec(hdu, 'CHANNEL', num, fix_type=True)
+            counts =  _try_vec(hdu, 'COUNTS', num, fix_type=True)
             if None in counts:
-                counts =  _require_vec(hdu, 'RATE', num) * data['exposure']
+                counts =  _require_vec(hdu, 'RATE', num, fix_type=True) * data['exposure']
             staterror       = _try_vec(hdu, 'STAT_ERR', num)
             syserror        = _try_vec(hdu, 'SYS_ERR', num)
-            background_up   = _try_vec(hdu, 'BACKGROUND_UP', num)
-            background_down = _try_vec(hdu, 'BACKGROUND_DOWN', num)
+            background_up   = _try_vec(hdu, 'BACKGROUND_UP', num, fix_type=True)
+            background_down = _try_vec(hdu, 'BACKGROUND_DOWN', num, fix_type=True)
             bin_lo          = _try_vec(hdu, 'BIN_LO', num, fix_type=True)
             bin_hi          = _try_vec(hdu, 'BIN_HI', num, fix_type=True)
             grouping        = _try_vec(hdu, 'GROUPING', num, SherpaInt)
@@ -612,7 +688,7 @@ def get_pha_data(arg, make_copy=False, use_background=False):
             specnums        = _try_vec(hdu, 'SPEC_NUM', num, SherpaInt)
             srcids          = _try_vec(hdu, 'TG_SRCID', num, SherpaInt)
 
-                            
+
             # Iterate over all rows of channels, counts, errors, etc
             # Populate a list of dictionaries containing
             # individual dataset info
@@ -630,7 +706,7 @@ def get_pha_data(arg, make_copy=False, use_background=False):
                 data['backfile'] = backfile
                 data['arffile']  = arffile
                 data['rmffile']  = rmffile
-                
+
                 data['backscal'] = bscal
                 data['backscup'] = bscup
                 data['backscdn'] = bscdn

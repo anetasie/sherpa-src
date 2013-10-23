@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # 
 #  Copyright (C) 2007  Smithsonian Astrophysical Observatory
 #
@@ -122,10 +122,10 @@ then
         # if not in batch mode and have ipythonrc-sherpa, check its version
         localver=`grep SHERPA_VERSION $HOME/.ipython-ciao/ipythonrc-sherpa | sed 's/# SHERPA_VERSION//' | sed 's/ //g'`
         sysver=`grep SHERPA_VERSION ${ASCDS_PY_DIR}/site-packages/sherpa/ipythonrc-sherpa | sed 's/# SHERPA_VERSION//' | sed 's/ //g'`
-        if [ "$localver"  = "" ]; then
+        if [ "x$localver"  = "x" ]; then
            localver=0
         fi
-        if [ "$sysver"  = "" ]; then
+        if [ "x$sysver"  = "x" ]; then
            sysver=0
         fi
 	if [ "$localver" -lt "$sysver" ] && [ "$sysver" -gt 0 ]; then

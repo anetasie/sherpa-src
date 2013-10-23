@@ -393,7 +393,7 @@ class MHO(NoNewAttributesAfterInit):
 
         load_user_model(self.axes_constraint_model, "constraint")
         add_user_pars("constraint", ["a1", "a2", "phi"])
-        set_model("constraint")
+        set_source("constraint")
 
         # overload the fitting callback function with our own
         #get_stat().calc_stat = axes_constraint_stat
@@ -530,7 +530,7 @@ class MHO(NoNewAttributesAfterInit):
                       [self.f.x[ox],self.f.y[oy],a_min],
                       [self.f.x[nx-ox-1],self.f.y[ny-oy-1],a_max],
                       parfrozen=[False,False,False])
-        set_model("constraint")
+        set_source("constraint")
 
         # overload the calc_stat function with our own
         set_stat(MHOStat(self.position_size_stat))

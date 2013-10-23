@@ -19,11 +19,10 @@
 
 import numpy
 from sherpa.models.parameter import Parameter, tinyval
-from sherpa.models.model import ArithmeticModel, CompositeModel
+from sherpa.models.model import ArithmeticModel, CompositeModel, modelCacher1d
 from sherpa.astro.utils import apply_pileup
 from sherpa.utils.err import ModelErr
 from sherpa.utils import *
-from itertools import izip
 import sherpa.astro.models._modelfcts
 
 __all__ = ('Atten', 'BBody', 'BBodyFreq', 'Beta1D', 'BPL1D', 'Dered', 'Edge',
@@ -41,8 +40,10 @@ class Atten(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.hcol, self.heiRatio, self.heiiRatio))
 
+    @modelCacher1d
     def calc(self, *args, **kwargs):
-        kwargs['integrate']=bool_cast(self.integrate)
+        # atten should act like xsphabs, never integrate.
+        kwargs['integrate']=False
         return _modelfcts.atten(*args, **kwargs)
 
 
@@ -73,7 +74,7 @@ class BBody(ArithmeticModel):
                'max': modampl*_guess_ampl_scale}
         param_apply_limits(mod, self.ampl, **kwargs)
 
-
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.bbody(*args, **kwargs)
@@ -104,7 +105,7 @@ class BBodyFreq(ArithmeticModel):
         param_apply_limits(mod, self.ampl, **kwargs)
         param_apply_limits(t, self.t, **kwargs)
 
-
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.bbodyfreq(*args, **kwargs)
@@ -132,6 +133,7 @@ class Beta1D(ArithmeticModel):
         param_apply_limits(norm, self.ampl, **kwargs)
 
 
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.beta1d(*args, **kwargs)
@@ -160,7 +162,7 @@ class BPL1D(ArithmeticModel):
         norm = guess_amplitude_at_ref(self.ref.val, dep, *args)
         param_apply_limits(norm, self.ampl, **kwargs)
 
-
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.bpl1d(*args, **kwargs)
@@ -173,6 +175,7 @@ class Dered(ArithmeticModel):
         self.nhgal = Parameter(name, 'nhgal', 1e-07, 1e-07, 100000)
         ArithmeticModel.__init__(self, name, (self.rv, self.nhgal))
 
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.dered(*args, **kwargs)
@@ -188,6 +191,7 @@ class Edge(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.space, self.thresh, self.abs))
 
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.edge(*args, **kwargs)
@@ -224,6 +228,7 @@ class LineBroad(ArithmeticModel):
                'max': modampl*_guess_ampl_scale}
         param_apply_limits(mod, self.ampl, **kwargs)
 
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.linebroad(*args, **kwargs)
@@ -255,7 +260,7 @@ class Lorentz1D(ArithmeticModel):
         else:
             param_apply_limits(norm, self.ampl, **kwargs)
 
-
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.lorentz1d(*args, **kwargs)
@@ -283,7 +288,7 @@ class NormBeta1D(ArithmeticModel):
             ampl[key] *= norm
         param_apply_limits(ampl, self.ampl, **kwargs)
 
-
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.nbeta1d(*args, **kwargs)
@@ -302,7 +307,7 @@ class Schechter(ArithmeticModel):
         norm = guess_amplitude(dep, *args)
         param_apply_limits(norm, self.norm, **kwargs)
 
-
+    @modelCacher1d
     def calc(self, *args, **kwargs):
         if not self.integrate:
             raise ModelErr('alwaysint', self.name)
@@ -324,6 +329,7 @@ class Beta2D(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.r0, self.xpos, self.ypos, self.ellip,
                                   self.theta, self.ampl, self.alpha))
+        self.cache = 0
 
 
     def guess(self, dep, *args, **kwargs):
@@ -354,6 +360,7 @@ class DeVaucouleurs2D(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.r0, self.xpos, self.ypos, self.ellip,
                                   self.theta, self.ampl))
+        self.cache = 0
 
 
     def guess(self, dep, *args, **kwargs):
@@ -384,6 +391,7 @@ class HubbleReynolds(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.r0, self.xpos, self.ypos, self.ellip,
                                   self.theta, self.ampl))
+        self.cache = 0
 
 
     def guess(self, dep, *args, **kwargs):
@@ -415,7 +423,7 @@ class Lorentz2D(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.fwhm, self.xpos, self.ypos, self.ellip,
                                   self.theta, self.ampl))
-
+        self.cache = 0
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -428,26 +436,6 @@ class Lorentz2D(ArithmeticModel):
     def calc(self, *args, **kwargs):
         kwargs['integrate']=bool_cast(self.integrate)
         return _modelfcts.lorentz2d(*args, **kwargs)
-
-
-class MultiResponseSumModel(CompositeModel, ArithmeticModel):
-
-    def __init__(self, models, source):
-        self.models = models
-        self.source = source
-        self.orders = None
-        name = '%s(%s)' % (type(self).__name__,
-                           ','.join(['%s(%s)' % (m.name, self.source.name)
-                                     for m in models]))
-        CompositeModel.__init__(self, name, self.source)
-
-
-    def calc(self, p, arglist):
-        lo, hi, htable = arglist
-        src = self.source(lo, hi)  # hi-res grid of all ARF grids
-        self.orders = [model(sum_intervals(src, ind[0], ind[1]))
-                       for model, ind in izip(self.models, htable)]
-        return sum(self.orders)
 
 
 class JDPileup(ArithmeticModel):
@@ -504,3 +492,7 @@ class JDPileup(ArithmeticModel):
                            frame_time, alpha, g0, num_regions, psf_frac, model)
         self._results = out[1:]
         return out[0]
+
+
+class MultiResponseSumModel(ArithmeticModel):
+    pass

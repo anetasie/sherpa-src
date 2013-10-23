@@ -1,5 +1,5 @@
 # 
-#  Copyright (C) 2009  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -81,6 +81,7 @@ class IdentifierErr(SherpaErr):
     dict = {'badid' : "identifier '%s' is a reserved word",
             'getitem' : '%s %s %s',
             'nodatasets' : "No data sets found",
+            'nomodels' : "model stack is empty", 
             'badidmodel' : "'%s' is a model type, not allowed as a model name",
             'badidnative' : "'%s' is reserved for the native Python function",
             'nomodelcmpt' : "model component '%s' does not exist",
@@ -226,6 +227,7 @@ class DataErr(SherpaErr):
              'noinstr' : "No instrument model found for dataset %s",
              'normffake' : 'An RMF has not been found or supplied for data set %s',
              'noenerg' : 'no energy grid found in PHA response',
+             'norsp' : 'No instrument response found for dataset %s',
              }
 
     def __init__(self, key, *args):
@@ -257,7 +259,7 @@ class InstrumentErr(SherpaErr):
 
 class IOErr(SherpaErr):
 
-    dict = {'openfailed' : 'opening file %s has failed with %s', 
+    dict = {'openfailed' : '%s', 
             'setcolfailed' : 'setting column %s has failed with %s',
             'nokeyword' : "file '%s' does not have a '%s' keyword",
             'filefound' : "file '%s' exists and clobber is not set",
@@ -305,9 +307,10 @@ class ModelErr(SherpaErr):
     dict = {'numthawed' : "expected %d thawed parameters, got %d",
             'badinstance' : '%s instance cannot be created from another model',
             'noncall' : 'attempted to create %s from non-callable object of type %s',
+            'needsint' : 'An integrated grid is required for model evaluation,\ne.g. [0.1,0.2],[0.2,0.3]',
             'alwaysint' : '%s model is defined as integrated',
             'filterarray' : "filter '%s' is not an array",
-            'filtermismatch' : "filter '%s' does not match the dimensions %s",
+            'filtermismatch' : "Mismatch between %s and %s",
             'nobkg' : 'background model %s for data set %s has not been set',
             'norsp' : 'No background response found for background %s in data set %s',
             }
@@ -323,6 +326,8 @@ class PlotErr(SherpaErr):
              'ordercolors' : "orders list length '%s' does not match colors list length '%s'",
              'notorder' : "'%i' is not a valid order",
              'orderarrfail' : "mismatch between model orders and response ids",
+             'plotfac' : "%s plot not defined for PHA plotting factor '%i'",
+             'wrongtype' : "Plot type '%s' not found in %s",
              }
 
     def __init__(self, key, *args):

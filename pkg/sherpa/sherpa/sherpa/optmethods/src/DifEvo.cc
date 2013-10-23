@@ -6,7 +6,7 @@
 #include "tstoptfct.hh"
 #include "sherpa/functor.hh"
 
-#include "minpack/LevMar.hh"
+#include "minpack/levmar.hh"
 #include "NelderMead.hh"
 
 using namespace sherpa;

@@ -1,5 +1,5 @@
 # 
-#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -144,3 +144,37 @@ class test_utils(SherpaTestCase):
 
         self.assertRaises(ValueError, poisson_noise, 'ham')
         self.assertRaises(TypeError, poisson_noise, [1, 2, 'ham'])
+
+
+    def test_parallel_map(self):
+
+        ncpus = 1
+        try:
+            import multiprocessing
+            ncpus = multiprocessing.cpu_count()
+            Pool = multiprocessing.Pool
+        except:
+            return
+
+        numtasks = 8
+        size = (64,64)
+        vals = numpy.random.rand(*size)
+        f = numpy.linalg.eigvals
+        iterable = [vals]*numtasks
+
+        result = map(f, iterable)
+
+        pararesult = parallel_map(f, iterable, ncpus)
+
+        pool = Pool(ncpus)
+        poolresult = pool.map(f, iterable)
+
+        self.assert_((numpy.asarray(result) == numpy.asarray(pararesult)).all())
+        self.assert_((numpy.asarray(result) == numpy.asarray(poolresult)).all())
+
+
+
+if __name__ == '__main__':
+
+    import sherpa.utils as utils
+    SherpaTest(utils).test()

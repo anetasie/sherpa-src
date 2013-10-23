@@ -1,739 +1,876 @@
 c
-      subroutine minim(p,step,nop,func,max,iprint,stopcr,nloop,iquad,
-     1  simp,var,functn,ifault,neval,
-     2     lb,ub,g,h,pbar,pstar,pstst,aval,bmat,pmin,vc,temp)
+c----------------------------------------------------------------------
+c
+      SUBROUTINE MINIM(P,STEP,NOP,FUNC,MAX,IPRINT,STOPCR,NLOOP,IQUAD,
+c     --dtn
+c$$$     1  SIMP,VAR,FUNCTN,IFAULT)
+     1     SIMP,VAR,FUNCTN,IFAULT,
+     2     neval,lb,ub,g,h,pbar,pstar,pstst,aval,bmat,pmin,vc,temp)
       implicit none
-c     
-c     a program for function minimization using the simplex method.
-c     the minimum found will often be a local, not a global, minimum.
-c
-c     for details, see nelder & mead, the computer journal, january 1965
-c
-c     programmed by d.e.shaw,
-c     csiro, division of mathematics & statistics
-c     p.o. box 218, lindfield, n.s.w. 2070
-c
-c     with amendments by r.w.m.wedderburn
-c     rothamsted experimental station
-c     harpenden, hertfordshire, england
-c
-c     further amended by alan miller,
-c     csiro, division of mathematics & statistics
-c     private bag 10, clayton, vic. 3168
-c
-c     arguments:-
-c     p()     = input, starting values of parameters
-c               output, final values of parameters
-c     step()  = input, initial step sizes
-c     nop     = input, no. of parameters, incl. any to be held fixed
-c     func    = output, the function value corresponding to the final
-c               parameter values
-c     max     = input, the maximum no. of function evaluations allowed
-c     iprint  = input, print control parameter
-c                     < 0 no printing
-c                     = 0 printing of parameter values and the function
-c                         value after initial evidence of convergence.
-c                     > 0 as for iprint = 0 plus progress reports after
-c                         every iprint evaluations, plus printing for the
-c                         initial simplex.
-c     stopcr  = input, stopping criterion
-c     nloop   = input, the stopping rule is applied after every nloop
-c               function evaluations.
-c     iquad   = input, = 1 if the fitting of a quadratic surface is required
-c                      = 0 if not
-c     simp    = input, criterion for expanding the simplex to overcome
-c               rounding errors before fitting the quadratic surface.
-c     var()   = output, contains the diagonal elements of the inverse of
-c               the information matrix.
-c     functn  = input, name of the user's subroutine - arguments (p,func)
-c               which returns the function value for a given set of
-c               parameter values in array p.
-c****   functn must be declared external in the calling program.
-c       ifault  = output, = 0 for successful termination
-c                         = 1 if maximum no. of function evaluations exceeded
-c                         = 2 if information matrix is not +ve semi-definite
-c                         = 3 if nop < 1
-c                         = 4 if nloop < 1
-c
-c       advice on usage:
-c       if the function minimized can be expected to be smooth in the vicinity
-c       of the minimum, users are strongly urged to use the quadratic-surface
-c       fitting option.   this is the only satisfactory way of testing that the
-c       minimum has been found.   the value of simp should be set to at least
-c       1000 times the rounding error in calculating the fitted function.
-c       e.g. in double precision on a micro- or mini-computer with about 16
-c       decimal digit representation of floating-point numbers, the rounding
-c       errors in calculating the objective function may be of the order of
-c       1.e-12 say in a particular case.   a suitable value for simp would then
-c       be 1.e-08.   however, if numerical integration is required in the
-c       calculation of the objective function, it may only be accurate to say
-c       1.e-05 and an appropriate value for simp would be about 0.1.
-c       if the fitted quadratic surface is not +ve definite (and the function
-c       should be smooth in the vicinity of the minimum), it probably means
-c       that the search terminated prematurely and you have not found the
-c       minimum.
-c
-c       n.b. p, step and var (if iquad = 1) must have dimension at least nop
-c            in the calling program.
-c       the dimensions below are for a maximum of 20 parameters.
-c      the dimension of bmat should be at least nop*(nop+1)/2.
-c
-c****      n.b. this version is in double precision throughout
-c
-c       latest revision - 11 august 1991
-c
-c*****************************************************************************
-c
       integer*4 nop,max,iprint,nloop,iquad,ifault
       real*8 p(nop),step(nop),func,stopcr,simp,var(nop)
       real*8 g(nop+1,nop),h(nop+1),pbar(nop),pstar(nop),
      1  pstst(nop),aval(nop),bmat(nop*(nop+1)/2),pmin(nop),
      1  vc(nop*(nop+1)/2),temp(nop),lb(nop),ub(nop)
-      real*8 functn
       external functn
-
-      external ordersimplex
-c      integer*4  NVMAX
-c      parameter (NVMAX=128)
-c
-c      real*8 g(NVMAX+1,NVMAX),h(NVMAX+1),pbar(NVMAX),pstar(NVMAX),
-c     1  pstst(NVMAX),aval(NVMAX),bmat(NVMAX*(NVMAX+1)/2),pmin(NVMAX),
-c     1  vc(NVMAX*(NVMAX+1)/2),temp(NVMAX)
-      integer*4 i,iflag,imax,imin,j
-      integer*4 loop,nap,neval,np1
-      real*8 fnp1,hmax,hmean,hmin,hstar,hstd,hstst,savemn
-c
-c     a = reflection coefficient, b = contraction coefficient, and
-c     c = expansion coefficient.
-c
+c     --dtn
+C
+C     A PROGRAM FOR FUNCTION MINIMIZATION USING THE SIMPLEX METHOD.
+C     The minimum found will often be a local, not a global, minimum.
+C
+C     FOR DETAILS, SEE NELDER & MEAD, THE COMPUTER JOURNAL, JANUARY 1965
+C
+C     PROGRAMMED BY D.E.SHAW,
+C     CSIRO, DIVISION OF MATHEMATICS & STATISTICS
+C     P.O. BOX 218, LINDFIELD, N.S.W. 2070
+C
+C     WITH AMENDMENTS BY R.W.M.WEDDERBURN
+C     ROTHAMSTED EXPERIMENTAL STATION
+C     HARPENDEN, HERTFORDSHIRE, ENGLAND
+C
+C     Further amended by Alan Miller,
+C     CSIRO, Division of Mathematics & Statistics
+C     Private Bag 10, CLAYTON, VIC. 3168
+C
+C     ARGUMENTS:-
+C     P()     = INPUT, STARTING VALUES OF PARAMETERS
+C               OUTPUT, FINAL VALUES OF PARAMETERS
+C     STEP()  = INPUT, INITIAL STEP SIZES
+C     NOP     = INPUT, NO. OF PARAMETERS, INCL. ANY TO BE HELD FIXED
+C     FUNC    = OUTPUT, THE FUNCTION VALUE CORRESPONDING TO THE FINAL
+C               PARAMETER VALUES
+C     MAX     = INPUT, THE MAXIMUM NO. OF FUNCTION EVALUATIONS ALLOWED
+C     IPRINT  = INPUT, PRINT CONTROL PARAMETER
+C                     < 0 NO PRINTING
+C                     = 0 PRINTING OF PARAMETER VALUES AND THE FUNCTION
+C                         VALUE AFTER INITIAL EVIDENCE OF CONVERGENCE.
+C                     > 0 AS FOR IPRINT = 0 PLUS PROGRESS REPORTS AFTER
+C                         EVERY IPRINT EVALUATIONS, PLUS PRINTING FOR THE
+C                         INITIAL SIMPLEX.
+C     STOPCR  = INPUT, STOPPING CRITERION
+C     NLOOP   = INPUT, THE STOPPING RULE IS APPLIED AFTER EVERY NLOOP
+C               FUNCTION EVALUATIONS.
+C     IQUAD   = INPUT, = 1 IF THE FITTING OF A QUADRATIC SURFACE IS REQUIRED
+C                      = 0 IF NOT
+C     SIMP    = INPUT, CRITERION FOR EXPANDING THE SIMPLEX TO OVERCOME
+C               ROUNDING ERRORS BEFORE FITTING THE QUADRATIC SURFACE.
+C     VAR()   = OUTPUT, CONTAINS THE DIAGONAL ELEMENTS OF THE INVERSE OF
+C               THE INFORMATION MATRIX.
+C     FUNCTN  = INPUT, NAME OF THE USER'S SUBROUTINE - ARGUMENTS (P,FUNC)
+C               WHICH RETURNS THE FUNCTION VALUE FOR A GIVEN SET OF
+C               PARAMETER VALUES IN ARRAY P.
+C****   FUNCTN MUST BE DECLARED EXTERNAL IN THE CALLING PROGRAM.
+C       IFAULT  = OUTPUT, = 0 FOR SUCCESSFUL TERMINATION
+C                         = 1 IF MAXIMUM NO. OF FUNCTION EVALUATIONS EXCEEDED
+C                         = 2 IF INFORMATION MATRIX IS NOT +VE SEMI-DEFINITE
+C                         = 3 IF NOP < 1
+C                         = 4 IF NLOOP < 1
+C
+C       Advice on usage:
+C       If the function minimized can be expected to be smooth in the vicinity
+C       of the minimum, users are strongly urged to use the quadratic-surface
+C       fitting option.   This is the only satisfactory way of testing that the
+C       minimum has been found.   The value of SIMP should be set to at least
+C       1000 times the rounding error in calculating the fitted function.
+C       e.g. in double precision on a micro- or mini-computer with about 16
+C       decimal digit representation of floating-point numbers, the rounding
+C       errors in calculating the objective function may be of the order of
+C       1.E-12 say in a particular case.   A suitable value for SIMP would then
+C       be 1.E-08.   However, if numerical integration is required in the
+C       calculation of the objective function, it may only be accurate to say
+C       1.E-05 and an appropriate value for SIMP would be about 0.1.
+C       If the fitted quadratic surface is not +ve definite (and the function
+C       should be smooth in the vicinity of the minimum), it probably means
+C       that the search terminated prematurely and you have not found the
+C       minimum.
+C
+C       N.B. P, STEP AND VAR (IF IQUAD = 1) MUST HAVE DIMENSION AT LEAST NOP
+C            IN THE CALLING PROGRAM.
+C       THE DIMENSIONS BELOW ARE FOR A MAXIMUM OF 20 PARAMETERS.
+C      The dimension of BMAT should be at least NOP*(NOP+1)/2.
+C
+C****      N.B. This version is in DOUBLE PRECISION throughout
+C
+C       LATEST REVISION - 11 August 1991
+C
+C*****************************************************************************
+C
+c     --dtn
+c$$$
+c$$$      implicit double precision (a-h, o-z)
+c$$$      external FUNCTN
+c$$$      DIMENSION P(NOP),STEP(NOP),VAR(NOP)
+c$$$      DIMENSION G(21,20),H(21),PBAR(20),PSTAR(20),PSTST(20),AVAL(20),
+c$$$     1  BMAT(210),PMIN(20),VC(210),TEMP(20)
+c$$$      DATA ZERO/0.D0/, ONE/1.D0/, TWO/2.D0/, THREE/3.D0/, HALF/0.5D0/
+c     --dtn
+C
+C     A = REFLECTION COEFFICIENT, B = CONTRACTION COEFFICIENT, AND
+C     C = EXPANSION COEFFICIENT.
+C
+c     --dtn
+      integer*4 i,i1,i2,iflag,imax,imin,j,j1,irow,k,l,ijk,ii,jj,ij
+      integer*4 loop,nap,neval,np1,nullty,irank
+      real*8 fnp1,fnap,hmax,hmean,hmin,hstar,hstd,hstst,savemn,test
+      real*8 a0,rmax,ymin
       integer*4 lout
       real*8 a,b,c
-      real*8 zero,half
-      data zero/0.d0/, half/0.5d0/
-      data a,b,c/1.d0, 0.5d0, 2.d0/
-c
-c     set lout = logical unit no. for output
-c
-      data lout/6/
-      savemn = 0.0d0
-c
-c     if progress reports have been requested, print heading
-c
-      if(iprint.gt.0) write(lout,1000) iprint
- 1000 format(' progress report every',i4,' function evaluations'/,
-     1  ' eval.  func.',15x,'parameter values')
-c
-c     check input arguments
-c
-      ifault=0
-      if(nop.le.0) ifault=3
-      if(nloop.le.0) ifault=4
-      if(ifault.ne.0) return
-c
-c     set nap = no. of parameters to be varied, i.e. with step.ne.0
-c
-      nap=0
-      loop=0
-      iflag=0
-      do 10 i=1,nop
-        if(step(i).ne.zero) nap=nap+1
-   10 continue
-c
-c     if nap = 0 evaluate function at the starting point and return
-c
-      if(nap.gt.0) go to 30
-      func=functn(p,nop)
-      return
-c
-c     set up the initial simplex
-c
- 30   call initsimplex(nop,p,step,g,h,lb,ub,
-     & nap,np1,lout,iprint,neval,functn)
-c
-c     start of main cycle.
-c
-c     find max. & min. values for current simplex (hmax & hmin).
-c
-  100 loop=loop+1
-c
-c     find max. & min. values for current simplex (hmax & hmin).
-c
-      call ordersimplex(np1,h,imax,imin,hmax,hmin)
-c
-c     find the centroid of the vertices other than p(imax)
-c
-      call findcentroid(nap,nop,np1,imax,g,pbar)
-c
-c     reflect maximum through pbar to pstar,
-c     hstar = function value at pstar.
-c
-      do 170 i=1,nop
-  170 pstar(i)=a*(pbar(i)-g(imax,i))+pbar(i)
-      hstar=functn(pstar,nop)
-      neval=neval+1
-      if(iprint.le.0) go to 180
-      if(mod(neval,iprint).eq.0) write(lout,1010) neval,hstar,
-     1  (pstar(j),j=1,nop)
-c
-c     if hstar < hmin, reflect pbar through pstar,
-c     hstst = function value at pstst.
-c
-  180 if(hstar.ge.hmin) go to 220
-      do 190 i=1,nop
-  190 pstst(i)=c*(pstar(i)-pbar(i))+pbar(i)
-      hstst=functn(pstst,nop)
-      neval=neval+1
-      if(iprint.le.0) go to 200
-      if(mod(neval,iprint).eq.0) write(lout,1010) neval,hstst,
-     1  (pstst(j),j=1,nop)
-c
-c     if hstst < hmin replace current maximum point by pstst and
-c     hmax by hstst, then test for convergence.
-c
-  200 if(hstst.ge.hmin) go to 320
-      do 210 i=1,nop
-        if(step(i).ne.zero) g(imax,i)=pstst(i)
-  210 continue
-      h(imax)=hstst
-      go to 340
-c
-c     hstar is not < hmin.
-c     test whether it is < function value at some point other than
-c     p(imax).   if it is replace p(imax) by pstar & hmax by hstar.
-c
-  220 do 230 i=1,np1
-        if(i.eq.imax) go to 230
-        if(hstar.lt.h(i)) go to 320
-  230 continue
-c
-c     hstar > all function values except possibly hmax.
-c     if hstar <= hmax, replace p(imax) by pstar & hmax by hstar.
-c
-      if(hstar.gt.hmax) go to 260
-      do 250 i=1,nop
-        if(step(i).ne.zero) g(imax,i)=pstar(i)
-  250 continue
-      hmax=hstar
-      h(imax)=hstar
-c
-c     contracted step to the point pstst,
-c     hstst = function value at pstst.
-c
-  260 do 270 i=1,nop
-  270 pstst(i)=b*g(imax,i) + (1.d0-b)*pbar(i)
-      hstst=functn(pstst,nop)
-      neval=neval+1
-      if(iprint.le.0) go to 280
-      if(mod(neval,iprint).eq.0) write(lout,1010) neval,hstst,
-     1  (pstst(j),j=1,nop)
-c
-c     if hstst < hmax replace p(imax) by pstst & hmax by hstst.
-c
-  280 if(hstst.gt.hmax) go to 300
-      do 290 i=1,nop
-        if(step(i).ne.zero) g(imax,i)=pstst(i)
-  290 continue
-      h(imax)=hstst
-      go to 340
-c
-c     hstst > hmax.
-c     shrink the simplex by replacing each point, other than the current
-c     minimum, by a point mid-way between its current position and the
-c     minimum.
-c
-  300 do 315 i=1,np1
-        if(i.eq.imin) go to 315
-        do 310 j=1,nop
-          if(step(j).ne.zero) g(i,j)=(g(i,j)+g(imin,j))*half
-          p(j)=g(i,j)
-  310   continue
-       h(i)=functn(p,nop)
-        neval=neval+1
-        if(iprint.le.0) go to 315
-        if(mod(neval,iprint).eq.0) write(lout,1010) neval,h(i),
-     1              (p(j),j=1,nop)
-  315 continue
-      go to 340
-c
-c     replace maximum point by pstar & h(imax) by hstar.
-c
-  320 do 330 i=1,nop
-        if(step(i).ne.zero) g(imax,i)=pstar(i)
-  330 continue
-      h(imax)=hstar
-c
-c     if loop = nloop test for convergence, otherwise repeat main cycle.
-c
-  340 if(loop.lt.nloop) go to 100
-c
-c     calculate mean & standard deviation of function values for the
-c     current simplex.
-c
-      call meanstddev(np1,h,hmean,hstd)
-c
-c     if the rms > stopcr, set iflag & loop to zero and go to the
-c     start of the main cycle again.
-c
-      if(hstd.le.stopcr.or.neval.gt.max) go to 410
-      iflag=0
-      loop=0
-      go to 100
-c
-c     find the centroid of the current simplex and the function value there.
-c
-  410 do 380 i=1,nop
-        if(step(i).eq.zero) go to 380
-        p(i)=zero
-        do 370 j=1,np1
-  370   p(i)=p(i)+g(j,i)
-        fnp1 = np1
-        p(i)=p(i)/fnp1
-  380 continue
-      func=functn(p,nop)
-      neval=neval+1
-      if(iprint.le.0) go to 390
-      if(mod(neval,iprint).eq.0) write(lout,1010) neval,func,
-     1  (p(j),j=1,nop)
-c
-c     test whether the no. of function values allowed, max, has been
-c     overrun; if so, exit with ifault = 1.
-c
-  390 if(neval.le.max) go to 420
-      ifault=1
-      if(iprint.lt.0) return
-      write(lout,1020) max
- 1020 format(' no. of function evaluations exceeds',i5)
-      write(lout,1030) hstd
- 1030 format(' rms of function values of last simplex =',g14.6)
-      write(lout,1040)(p(i),i=1,nop)
- 1040 format(' centroid of last simplex =',4(/1x,6g13.5))
-      write(lout,1050) func
- 1050 format(' function value at centroid =',g14.6)
-      return
-c
-c     convergence criterion satisfied.
-c     if iflag = 0, set iflag & save hmean.
-c     if iflag = 1 & change in hmean <= stopcr then search is complete.
-c
-  420 if(iprint.lt.0) go to 430
-      write(lout,1060)
- 1060 format(/' evidence of convergence')
-      write(lout,1040)(p(i),i=1,nop)
-      write(lout,1050) func
-  430 if(iflag.gt.0) go to 450
-      iflag=1
-  440 savemn=hmean
-      loop=0
-      go to 100
-  450 if(abs(savemn-hmean).ge.stopcr) go to 440
-      if(iprint.lt.0) go to 460
-      write(lout,1070) neval
- 1070 format(//' minimum found after',i5,' function evaluations')
-      write(lout,1080)(p(i),i=1,nop)
- 1080 format(' minimum at',4(/1x,6g13.6))
-      write(lout,1090) func
- 1090 format(' function value at minimum =',g14.6)
-  460 if(iquad.le.0) return
-      call quadsurf(lout,p,step,nop,func,iprint,
-     1     simp,var,functn,ifault,neval,
-     2     g,h,pbar,pstar,pstst,aval,bmat,pmin,vc,temp,max)
- 1010      format(/i4, 2x, g12.5, 2x, 5g12.5, 3(/20x, 5g12.5))
-      return
-      end
-
-c-------------------------------------------------------------------
-c
-c     quadratic surface fitting
-c
-c-------------------------------------------------------------------
-
-      subroutine quadsurf(lout,p,step,nop,func,iprint,
-     1     simp,var,functn,ifault,neval,
-     2     g,h,pbar,pstar,pstst,aval,bmat,pmin,vc,temp,maxeval)
-      implicit none
-      integer*4 lout,nop,iprint,ifault
-      real*8 p(nop),step(nop),func,simp,var(nop)
-      real*8 g(nop+1,nop),h(nop+1),pbar(nop),pstar(nop),
-     1  pstst(nop),aval(nop),bmat(nop*(nop+1)/2),pmin(nop),
-     1  vc(nop*(nop+1)/2),temp(nop),maxeval
-      real*8 functn
-      external functn
-
-c
-c     quadratic surface fitting
-c
-      integer*4 i,i1,i2,ii,ij,ijk,irank,j,j1,jj
-      integer*4 k,l,nap,neval,np1,nullty
-      real*8 a0,hstar,hstst,rmax
-      real*8 test,ymin
-c
-c     a = reflection coefficient, b = contraction coefficient, and
-c     c = expansion coefficient.
-c
-      real*8 zero,one,two,three,half
-      data zero/0.d0/, one/1.d0/, two/2.d0/, three/3.d0/, half/0.5d0/
-
-      nap = nop
-      np1 = nop + 1
-  410 do 380 i=1,nop
-        if(step(i).eq.zero) go to 380
-        p(i)=zero
-        do 370 j=1,np1
-  370   p(i)=p(i)+g(j,i)
-c        fnp1 = np1
-        p(i)=p(i)/np1
-  380 continue
-      func=functn(p,nop)
-      neval=neval+1
-      if ( neval .ge. maxeval ) return
-      if(iprint.ge.0) write(lout,1110)
- 1110 format(/' quadratic surface fitting about supposed minimum'/)
-c
-c     expand the final simplex, if necessary, to overcome rounding
-c     errors.
-c
-c      neval=0
-      do 490 i=1,np1
-  470   test=abs(h(i)-func)
-        if(test.ge.simp) go to 490
-        do 480 j=1,nop
-          if(step(j).ne.zero) g(i,j)=(g(i,j)-p(j))+g(i,j)
-          pstst(j)=g(i,j)
-  480   continue
-        h(i)=functn(pstst,nop)
-        neval=neval+1
-        if ( neval .ge. maxeval ) return
-        go to 470
-  490 continue
-c
-c     function values are calculated at an additional nap points.
-c
-      do 510 i=1,nap
-        i1=i+1
-        do 500 j=1,nop
-  500   pstar(j)=(g(1,j)+g(i1,j))*half
-        aval(i)=functn(pstar,nop)
-        neval=neval+1
-        if ( neval .ge. maxeval ) return
-  510 continue
-c
-c     the matrix of estimated second derivatives is calculated and its
-c     lower triangle stored in bmat.
-c
-      a0=h(1)
-      do 540 i=1,nap
-        i1=i-1
-        i2=i+1
-        if(i1.lt.1) go to 540
-        do 530 j=1,i1
-          j1=j+1
-          do 520 k=1,nop
-  520     pstst(k)=(g(i2,k)+g(j1,k))*half
-          hstst=functn(pstst,nop)
-          neval=neval+1
-          if ( neval .ge. maxeval ) return
-          l=i*(i-1)/2+j
-          bmat(l)=two*(hstst+a0-aval(i)-aval(j))
-  530   continue
-  540 continue
-      l=0
-      do 550 i=1,nap
-        i1=i+1
-        l=l+i
-        bmat(l)=two*(h(i1)+a0-two*aval(i))
-  550 continue
-c
-c     the vector of estimated first derivatives is calculated and
-c     stored in aval.
-c
-      do 560 i=1,nap
-        i1=i+1
-        aval(i)=two*aval(i)-(h(i1)+three*a0)*half
-  560 continue
-c
-c     the matrix q of nelder & mead is calculated and stored in g.
-c
-      do 570 i=1,nop
-  570 pmin(i)=g(1,i)
-      do 580 i=1,nap
-        i1=i+1
-        do 580 j=1,nop
-        g(i1,j)=g(i1,j)-g(1,j)
-  580 continue
-      do 590 i=1,nap
-        i1=i+1
-        do 590 j=1,nop
-          g(i,j)=g(i1,j)
-  590 continue
-c
-c     invert bmat
-c
-      call syminv(bmat,nap,bmat,temp,nullty,ifault,rmax)
-      if(ifault.ne.0) go to 600
-      irank=nap-nullty
-      go to 610
-  600 if(iprint.ge.0) write(lout,1120)
- 1120 format(/' matrix of estimated second derivatives not +ve defn.'/
-     1  ' minimum probably not found'/)
-      ifault=2
-      return
-c
-c     bmat*a/2 is calculated and stored in h.
-c
-  610 do 650 i=1,nap
-        h(i)=zero
-        do 640 j=1,nap
-          if(j.gt.i) go to 620
-          l=i*(i-1)/2+j
-          go to 630
-  620     l=j*(j-1)/2+i
-  630     h(i)=h(i)+bmat(l)*aval(j)
-  640   continue
-  650 continue
-c
-c     find the position, pmin, & value, ymin, of the minimum of the
-c     quadratic.
-c
-      ymin=zero
-      do 660 i=1,nap
-  660 ymin=ymin+h(i)*aval(i)
-      ymin=a0-ymin
-      do 670 i=1,nop
-        pstst(i)=zero
-        do 670 j=1,nap
-  670 pstst(i)=pstst(i)+h(j)*g(j,i)
-      do 680 i=1,nop
-  680 pmin(i)=pmin(i)-pstst(i)
-      if(iprint.lt.0) go to 682
-      write(lout,1130) ymin,(pmin(i),i=1,nop)
- 1130 format(' minimum of quadratic surface =',g14.6,' at',
-     1  4(/1x,6g13.5))
-      write(lout,1150)
- 1150 format(' if this differs by much from the minimum estimated',
-     1  1x,'from the minimization,'/
-     2  ' the minimum may be false &/or the information matrix may be',
-     3  1x,'inaccurate'/)
-c
-c     calculate true function value at the minimum of the quadratic.
+      real*8 zero,half,one,two,three
+      data zero/0.d0/, half/0.5d0/, one/1.d0/, two/2.d0/, three/3.d0/
+c     --dtn
+      DATA A,B,C/1.D0, 0.5D0, 2.D0/
+C
+C     SET LOUT = LOGICAL UNIT NO. FOR OUTPUT
+C
+      DATA LOUT/6/
+C
+C     IF PROGRESS REPORTS HAVE BEEN REQUESTED, PRINT HEADING
+C
+      IF(IPRINT.GT.0) WRITE(LOUT,1000) IPRINT
+ 1000 FORMAT(' PROGRESS REPORT EVERY',I4,' FUNCTION EVALUATIONS'/,
+     1  ' EVAL.  FUNC.',15X,'PARAMETER VALUES')
+C
+C     CHECK INPUT ARGUMENTS
+C
+      IFAULT=0
+      IF(NOP.LE.0) IFAULT=3
+      IF(NLOOP.LE.0) IFAULT=4
+      IF(IFAULT.NE.0) RETURN
+C
+C     SET NAP = NO. OF PARAMETERS TO BE VARIED, I.E. WITH STEP.NE.0
+C
+      NAP=0
+      LOOP=0
+      IFLAG=0
+      DO 10 I=1,NOP
+        IF(STEP(I).NE.ZERO) NAP=NAP+1
+   10 CONTINUE
+C
+C     IF NAP = 0 EVALUATE FUNCTION AT THE STARTING POINT AND RETURN
+C
+      IF(NAP.GT.0) GO TO 30
+c     --dtn
+c$$$      CALL FUNCTN(P,FUNC)
+      CALL FUNCTN(P,NOP,FUNC)
+c     --dtn
+      RETURN
+C
+C     SET UP THE INITIAL SIMPLEX
+C
+   30 DO 40 I=1,NOP
+   40 G(1,I)=P(I)
+      IROW=2
+      DO 60 I=1,NOP
+        IF(STEP(I).EQ.ZERO) GO TO 60
+        DO 50 J=1,NOP
+   50   G(IROW,J)=P(J)
+        G(IROW,I)=P(I)+STEP(I)
+c     --dtn
+        g(irow,i) = dmax1(lb(i),dmin1(g(irow,i),ub(i)))
+c     --dtn
+        IROW=IROW+1
+   60 CONTINUE
+      NP1=NAP+1
+      NEVAL=0
+      DO 90 I=1,NP1
+        DO 70 J=1,NOP
+   70   P(J)=G(I,J)
+c     --dtn
+c$$$        CALL FUNCTN(P,H(I))
+        CALL FUNCTN(P,nop,H(I))
+c     --dtn
+        NEVAL=NEVAL+1
+        IF(IPRINT.LE.0) GO TO 90
+        WRITE(LOUT,1010) NEVAL,H(I),(P(J),J=1,NOP)
+ 1010   FORMAT(/I4, 2X, G12.5, 2X, 5G12.5, 3(/20X, 5G12.5))
+   90 CONTINUE
+C
+C     START OF MAIN CYCLE.
+C
+C     FIND MAX. & MIN. VALUES FOR CURRENT SIMPLEX (HMAX & HMIN).
+C
+  100 LOOP=LOOP+1
+      IMAX=1
+      IMIN=1
+      HMAX=H(1)
+      HMIN=H(1)
+      DO 120 I=2,NP1
+        IF(H(I).LE.HMAX) GO TO 110
+        IMAX=I
+        HMAX=H(I)
+        GO TO 120
+  110   IF(H(I).GE.HMIN) GO TO 120
+        IMIN=I
+        HMIN=H(I)
+  120 CONTINUE
+C
+C     FIND THE CENTROID OF THE VERTICES OTHER THAN P(IMAX)
+C
+      DO 130 I=1,NOP
+  130 PBAR(I)=ZERO
+      DO 150 I=1,NP1
+        IF(I.EQ.IMAX) GO TO 150
+        DO 140 J=1,NOP
+  140   PBAR(J)=PBAR(J)+G(I,J)
+  150 CONTINUE
+      DO 160 J=1,NOP
+      FNAP = NAP
+  160 PBAR(J)=PBAR(J)/FNAP
+C
+C     REFLECT MAXIMUM THROUGH PBAR TO PSTAR,
+C     HSTAR = FUNCTION VALUE AT PSTAR.
+C
+      DO 170 I=1,NOP
+  170 PSTAR(I)=A*(PBAR(I)-G(IMAX,I))+PBAR(I)
+c     --dtn
+c$$$      CALL FUNCTN(PSTAR,HSTAR)
+      CALL FUNCTN(PSTAR,nop,HSTAR)
+c     --dtn
+      NEVAL=NEVAL+1
+      IF(IPRINT.LE.0) GO TO 180
+      IF(MOD(NEVAL,IPRINT).EQ.0) WRITE(LOUT,1010) NEVAL,HSTAR,
+     1  (PSTAR(J),J=1,NOP)
+C
+C     IF HSTAR < HMIN, REFLECT PBAR THROUGH PSTAR,
+C     HSTST = FUNCTION VALUE AT PSTST.
+C
+  180 IF(HSTAR.GE.HMIN) GO TO 220
+      DO 190 I=1,NOP
+  190 PSTST(I)=C*(PSTAR(I)-PBAR(I))+PBAR(I)
+c     --dtn
+c$$$      CALL FUNCTN(PSTST,HSTST)
+      CALL FUNCTN(PSTST,nop,HSTST)
+c     --dtn
+      NEVAL=NEVAL+1
+      IF(IPRINT.LE.0) GO TO 200
+      IF(MOD(NEVAL,IPRINT).EQ.0) WRITE(LOUT,1010) NEVAL,HSTST,
+     1  (PSTST(J),J=1,NOP)
+C
+C     IF HSTST < HMIN REPLACE CURRENT MAXIMUM POINT BY PSTST AND
+C     HMAX BY HSTST, THEN TEST FOR CONVERGENCE.
+C
+  200 IF(HSTST.GE.HMIN) GO TO 320
+      DO 210 I=1,NOP
+        IF(STEP(I).NE.ZERO) G(IMAX,I)=PSTST(I)
+  210 CONTINUE
+      H(IMAX)=HSTST
+      GO TO 340
+C
+C     HSTAR IS NOT < HMIN.
+C     TEST WHETHER IT IS < FUNCTION VALUE AT SOME POINT OTHER THAN
+C     P(IMAX).   IF IT IS REPLACE P(IMAX) BY PSTAR & HMAX BY HSTAR.
+C
+  220 DO 230 I=1,NP1
+        IF(I.EQ.IMAX) GO TO 230
+        IF(HSTAR.LT.H(I)) GO TO 320
+  230 CONTINUE
+C
+C     HSTAR > ALL FUNCTION VALUES EXCEPT POSSIBLY HMAX.
+C     IF HSTAR <= HMAX, REPLACE P(IMAX) BY PSTAR & HMAX BY HSTAR.
+C
+      IF(HSTAR.GT.HMAX) GO TO 260
+      DO 250 I=1,NOP
+        IF(STEP(I).NE.ZERO) G(IMAX,I)=PSTAR(I)
+  250 CONTINUE
+      HMAX=HSTAR
+      H(IMAX)=HSTAR
+C
+C     CONTRACTED STEP TO THE POINT PSTST,
+C     HSTST = FUNCTION VALUE AT PSTST.
+C
+  260 DO 270 I=1,NOP
+  270 PSTST(I)=B*G(IMAX,I) + (1.d0-B)*PBAR(I)
+c     --dtn
+c$$$      CALL FUNCTN(PSTST,HSTST)
+      CALL FUNCTN(PSTST,nop,HSTST)
+c     --dtn
+      NEVAL=NEVAL+1
+      IF(IPRINT.LE.0) GO TO 280
+      IF(MOD(NEVAL,IPRINT).EQ.0) WRITE(LOUT,1010) NEVAL,HSTST,
+     1  (PSTST(J),J=1,NOP)
+C
+C     IF HSTST < HMAX REPLACE P(IMAX) BY PSTST & HMAX BY HSTST.
+C
+  280 IF(HSTST.GT.HMAX) GO TO 300
+      DO 290 I=1,NOP
+        IF(STEP(I).NE.ZERO) G(IMAX,I)=PSTST(I)
+  290 CONTINUE
+      H(IMAX)=HSTST
+      GO TO 340
+C
+C     HSTST > HMAX.
+C     SHRINK THE SIMPLEX BY REPLACING EACH POINT, OTHER THAN THE CURRENT
+C     MINIMUM, BY A POINT MID-WAY BETWEEN ITS CURRENT POSITION AND THE
+C     MINIMUM.
+C
+  300 DO 315 I=1,NP1
+        IF(I.EQ.IMIN) GO TO 315
+        DO 310 J=1,NOP
+          IF(STEP(J).NE.ZERO) G(I,J)=(G(I,J)+G(IMIN,J))*HALF
+          P(J)=G(I,J)
+  310   CONTINUE
+c     --dtn
+c$$$        CALL FUNCTN(P,H(I))
+        CALL FUNCTN(P,nop,H(I))
+c     --dtn
+        NEVAL=NEVAL+1
+        IF(IPRINT.LE.0) GO TO 315
+        IF(MOD(NEVAL,IPRINT).EQ.0) WRITE(LOUT,1010) NEVAL,H(I),
+     1              (P(J),J=1,NOP)
+  315 CONTINUE
+      GO TO 340
+C
+C     REPLACE MAXIMUM POINT BY PSTAR & H(IMAX) BY HSTAR.
+C
+  320 DO 330 I=1,NOP
+        IF(STEP(I).NE.ZERO) G(IMAX,I)=PSTAR(I)
+  330 CONTINUE
+      H(IMAX)=HSTAR
+C
+C     IF LOOP = NLOOP TEST FOR CONVERGENCE, OTHERWISE REPEAT MAIN CYCLE.
+C
+  340 IF(LOOP.LT.NLOOP) GO TO 100
+C
+C     CALCULATE MEAN & STANDARD DEVIATION OF FUNCTION VALUES FOR THE
+C     CURRENT SIMPLEX.
+C
+      HSTD=ZERO
+      HMEAN=ZERO
+      DO 350 I=1,NP1
+  350 HMEAN=HMEAN+H(I)
+      FNP1 = NP1
+      HMEAN=HMEAN/FNP1
+      DO 360 I=1,NP1
+  360 HSTD=HSTD+(H(I)-HMEAN)**2
+      HSTD=SQRT(HSTD/FLOAT(NP1))
+C
+C     IF THE RMS > STOPCR, SET IFLAG & LOOP TO ZERO AND GO TO THE
+C     START OF THE MAIN CYCLE AGAIN.
+C
+      IF(HSTD.LE.STOPCR.OR.NEVAL.GT.MAX) GO TO 410
+      IFLAG=0
+      LOOP=0
+      GO TO 100
+C
+C     FIND THE CENTROID OF THE CURRENT SIMPLEX AND THE FUNCTION VALUE THERE.
+C
+  410 DO 380 I=1,NOP
+        IF(STEP(I).EQ.ZERO) GO TO 380
+        P(I)=ZERO
+        DO 370 J=1,NP1
+  370   P(I)=P(I)+G(J,I)
+        FNP1 = NP1
+        P(I)=P(I)/FNP1
+  380 CONTINUE
+c     --dtn
+c$$$      CALL FUNCTN(P,FUNC)
+      CALL FUNCTN(P,nop,FUNC)
+c     --dtn
+      NEVAL=NEVAL+1
+      IF(IPRINT.LE.0) GO TO 390
+      IF(MOD(NEVAL,IPRINT).EQ.0) WRITE(LOUT,1010) NEVAL,FUNC,
+     1  (P(J),J=1,NOP)
+C
+C     TEST WHETHER THE NO. OF FUNCTION VALUES ALLOWED, MAX, HAS BEEN
+C     OVERRUN; IF SO, EXIT WITH IFAULT = 1.
+C
+  390 IF(NEVAL.LE.MAX) GO TO 420
+      IFAULT=1
+      IF(IPRINT.LT.0) RETURN
+      WRITE(LOUT,1020) MAX
+ 1020 FORMAT(' NO. OF FUNCTION EVALUATIONS EXCEEDS',I5)
+      WRITE(LOUT,1030) HSTD
+ 1030 FORMAT(' RMS OF FUNCTION VALUES OF LAST SIMPLEX =',G14.6)
+      WRITE(LOUT,1040)(P(I),I=1,NOP)
+ 1040 FORMAT(' CENTROID OF LAST SIMPLEX =',4(/1X,6G13.5))
+      WRITE(LOUT,1050) FUNC
+ 1050 FORMAT(' FUNCTION VALUE AT CENTROID =',G14.6)
+      RETURN
+C
+C     CONVERGENCE CRITERION SATISFIED.
+C     IF IFLAG = 0, SET IFLAG & SAVE HMEAN.
+C     IF IFLAG = 1 & CHANGE IN HMEAN <= STOPCR THEN SEARCH IS COMPLETE.
+C
+  420 IF(IPRINT.LT.0) GO TO 430
+      WRITE(LOUT,1060)
+ 1060 FORMAT(/' EVIDENCE OF CONVERGENCE')
+      WRITE(LOUT,1040)(P(I),I=1,NOP)
+      WRITE(LOUT,1050) FUNC
+  430 IF(IFLAG.GT.0) GO TO 450
+      IFLAG=1
+  440 SAVEMN=HMEAN
+      LOOP=0
+      GO TO 100
+  450 IF(ABS(SAVEMN-HMEAN).GE.STOPCR) GO TO 440
+      IF(IPRINT.LT.0) GO TO 460
+      WRITE(LOUT,1070) NEVAL
+ 1070 FORMAT(//' MINIMUM FOUND AFTER',I5,' FUNCTION EVALUATIONS')
+      WRITE(LOUT,1080)(P(I),I=1,NOP)
+ 1080 FORMAT(' MINIMUM AT',4(/1X,6G13.6))
+      WRITE(LOUT,1090) FUNC
+ 1090 FORMAT(' FUNCTION VALUE AT MINIMUM =',G14.6)
+  460 IF(IQUAD.LE.0) RETURN
+C-------------------------------------------------------------------
+C
+C     QUADRATIC SURFACE FITTING
+C
+      IF(IPRINT.GE.0) WRITE(LOUT,1110)
+ 1110 FORMAT(/' QUADRATIC SURFACE FITTING ABOUT SUPPOSED MINIMUM'/)
+C
+C     EXPAND THE FINAL SIMPLEX, IF NECESSARY, TO OVERCOME ROUNDING
+C     ERRORS.
+C
+c     --dtn
+c$$$      NEVAL=0
+c     --dtn
+      DO 490 I=1,NP1
+  470   TEST=ABS(H(I)-FUNC)
+        IF(TEST.GE.SIMP) GO TO 490
+        DO 480 J=1,NOP
+          IF(STEP(J).NE.ZERO) G(I,J)=(G(I,J)-P(J))+G(I,J)
+          PSTST(J)=G(I,J)
+  480   CONTINUE
+c     --dtn
+c$$$        CALL FUNCTN(PSTST,H(I))
+        NEVAL=NEVAL+1
+        CALL FUNCTN(PSTST,nop,H(I))
+        if ( neval .ge. max ) then
+           return
+        endif
+c     --dtn
+        GO TO 470
+  490 CONTINUE
+C
+C     FUNCTION VALUES ARE CALCULATED AT AN ADDITIONAL NAP POINTS.
+C
+      DO 510 I=1,NAP
+        I1=I+1
+        DO 500 J=1,NOP
+  500   PSTAR(J)=(G(1,J)+G(I1,J))*HALF
+c     --dtn
+c$$$        CALL FUNCTN(PSTAR,AVAL(I))
+        NEVAL=NEVAL+1
+        CALL FUNCTN(PSTAR,nop,AVAL(I))
+        if ( neval .ge. max ) then
+           return
+        endif
+c     --dtn
+  510 CONTINUE
+C
+C     THE MATRIX OF ESTIMATED SECOND DERIVATIVES IS CALCULATED AND ITS
+C     LOWER TRIANGLE STORED IN BMAT.
+C
+      A0=H(1)
+      DO 540 I=1,NAP
+        I1=I-1
+        I2=I+1
+        IF(I1.LT.1) GO TO 540
+        DO 530 J=1,I1
+          J1=J+1
+          DO 520 K=1,NOP
+  520     PSTST(K)=(G(I2,K)+G(J1,K))*HALF
+c     --dtn
+c$$$          CALL FUNCTN(PSTST,HSTST)
+          NEVAL=NEVAL+1
+          CALL FUNCTN(PSTST,nop,HSTST)
+        if ( neval .ge. max ) then
+           return
+        endif
+c     --dtn
+          L=I*(I-1)/2+J
+          BMAT(L)=TWO*(HSTST+A0-AVAL(I)-AVAL(J))
+  530   CONTINUE
+  540 CONTINUE
+      L=0
+      DO 550 I=1,NAP
+        I1=I+1
+        L=L+I
+        BMAT(L)=TWO*(H(I1)+A0-TWO*AVAL(I))
+  550 CONTINUE
+C
+C     THE VECTOR OF ESTIMATED FIRST DERIVATIVES IS CALCULATED AND
+C     STORED IN AVAL.
+C
+      DO 560 I=1,NAP
+        I1=I+1
+        AVAL(I)=TWO*AVAL(I)-(H(I1)+THREE*A0)*HALF
+  560 CONTINUE
+C
+C     THE MATRIX Q OF NELDER & MEAD IS CALCULATED AND STORED IN G.
+C
+      DO 570 I=1,NOP
+  570 PMIN(I)=G(1,I)
+      DO 580 I=1,NAP
+        I1=I+1
+        DO 580 J=1,NOP
+        G(I1,J)=G(I1,J)-G(1,J)
+  580 CONTINUE
+      DO 590 I=1,NAP
+        I1=I+1
+        DO 590 J=1,NOP
+          G(I,J)=G(I1,J)
+  590 CONTINUE
+C
+C     INVERT BMAT
+C
+      CALL SYMINV(BMAT,NAP,BMAT,TEMP,NULLTY,IFAULT,RMAX)
+      IF(IFAULT.NE.0) GO TO 600
+      IRANK=NAP-NULLTY
+      GO TO 610
+  600 IF(IPRINT.GE.0) WRITE(LOUT,1120)
+ 1120 FORMAT(/' MATRIX OF ESTIMATED SECOND DERIVATIVES NOT +VE DEFN.'/
+     1  ' MINIMUM PROBABLY NOT FOUND'/)
+      IFAULT=2
+      RETURN
+C
+C     BMAT*A/2 IS CALCULATED AND STORED IN H.
+C
+  610 DO 650 I=1,NAP
+        H(I)=ZERO
+        DO 640 J=1,NAP
+          IF(J.GT.I) GO TO 620
+          L=I*(I-1)/2+J
+          GO TO 630
+  620     L=J*(J-1)/2+I
+  630     H(I)=H(I)+BMAT(L)*AVAL(J)
+  640   CONTINUE
+  650 CONTINUE
+C
+C     FIND THE POSITION, PMIN, & VALUE, YMIN, OF THE MINIMUM OF THE
+C     QUADRATIC.
+C
+      YMIN=ZERO
+      DO 660 I=1,NAP
+  660 YMIN=YMIN+H(I)*AVAL(I)
+      YMIN=A0-YMIN
+      DO 670 I=1,NOP
+        PSTST(I)=ZERO
+        DO 670 J=1,NAP
+  670 PSTST(I)=PSTST(I)+H(J)*G(J,I)
+      DO 680 I=1,NOP
+  680 PMIN(I)=PMIN(I)-PSTST(I)
+      IF(IPRINT.LT.0) GO TO 682
+      WRITE(LOUT,1130) YMIN,(PMIN(I),I=1,NOP)
+ 1130 FORMAT(' MINIMUM OF QUADRATIC SURFACE =',G14.6,' AT',
+     1  4(/1X,6G13.5))
+      WRITE(LOUT,1150)
+ 1150 FORMAT(' IF THIS DIFFERS BY MUCH FROM THE MINIMUM ESTIMATED',
+     1  1X,'FROM THE MINIMIZATION,'/
+     2  ' THE MINIMUM MAY BE FALSE &/OR THE INFORMATION MATRIX MAY BE',
+     3  1X,'INACCURATE'/)
+c
+c     Calculate true function value at the minimum of the quadratic.
 c
   682 neval = neval + 1
-      hstar=functn(pmin,nop)
-      if ( neval .ge. maxeval ) return
+c     --dtn
+c$$$      call functn(pmin, hstar)
+      call functn(pmin,nop, hstar)
+        if ( neval .ge. max ) then
+           return
+        endif
+c     --dtn
 c
-c     if hstar < func, replace search minimum with quadratic minimum.
+c     If HSTAR < FUNC, replace search minimum with quadratic minimum.
 c
       if (hstar .ge. func) go to 690
       func = hstar
       do 684 i = 1, nop
   684 p(i) = pmin(i)
-c      write(lout, 1140) func
- 1140 format(' true func. value at minimum of quadratic = ', g14.6/)
+c     --dtn
+c$$$      write(lout, 1140) func
+c     --dtn
+ 1140 format(' True func. value at minimum of quadratic = ', g14.6/)
+C
+C     Q*BMAT*Q'/2 IS CALCULATED & ITS LOWER TRIANGLE STORED IN VC
+C
+  690 DO 760 I=1,NOP
+        DO 730 J=1,NAP
+          H(J)=ZERO
+          DO 720 K=1,NAP
+            IF(K.GT.J) GO TO 700
+            L=J*(J-1)/2+K
+            GO TO 710
+  700       L=K*(K-1)/2+J
+  710       H(J)=H(J)+BMAT(L)*G(K,I)*HALF
+  720     CONTINUE
+  730   CONTINUE
+        DO 750 J=I,NOP
+          L=J*(J-1)/2+I
+          VC(L)=ZERO
+          DO 740 K=1,NAP
+  740     VC(L)=VC(L)+H(K)*G(K,J)
+  750   CONTINUE
+  760 CONTINUE
+C
+C     THE DIAGONAL ELEMENTS OF VC ARE COPIED INTO VAR.
+C
+      J=0
+      DO 770 I=1,NOP
+        J=J+I
+        VAR(I)=VC(J)
+  770    CONTINUE
+      IF(IPRINT.LT.0) RETURN
+      WRITE(LOUT,1160) IRANK
+ 1160 FORMAT(' RANK OF INFORMATION MATRIX =',I3/
+     1  ' GENERALIZED INVERSE OF INFORMATION MATRIX:-')
+      IJK=1
+      GO TO 880
+  790 CONTINUE
+      WRITE(LOUT,1170)
+ 1170 FORMAT(/' IF THE FUNCTION MINIMIZED WAS -LOG(LIKELIHOOD),'/
+     1  ' THIS IS THE COVARIANCE MATRIX OF THE PARAMETERS'/
+     2  ' IF THE FUNCTION WAS A SUM OF SQUARES OF RESIDUALS'/
+     3  ' THIS MATRIX MUST BE MULTIPLIED BY TWICE THE ESTIMATED',
+c     --dtn
+c     4  1X'RESIDUAL VARIANCE'/' TO OBTAIN THE COVARIANCE MATRIX.'/)
+     4  1X,'RESIDUAL VARIANCE'/' TO OBTAIN THE COVARIANCE MATRIX.'/)
+c     --dtn
+      CALL SYMINV(VC,NAP,BMAT,TEMP,NULLTY,IFAULT,RMAX)
+C
+C     BMAT NOW CONTAINS THE INFORMATION MATRIX
+C
+      WRITE(LOUT,1190)
+ 1190 FORMAT(' INFORMATION MATRIX:-'/)
+      IJK=3
+      GO TO 880
 c
-c     q*bmat*q'/2 is calculated & its lower triangle stored in vc
+c     Calculate correlations of parameter estimates, put into VC.
 c
-  690 do 760 i=1,nop
-        do 730 j=1,nap
-          h(j)=zero
-          do 720 k=1,nap
-            if(k.gt.j) go to 700
-            l=j*(j-1)/2+k
-            go to 710
-  700       l=k*(k-1)/2+j
-  710       h(j)=h(j)+bmat(l)*g(k,i)*half
-  720     continue
-  730   continue
-        do 750 j=i,nop
-          l=j*(j-1)/2+i
-          vc(l)=zero
-          do 740 k=1,nap
-  740     vc(l)=vc(l)+h(k)*g(k,j)
-  750   continue
-  760 continue
+  800 IJK=2
+      II=0
+      IJ=0
+      DO 840 I=1,NOP
+        II=II+I
+        IF(VC(II).GT.ZERO) THEN
+          VC(II)=ONE/SQRT(VC(II))
+        ELSE 
+          VC(II)=ZERO
+	END IF
+        JJ=0
+        DO 830 J=1,I-1
+          JJ=JJ+J
+          IJ=IJ+1
+          VC(IJ)=VC(IJ)*VC(II)*VC(JJ)
+  830   CONTINUE
+        IJ=IJ+1
+  840 CONTINUE
+      WRITE(LOUT,1200)
+ 1200 FORMAT(/' CORRELATION MATRIX:-')
+      II=0
+      DO 850 I=1,NOP
+        II=II+I
+        IF(VC(II).NE.ZERO) VC(II)=ONE
+  850 CONTINUE
+      GO TO 880
+  860 WRITE(LOUT,1210) NEVAL
+ 1210 FORMAT(/' A FURTHER',I4,' FUNCTION EVALUATIONS HAVE BEEN USED'/)
+      RETURN
 c
-c     the diagonal elements of vc are copied into var.
+c     Pseudo-subroutine to print VC if IJK = 1 or 2, or
+c     BMAT if IJK = 3.
 c
-      j=0
-      do 770 i=1,nop
-        j=j+i
-        var(i)=vc(j)
-  770    continue
-      if(iprint.lt.0) return
-      write(lout,1160) irank
- 1160 format(' rank of information matrix =',i3/
-     1  ' generalized inverse of information matrix:-')
-      ijk=1
-      go to 880
-  790 continue
-      write(lout,1170)
- 1170 format(/' if the function minimized was -log(likelihood),'/
-     1  ' this is the covariance matrix of the parameters'/
-     2  ' if the function was a sum of squares of residuals'/
-     3  ' this matrix must be multiplied by twice the estimated',
-     4  1x,'residual variance'/' to obtain the covariance matrix.'/)
-      call syminv(vc,nap,bmat,temp,nullty,ifault,rmax)
+  880 L=1
+  890 IF(L.GT.NOP) GO TO (790,860,800),IJK
+      II=L*(L-1)/2
+      DO 910 I=L,NOP
+        I1=II+L
+        II=II+I
+        I2=MIN(II,I1+5)
+        IF(IJK.EQ.3) GO TO 900
+        WRITE(LOUT,1230)(VC(J),J=I1,I2)
+        GO TO 910
+  900   WRITE(LOUT,1230)(BMAT(J),J=I1,I2)
+  910 CONTINUE
+ 1230 FORMAT(1X,6G13.5)
+      WRITE(LOUT,1240)
+ 1240 FORMAT(/)
+      L=L+6
+      GO TO 890
+      END
+c$$$
+c$$$
+c$$$
+c$$$
+c$$$      SUBROUTINE SYMINV(A,N,C,W,NULLTY,IFAULT,RMAX)
+c$$$C
+c$$$C     ALGORITHM AS7, APPLIED STATISTICS, VOL.17, 1968.
+c$$$C
+c$$$C     ARGUMENTS:-
+c$$$C     A()     = INPUT, THE SYMMETRIC MATRIX TO BE INVERTED, STORED IN
+c$$$C               LOWER TRIANGULAR FORM
+c$$$C     N       = INPUT, ORDER OF THE MATRIX
+c$$$C     C()     = OUTPUT, THE INVERSE OF A (A GENERALIZED INVERSE IF C IS
+c$$$C               SINGULAR), ALSO STORED IN LOWER TRIANGULAR.
+c$$$C               C AND A MAY OCCUPY THE SAME LOCATIONS.
+c$$$C     W()     = WORKSPACE, DIMENSION AT LEAST N.
+c$$$C     NULLTY  = OUTPUT, THE RANK DEFICIENCY OF A.
+c$$$C     IFAULT  = OUTPUT, ERROR INDICATOR
+c$$$C                     = 1 IF N < 1
+c$$$C                     = 2 IF A IS NOT +VE SEMI-DEFINITE
+c$$$C                     = 0 OTHERWISE
+c$$$C     RMAX    = OUTPUT, APPROXIMATE BOUND ON THE ACCURACY OF THE DIAGONAL
+c$$$C               ELEMENTS OF C.  E.G. IF RMAX = 1.E-04 THEN THE DIAGONAL
+c$$$C               ELEMENTS OF C WILL BE ACCURATE TO ABOUT 4 DEC. DIGITS.
+c$$$C
+c$$$C     LATEST REVISION - 18 October 1985
+c$$$C
+c$$$C*************************************************************************
+c$$$C
+c$$$      implicit double precision (a-h, o-z)
+c$$$      DIMENSION A(*),C(*),W(N)
+c$$$      DATA ZERO/0.D0/, ONE/1.D0/
+c$$$C
+c$$$      NROW=N
+c$$$      IFAULT=1
+c$$$      IF(NROW.LE.0) GO TO 100
+c$$$      IFAULT=0
+c$$$C
+c$$$C     CHOLESKY FACTORIZATION OF A, RESULT IN C
+c$$$C
+c$$$      CALL CHOLA(A,NROW,C,NULLTY,IFAULT,RMAX,W)
+c$$$      IF(IFAULT.NE.0) GO TO 100
+c$$$C
+c$$$C     INVERT C & FORM THE PRODUCT (CINV)'*CINV, WHERE CINV IS THE INVERSE
+c$$$C     OF C, ROW BY ROW STARTING WITH THE LAST ROW.
+c$$$C     IROW = THE ROW NUMBER, NDIAG = LOCATION OF LAST ELEMENT IN THE ROW.
+c$$$C
+c$$$      NN=NROW*(NROW+1)/2
+c$$$      IROW=NROW
+c$$$      NDIAG=NN
+c$$$   10 IF(C(NDIAG).EQ.ZERO) GO TO 60
+c$$$      L=NDIAG
+c$$$      DO 20 I=IROW,NROW
+c$$$        W(I)=C(L)
+c$$$        L=L+I
+c$$$   20 CONTINUE
+c$$$      ICOL=NROW
+c$$$      JCOL=NN
+c$$$      MDIAG=NN
+c$$$   30 L=JCOL
+c$$$      X=ZERO
+c$$$      IF(ICOL.EQ.IROW) X=ONE/W(IROW)
+c$$$      K=NROW
+c$$$   40 IF(K.EQ.IROW) GO TO 50
+c$$$      X=X-W(K)*C(L)
+c$$$      K=K-1
+c$$$      L=L-1
+c$$$      IF(L.GT.MDIAG) L=L-K+1
+c$$$      GO TO 40
+c$$$   50 C(L)=X/W(IROW)
+c$$$      IF(ICOL.EQ.IROW) GO TO 80
+c$$$      MDIAG=MDIAG-ICOL
+c$$$      ICOL=ICOL-1
+c$$$      JCOL=JCOL-1
+c$$$      GO TO 30
+c$$$c
+c$$$c     Special case, zero diagonal element.
+c$$$c
+c$$$   60 L=NDIAG
+c$$$      DO 70 J=IROW,NROW
+c$$$        C(L)=ZERO
+c$$$        L=L+J
+c$$$   70 CONTINUE
+c$$$c
+c$$$c      End of row.
+c$$$c
+c$$$   80 NDIAG=NDIAG-IROW
+c$$$      IROW=IROW-1
+c$$$      IF(IROW.NE.0) GO TO 10
+c$$$  100 RETURN
+c$$$      END
+c$$$
+c$$$
+c$$$
+c$$$
+c$$$
+c$$$      SUBROUTINE CHOLA(A, N, U, NULLTY, IFAULT, RMAX, R)
+c$$$C
+c$$$C     ALGORITHM AS6, APPLIED STATISTICS, VOL.17, 1968, WITH
+c$$$C     MODIFICATIONS BY A.J.MILLER
+c$$$C
+c$$$C     ARGUMENTS:-
+c$$$C     A()     = INPUT, A +VE DEFINITE MATRIX STORED IN LOWER-TRIANGULAR
+c$$$C               FORM.
+c$$$C     N       = INPUT, THE ORDER OF A
+c$$$C     U()     = OUTPUT, A LOWER TRIANGULAR MATRIX SUCH THAT U*U' = A.
+c$$$C               A & U MAY OCCUPY THE SAME LOCATIONS.
+c$$$C     NULLTY  = OUTPUT, THE RANK DEFICIENCY OF A.
+c$$$C     IFAULT  = OUTPUT, ERROR INDICATOR
+c$$$C                     = 1 IF N < 1
+c$$$C                     = 2 IF A IS NOT +VE SEMI-DEFINITE
+c$$$C                     = 0 OTHERWISE
+c$$$C     RMAX    = OUTPUT, AN ESTIMATE OF THE RELATIVE ACCURACY OF THE
+c$$$C               DIAGONAL ELEMENTS OF U.
+c$$$C     R()     = OUTPUT, ARRAY CONTAINING BOUNDS ON THE RELATIVE ACCURACY
+c$$$C               OF EACH DIAGONAL ELEMENT OF U.
+c$$$C
+c$$$C     LATEST REVISION - 18 October 1985
+c$$$C
+c$$$C*************************************************************************
+c$$$C
+c$$$      implicit double precision (a-h, o-z)
+c$$$      DIMENSION A(*),U(*),R(N)
+c$$$C
+c$$$C     ETA SHOULD BE SET EQUAL TO THE SMALLEST +VE VALUE SUCH THAT
+c$$$C     1.0 + ETA IS CALCULATED AS BEING GREATER THAN 1.0 IN THE ACCURACY
+c$$$C     BEING USED.
+c$$$C
+c$$$      DATA ETA/1.D-16/, ZERO/0.D0/, FIVE/5.D0/
+c$$$C
+c$$$      IFAULT=1
+c$$$      IF(N.LE.0) GO TO 100
+c$$$      IFAULT=2
+c$$$      NULLTY=0
+c$$$      RMAX=ETA
+c$$$      R(1)=ETA
+c$$$      J=1
+c$$$      K=0
+c$$$C
+c$$$C     FACTORIZE COLUMN BY COLUMN, ICOL = COLUMN NO.
+c$$$C
+c$$$      DO 80 ICOL=1,N
+c$$$        L=0
+c$$$C
+c$$$C     IROW = ROW NUMBER WITHIN COLUMN ICOL
+c$$$C
+c$$$        DO 40 IROW=1,ICOL
+c$$$          K=K+1
+c$$$          W=A(K)
+c$$$          IF(IROW.EQ.ICOL) RSQ=(W*ETA)**2
+c$$$          M=J
+c$$$          DO 10 I=1,IROW
+c$$$            L=L+1
+c$$$            IF(I.EQ.IROW) GO TO 20
+c$$$            W=W-U(L)*U(M)
+c$$$            IF(IROW.EQ.ICOL) RSQ=RSQ+(U(L)**2*R(I))**2
+c$$$            M=M+1
+c$$$   10     CONTINUE
+c$$$   20     IF(IROW.EQ.ICOL) GO TO 50
+c$$$          IF(U(L).EQ.ZERO) GO TO 30
+c$$$          U(K)=W/U(L)
+c$$$          GO TO 40
+c$$$   30     U(K)=ZERO
+c$$$          IF(ABS(W).GT.ABS(RMAX*A(K))) GO TO 100
+c$$$   40   CONTINUE
+c$$$C
+c$$$C     END OF ROW, ESTIMATE RELATIVE ACCURACY OF DIAGONAL ELEMENT.
+c$$$C
+c$$$   50   RSQ=SQRT(RSQ)
+c$$$        IF(ABS(W).LE.FIVE*RSQ) GO TO 60
+c$$$        IF(W.LT.ZERO) GO TO 100
+c$$$        U(K)=SQRT(W)
+c$$$        R(I)=RSQ/W
+c$$$        IF(R(I).GT.RMAX) RMAX=R(I)
+c$$$        GO TO 70
+c$$$   60   U(K)=ZERO
+c$$$        NULLTY=NULLTY+1
+c$$$   70   J=J+ICOL
+c$$$   80 CONTINUE
+c$$$      IFAULT=0
+c$$$C
+c$$$  100 RETURN
+c$$$      END
+c$$$
 c
-c     bmat now contains the information matrix
+c http://lib.stat.cmu.edu/apstat/47
 c
-      write(lout,1190)
- 1190 format(' information matrix:-'/)
-      ijk=3
-      go to 880
-c
-c     calculate correlations of parameter estimates, put into vc.
-c
-  800 ijk=2
-      ii=0
-      ij=0
-      do 840 i=1,nop
-        ii=ii+i
-        if(vc(ii).gt.zero) then
-          vc(ii)=one/sqrt(vc(ii))
-        else 
-          vc(ii)=zero
-	end if
-        jj=0
-        do 830 j=1,i-1
-          jj=jj+j
-          ij=ij+1
-          vc(ij)=vc(ij)*vc(ii)*vc(jj)
-  830   continue
-        ij=ij+1
-  840 continue
-      write(lout,1200)
- 1200 format(/' correlation matrix:-')
-      ii=0
-      do 850 i=1,nop
-        ii=ii+i
-        if(vc(ii).ne.zero) vc(ii)=one
-  850 continue
-      go to 880
-  860 write(lout,1210) neval
- 1210 format(/' a further',i4,' function evaluations have been used'/)
-      return
-c
-c     pseudo-subroutine to print vc if ijk = 1 or 2, or
-c     bmat if ijk = 3.
-c
-  880 l=1
-  890 if(l.gt.nop) go to (790,860,800),ijk
-      ii=l*(l-1)/2
-      do 910 i=l,nop
-        i1=ii+l
-        ii=ii+i
-        i2=min(ii,i1+5)
-        if(ijk.eq.3) go to 900
-        write(lout,1230)(vc(j),j=i1,i2)
-        go to 910
-  900   write(lout,1230)(bmat(j),j=i1,i2)
-  910 continue
- 1230 format(1x,6g13.5)
-      write(lout,1240)
- 1240 format(/)
-      l=l+6
-      go to 890
-      return
-      end
-
-      subroutine findcentroid(nap,nop,np1,imax,g,pbar)
-      implicit none
-      integer nap,nop,np1,imax
-      real*8 g(nop+1,nop),pbar(nop)
-
-      integer*4 i,j
-      real*8 fnap
-      
-      do 130 i=1,nop
-  130 pbar(i)=0.0d0
-      do 150 i=1,np1
-        if(i.eq.imax) go to 150
-        do 140 j=1,nop
-  140   pbar(j)=pbar(j)+g(i,j)
-  150 continue
-      do 160 j=1,nop
-      fnap = nap
-  160 pbar(j)=pbar(j)/fnap
-      return
-      end
-
-      subroutine initsimplex(nop,p,step,g,h,lb,ub,
-     &     nap,np1,lout,iprint,neval,functn)
-      implicit none
-      integer*4 nop,nap,np1,lout,iprint,neval
-      real*8 p(nop),step(nop),g(nop+1,nop),h(nop+1),ub(nop),lb(nop)
-      real*8 functn
-      external functn
-
-      integer*4 i,j,irow
-
-   30 do 40 i=1,nop
-   40 g(1,i)=p(i)
-      irow=2
-      do 60 i=1,nop
-        if(step(i).eq.0.0d0) go to 60
-        do 50 j=1,nop
-   50   g(irow,j)=p(j)
-c        g(irow,i)=p(i)+step(i)
-c dtn
-        g(irow,i) = dmax1(lb(i),dmin1(p(i)+step(i),ub(i)))
-c dtn
-        irow=irow+1
-   60 continue
-      np1=nap+1
-      neval=0
-      do 90 i=1,np1
-        do 70 j=1,nop
- 70        p(j)=g(i,j)
-           h(i)=functn(p,nop)
-           neval=neval+1
-           if(iprint.le.0) go to 90
-           write(lout,1010) neval,h(i),(p(j),j=1,nop)
- 1010      format(/i4, 2x, g12.5, 2x, 5g12.5, 3(/20x, 5g12.5))
- 90   continue
-
-      return
-      end
-
-      subroutine meanstddev(np1,h,hmean,hstd)
-      implicit none
-
-      integer np1
-      real*8 h(np1),hmean,hstd
-
-      integer i
-      real*8 fnp1
-
-      hstd=0.0d0
-      hmean=0.0d0
-      do 350 i=1,np1
-  350 hmean=hmean+h(i)
-      fnp1 = np1
-      hmean=hmean/fnp1
-      do 360 i=1,np1
-  360 hstd=hstd+(h(i)-hmean)**2
-      hstd=sqrt(hstd/fnp1)
-      return
-      end
-
-      subroutine ordersimplex(np1,h,imax,imin,hmax,hmin)
-      implicit none
-      integer*4 np1,imax,imin
-      real*8 h(np1),hmax,hmin
-
-      integer*4 i
-
-      imax=1
-      imin=1
-      hmax=h(1)
-      hmin=h(1)
-      do 120 i=2,np1
-        if(h(i).le.hmax) go to 110
-        imax=i
-        hmax=h(i)
-        go to 120
-  110   if(h(i).ge.hmin) go to 120
-        imin=i
-        hmin=h(i)
-  120 continue
-
-      return
-      end

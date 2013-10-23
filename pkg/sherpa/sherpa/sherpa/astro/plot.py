@@ -1,5 +1,5 @@
 # 
-#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,8 @@ Classes for plotting, analysis of astronomical data sets
 """
 
 from sherpa.astro.data import DataPHA
-from sherpa.plot import *
+from sherpa.plot import DataPlot, ModelPlot, FitPlot, DelchiPlot, ResidPlot, \
+    RatioPlot, ChisqrPlot, ComponentSourcePlot, Histogram, backend
 from sherpa.astro.utils import compile_energy_grid, bounds_check
 from sherpa.utils.err import PlotErr, IOErr
 from sherpa.utils import parse_expr, dataspace1d, histogram1d, filter_bins
@@ -119,8 +120,9 @@ class ModelHistogram(Histogram):
 class SourcePlot(ModelHistogram):
     "Derived class for creating plots of the unconvolved source model"
 
+    histo_prefs = backend.get_model_histo_defaults()
+
     def __init__(self):
-        self.flux = None
         self.units = None
         self.mask  = None
         self.title = 'Source'
@@ -129,7 +131,6 @@ class SourcePlot(ModelHistogram):
     def __str__(self):
         return (('xlo    = %s\n' +
                  'xhi    = %s\n' +
-                 'flux   = %s\n' +
                  'y      = %s\n' +
                  'xlabel = %s\n' +
                  'ylabel = %s\n' +
@@ -138,7 +139,6 @@ class SourcePlot(ModelHistogram):
                  'histo_prefs = %s') %
                 ( self.xlo,
                   self.xhi,
-                  self.flux,
                   self.y,
                   self.xlabel,
                   self.ylabel,
@@ -157,34 +157,90 @@ class SourcePlot(ModelHistogram):
         self.xlabel = data.get_xlabel()
         self.title  = 'Source Model of %s' % data.name
 
-        self.xlo, self.xhi = data.get_indep(filter=False)
+        self.xlo, self.xhi = data._get_indep(filter=False)
 
         self.mask = filter_bins( (lo,), (hi,), (self.xlo,) )
 
         self.y = src(self.xlo, self.xhi)
 
-        self.ylabel = 'Photons/sec/cm^2/keV'
-        if data.units == "wavelength":
-            (self.xlo, self.xhi) = (self.xhi, self.xlo)
-            self.ylabel = 'Photons/sec/cm^2/Angstrom'
+        prefix_quant = 'E'
+        quant = 'keV'
 
-        # calculate photon flux per bin, photons/s/cm2/<quantity>
-        self.flux = self.y / abs(self.xhi - self.xlo)
+        if data.units == "wavelength":
+            prefix_quant = '\\lambda'
+            quant = '\\AA'
+            (self.xlo, self.xhi) = (self.xhi, self.xlo)
+
+        xmid = abs(self.xhi-self.xlo)
+
+        self.xlabel = '%s (%s)' % (data.units.capitalize(), quant)
+        self.ylabel = '%s  Photons/sec/cm^2%s'
+
+        if data.plot_fac == 0:
+            self.y /= xmid
+            self.ylabel = self.ylabel % ('f(%s)' % prefix_quant, '/%s ' % quant)
+
+        elif data.plot_fac == 1:
+            self.ylabel = self.ylabel % ('%s f(%s)' % (prefix_quant, prefix_quant), '')
+
+        elif data.plot_fac == 2:
+            self.y *= xmid
+            self.ylabel = self.ylabel % ('%s^{2} f(%s)' % (prefix_quant, prefix_quant),
+                                         ' %s ' % quant)
+        else:
+            raise PlotErr('plotfac', 'Source', data.plot_fac)
 
 
     def plot(self, overplot=False, clearwindow=True):
         xlo = self.xlo
         xhi = self.xhi
-        flux= self.flux
+        y = self.y
 
         if self.mask is not None:
             xlo = self.xlo[self.mask]
             xhi = self.xhi[self.mask]
-            flux= self.flux[self.mask]
+            y = self.y[self.mask]
 
-        Histogram.plot(self, xlo, xhi, flux, title=self.title,
+
+        Histogram.plot(self, xlo, xhi, y, title=self.title,
                        xlabel=self.xlabel, ylabel=self.ylabel,
                        overplot=overplot, clearwindow=clearwindow)
+
+
+class ComponentModelPlot(ComponentSourcePlot, ModelHistogram):
+
+    histo_prefs = backend.get_component_histo_defaults()
+
+    def __init__(self):
+        ModelHistogram.__init__(self)
+
+    def __str__(self):
+        return ModelHistogram.__str__(self)
+
+    def prepare(self, data, model, stat=None):
+        ModelHistogram.prepare(self, data, model, stat)
+        self.title = 'Model component: %s' % model.name
+
+    def plot(self, overplot=False, clearwindow=True):
+        ModelHistogram.plot(self, overplot, clearwindow)  
+
+
+class ComponentSourcePlot(ComponentSourcePlot, SourcePlot):
+
+    histo_prefs = backend.get_component_histo_defaults()
+
+    def __init__(self):
+        SourcePlot.__init__(self)
+
+    def __str__(self):
+        return SourcePlot.__str__(self)
+
+    def prepare(self, data, model, stat=None):
+        SourcePlot.prepare(self, data, model)
+        self.title = 'Source model component: %s' % model.name
+
+    def plot(self, overplot=False, clearwindow=True):
+        SourcePlot.plot(self, overplot, clearwindow)
 
 
 class ARFPlot(ModelHistogram):
@@ -407,6 +463,7 @@ class FluxHistogram(ModelHistogram):
     "Derived class for creating 1D flux distribution plots"
     def __init__(self):
         self.modelvals=None
+        self.flux=None
         ModelHistogram.__init__(self)
 
     def __str__(self):
@@ -415,13 +472,18 @@ class FluxHistogram(ModelHistogram):
         vals = self.modelvals
         if self.modelvals is not None:
             vals = array2string(asarray(self.modelvals))
+            
+        flux = self.flux
+        if self.flux is not None:
+            flux = array2string(asarray(self.flux))
 
-        return '\n'.join(['modelvals = %s' % vals,
+        return '\n'.join(['modelvals = %s' % vals,'flux = %s' % flux,
                           ModelHistogram.__str__(self)])
 
 
     def prepare(self, fluxes, bins):
         y = asarray(fluxes[:,0])
+        self.flux = y
         self.modelvals = asarray(fluxes[:,1:])
         self.xlo, self.xhi = dataspace1d(y.min(), y.max(), numbins=bins+1)[:2]
         y = histogram1d(y, self.xlo, self.xhi)
@@ -434,8 +496,8 @@ class EnergyFluxHistogram(FluxHistogram):
     def __init__(self):
         FluxHistogram.__init__(self)
         self.title = "Energy flux distribution"
-        self.xlabel = "energy flux [ ergs cm^{-2} sec^{-1} ]"
-        self.ylabel = "frequency"
+        self.xlabel = "Energy flux (ergs cm^{-2} sec^{-1})"
+        self.ylabel = "Frequency"
 
 
 class PhotonFluxHistogram(FluxHistogram):
@@ -444,5 +506,5 @@ class PhotonFluxHistogram(FluxHistogram):
     def __init__(self):
         FluxHistogram.__init__(self)
         self.title = "Photon flux distribution"
-        self.xlabel = "photon flux [ photons cm^{-2} sec^{-1} ]"
-        self.ylabel = "frequency"
+        self.xlabel = "Photon flux (Photons cm^{-2} sec^{-1})"
+        self.ylabel = "Frequency"

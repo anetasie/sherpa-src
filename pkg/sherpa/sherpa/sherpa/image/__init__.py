@@ -23,19 +23,23 @@ from sherpa.utils import NoNewAttributesAfterInit, bool_cast
 
 import logging
 warning = logging.getLogger(__name__).warning
+backend = None
 
 try:
     import ds9_backend as backend
-except:
+
+except Exception, e:
     # if DS9 is not found for some reason, like inside gdb
     # give a useful warning and fall back on dummy_backend of noops
-    warning('failed to import sherpa.image.ds9_backend; ' +
-            'imaging routines will not be available')
+    warning("imaging routines will not be available, \n" +
+            "failed to import sherpa.image.ds9_backend due to \n'%s: %s'" %
+            (type(e).__name__, str(e)))
     import dummy_backend as backend
 
 
 __all__ = ('Image', 'DataImage', 'ModelImage', 'RatioImage',
-           'ResidImage', 'PSFImage', 'PSFKernelImage', 'SourceImage')
+           'ResidImage', 'PSFImage', 'PSFKernelImage', 'SourceImage',
+           'ComponentModelImage', 'ComponentSourceImage')
 
 __metaclass__ = type
 
@@ -53,8 +57,8 @@ class Image(NoNewAttributesAfterInit):
         backend.delete_frames()
     delete_frames = staticmethod(delete_frames)
     
-    def get_region():
-        return backend.get_region()
+    def get_region(coord):
+        return backend.get_region(coord)
     get_region = staticmethod(get_region)
     
     def image(self, array, shape=None, newframe=False, tile=False):
@@ -72,16 +76,16 @@ class Image(NoNewAttributesAfterInit):
     def set_wcs(self, keys):
         backend.wcs( keys )
     
-    def set_region(reg):
-        backend.set_region(reg)
+    def set_region(reg, coord):
+        backend.set_region(reg, coord)
     set_region = staticmethod(set_region)
     
     def xpaget(arg):
         return backend.xpaget(arg)
     xpaget = staticmethod(xpaget)
     
-    def xpaset(arg):
-        return backend.xpaset(arg)
+    def xpaset(arg, data=None):
+        return backend.xpaset(arg, data=None)
     xpaset = staticmethod(xpaset)
 
 class DataImage(Image):
@@ -153,6 +157,17 @@ class SourceImage(ModelImage):
     def __init__(self):
         ModelImage.__init__(self)
         self.name = 'Source'
+
+    def prepare_image(self, data, model):
+        #self.y = data.get_img(model)
+        #self.y = self.y[1]
+
+        self.y = data.eval_model(model)
+        data._check_shape()
+        self.y = self.y.reshape(*data.shape)
+
+        self.eqpos = getattr(data, 'eqpos', None)
+        self.sky = getattr(data, 'sky', None)
 
 
 class RatioImage(Image):
@@ -259,3 +274,18 @@ class PSFKernelImage(DataImage):
         self.y = self.y.reshape( *shape )
         self.eqpos = getattr(psf.kernel, 'eqpos', None)
         self.sky = getattr(psf.kernel, 'sky', None)
+
+
+class ComponentSourceImage(ModelImage):
+
+    def prepare_image(self, data, model):
+        ModelImage.prepare_image(self, data, model)
+        #self.name = "Source component '%s'" % model.name
+        self.name = "Source_component"
+
+class ComponentModelImage(ModelImage):
+
+    def prepare_image(self, data, model):
+        ModelImage.prepare_image(self, data, model)
+        #self.name = "Model component '%s'" % model.name
+        self.name = "Model_component"

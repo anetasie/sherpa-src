@@ -20,11 +20,21 @@
 import numpy
 _ = numpy.seterr(invalid='ignore')
 
-from sherpa.utils import NoNewAttributesAfterInit, print_fields, Knuth_close, is_iterable, list_to_open_interval, mysgn, quad_coef, apache_muller, bisection, demuller, zeroin, OutOfBoundErr
+from sherpa.utils import NoNewAttributesAfterInit, print_fields, Knuth_close, is_iterable, list_to_open_interval, mysgn, quad_coef, apache_muller, bisection, demuller, zeroin, OutOfBoundErr, func_counter
 
 import logging
 import sherpa.estmethods._est_funcs
-import multiprocessing
+from itertools import izip
+
+_multi=False
+_ncpus=1
+try:
+    import multiprocessing
+    _multi=True
+    _ncpus = multiprocessing.cpu_count()
+except:
+    pass
+
 
 __all__ = ('EstNewMin', 'Covariance', 'Confidence',
            'Projection', 'est_success', 'est_failure', 'est_hardmin',
@@ -181,6 +191,7 @@ class Confidence(EstMethod):
     _added_config = {'remin': 0.01,
                      'fast': False,
                      'parallel': True,
+                     'numcores' : _ncpus,
                      'maxfits' : 5,
                      'max_rstat' : 3,
                      'tol' : 0.2,
@@ -220,22 +231,37 @@ class Confidence(EstMethod):
             thaw_par(i)
             return stat
 
+        #
+        # convert stat call back to have the same signature as fit call back
+        #
+        def stat_cb_extra_args( fcn ):
+            def stat_cb_wrapper( x, *args ):
+                return fcn( x )
+            return stat_cb_wrapper
+
+        statcb = stat_cb_extra_args( stat_cb )
+        if 1 == len( pars ):
+            fitcb = statcb
+        else:
+            fitcb = fit_cb
+
         return self._estfunc(pars, parmins, parmaxes, parhardmins,
                              parhardmaxes, self.sigma, self.eps,
                              self.tol, self.maxiters, self.remin,
                              self.verbose, limit_parnums,
-                             stat_cb, fit_cb, report_progress, get_par_name,
-                             self.parallel, self.openinterval)
+                             statcb, fitcb, report_progress, get_par_name,
+                             self.parallel, self.numcores, self.openinterval)
 
 class Projection(EstMethod):
 
     # defined pre-instantiation for pickling
     _added_config = {'remin': 0.01,
-                    'fast': True,
-                    'parallel':True,
-                    'maxfits' : 5,
-                    'max_rstat' : 3,
-                    'tol' : 0.2}
+                     'fast': True,
+                     'parallel':True,
+                     'numcores' : _ncpus,
+                     'maxfits' : 5,
+                     'max_rstat' : 3,
+                     'tol' : 0.2}
 
     def __init__(self, name='projection'):
         EstMethod.__init__(self, name, projection)
@@ -274,7 +300,7 @@ class Projection(EstMethod):
                              self.tol,
                              self.maxiters, self.remin, limit_parnums,
                              stat_cb, fit_cb, report_progress, get_par_name,
-                             self.parallel)
+                             self.parallel, self.numcores)
 
 def covariance(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
                tol, maxiters, remin, limit_parnums, stat_cb, fit_cb,
@@ -324,13 +350,25 @@ def covariance(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
     
     try:
         inv_info = invfunc(info)
+
+    except numpy.linalg.linalg.LinAlgError:
+        # catch the SVD exception and exit gracefully
+        inv_info = numpy.zeros_like(info)
+        inv_info[:] = numpy.nan
+
     except:
         # Compatibility with pre-0.9.8 numpy
         if hasattr(numpy.linalg, 'pinv'):
             invfunc = numpy.linalg.pinv
         else:
             invfunc = numpy.linalg.generalized_inverse
-        inv_info = invfunc(info)
+
+        try:
+            inv_info = invfunc(info)
+        except numpy.linalg.linalg.LinAlgError:
+            # catch the SVD exception and exit gracefully
+            inv_info = numpy.zeros_like(info)
+            inv_info[:] = numpy.nan
     
     diag = (sigma * numpy.sqrt(inv_info)).diagonal()
 
@@ -368,7 +406,7 @@ def covariance(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
 
 def projection(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
                tol, maxiters, remin, limit_parnums, stat_cb, fit_cb,
-               report_progress, get_par_name, do_parallel):
+               report_progress, get_par_name, do_parallel, numcores):
     i = 0                                 # Iterate through parameters
                                           #  to be searched on
     numsearched = len(limit_parnums)      # Number of parameters to be
@@ -428,7 +466,7 @@ def projection(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
         return (singlebounds[0][0], singlebounds[1][0], singlebounds[2][0],
                 singlebounds[3], None)
 
-    if len(limit_parnums) < 2:
+    if len(limit_parnums) < 2 or not _multi or numcores < 2:
         do_parallel = False
 
     if not do_parallel:
@@ -445,7 +483,7 @@ def projection(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
             nfits = nfits + singlebounds[3]
         return (lower_limits, upper_limits, eflags, nfits, None)
 
-    return parallel_est(func, limit_parnums, pars)
+    return parallel_est(func, limit_parnums, pars, numcores)
 
 #################################confidence###################################
 
@@ -874,16 +912,8 @@ def trace_fcn( fcn, bloginfo ):
 
 def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
                tol, maxiters, remin, verbose, limit_parnums, stat_cb,
-               fit_cb, report_progress, get_par_name, do_parallel,
+               fit_cb, report_progress, get_par_name, do_parallel, numcores,
                open_interval):
-
-    def func_counter( func ):
-        '''A function wrapper to count the number of times being called'''
-        nfev = [0]
-        def func_counter_wrapper( x, *args ):
-            nfev[0] += 1
-            return func( x, *args )
-        return nfev, func_counter_wrapper
 
     def get_prefix( index, name, minus_plus ):
         '''To print the prefix/indent when verbose is on'''
@@ -967,7 +997,7 @@ def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
             smax = slimit[ 1 ]
             orig_ith_xpar = xpars[ ith_par ]
             xpars[ ith_par ] = x
-            translated_stat = fcn( xpars, smin, smax, ith_par ) - target_stat
+            translated_stat = fcn( xpars, smin, smax, ith_par ) - myargs.target_stat
             xpars[ ith_par ] = orig_ith_xpar
             return translated_stat
         return translated_fit_cb_wrapper
@@ -986,12 +1016,6 @@ def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
             return fval
         return verbose_fcn
 
-    # make the stat eval function to have the same signature as fit call back
-    def stat_cb_extra_args( fcn ):
-        def stat_cb_wrapper( x, *args ):
-            return fcn( x )
-        return stat_cb_wrapper
-            
     sherpablog = logging.getLogger( 'sherpa' ) # where to print progress report
 
     # Get minimum fit statistic, and calculate target statistic value
@@ -1005,18 +1029,11 @@ def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
     nfits = 0
     results = None
 
-    if 1 == len( pars ):
-        use_stat_cb = True
-    else:
-        use_stat_cb = False
-
-    stat_cb_with_extra_args = stat_cb_extra_args( stat_cb )
-    
     try:
         (lower_scales, upper_scales, error_scales, nfits,
          results) = covariance( pars, parmins, parmaxes, parhardmins,
                                 parhardmaxes, 1.0, eps, tol, maxiters,
-                                remin, limit_parnums, stat_cb_with_extra_args,
+                                remin, limit_parnums, stat_cb,
                                 fit_cb, report_progress )
     except EstNewMin, e:
         raise e
@@ -1042,10 +1059,7 @@ def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
     def func( counter, singleparnum, lock=None ):
 
         # nfev contains the number of times it was fitted
-        if use_stat_cb:
-            nfev, counter_cb = func_counter( stat_cb_with_extra_args )
-        else:
-            nfev, counter_cb = func_counter( fit_cb )
+        nfev, counter_cb = func_counter( fit_cb )
 
         #
         # These are the bounds to be returned by this method
@@ -1121,7 +1135,7 @@ def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
         return ( conf_int[ 0 ][0], conf_int[ 1 ][0], error_flags[0],
                  nfev[0], None )
 
-    if len(limit_parnums) < 2:
+    if len(limit_parnums) < 2 or not _multi or numcores < 2:
         do_parallel = False
 
     if not do_parallel:
@@ -1137,44 +1151,35 @@ def confidence(pars, parmins, parmaxes, parhardmins, parhardmaxes, sigma, eps,
             nfits += nfit
         return (lower_limits, upper_limits, eflags, nfits, None)
 
-    return parallel_est(func, limit_parnums, pars)
+    return parallel_est(func, limit_parnums, pars, numcores)
 
 #################################confidence###################################
 
-def parallel_est(estfunc, limit_parnums, pars):
+def parallel_est(estfunc, limit_parnums, pars, numcores=_ncpus):
 
     tasks = []
-    die = (lambda tasks : [task.terminate() for task in tasks
-                           if task.exitcode is None])
 
-    def worker(out_q, err_q, singleparnum, parvals, i, lock):
-        try:
-            results = estfunc(i, singleparnum, lock)
-        except EstNewMin:
-            # catch the EstNewMin exception and include the exception
-            # class and the modified parameter values to the error queue.
-            # These modified parvals determine the new lower statistic.
-            # The exception class will be instaniated re-raised with the
-            # parameter values attached.  C++ Python exceptions are not
-            # picklable for use in the queue.
-            err_q.put( EstNewMin(parvals) )
-            return
-        except KeyboardInterrupt, e:
+    def worker(out_q, err_q, parids, parnums, parvals, lock):
+        results = []
+        for parid, singleparnum in izip(parids, parnums):
             try:
-                err_q.put( e )
-            except:
-                # swallow the errno warnings from broken pipes when
-                # we kill the child processes on ctrl-C.  The first
-                # child to successfully write to the pipe will invoke
-                # the die() function.
-                pass
-            return
-        except Exception, e:
-            err_q.put( e.__class__() )
-            #err_q.put(e)
-            return
+                result = estfunc(parid, singleparnum, lock)
+                results.append( (parid, result) )
+            except EstNewMin:
+                # catch the EstNewMin exception and include the exception
+                # class and the modified parameter values to the error queue.
+                # These modified parvals determine the new lower statistic.
+                # The exception class will be instaniated re-raised with the
+                # parameter values attached.  C++ Python exceptions are not
+                # picklable for use in the queue.
+                err_q.put( EstNewMin(parvals) )
+                return
+            except Exception, e:
+                err_q.put( e.__class__() )
+                #err_q.put(e)
+                return
 
-        out_q.put((i, results))
+        out_q.put(results)
 
     # The multiprocessing manager provides references to process-safe
     # shared objects like Queue and Lock
@@ -1183,38 +1188,58 @@ def parallel_est(estfunc, limit_parnums, pars):
     err_q = manager.Queue()
     lock  = manager.Lock()
 
+    size = len(limit_parnums)
+    parids = numpy.arange(size)
+
+    # if len(limit_parnums) is less than numcores, only use length number of 
+    # processes
+    if size < numcores:
+        numcores = size  
+
+    # group limit_parnums into numcores-worth of chunks
+    limit_parnums = numpy.array_split(limit_parnums, numcores)
+    parids = numpy.array_split(parids, numcores)
+
     tasks = [multiprocessing.Process(target=worker,
-                args=(out_q, err_q, limit_parnums[i], pars, i, lock))
-             for i in xrange(len(limit_parnums))]
+                       args=(out_q, err_q, parid, parnum, pars, lock))
+             for parid, parnum in izip(parids, limit_parnums)]
 
-    return run_tasks(tasks, out_q, err_q, die)
+    return run_tasks(tasks, out_q, err_q, size)
 
 
-def run_tasks(tasks, out_q, err_q, die):
+def run_tasks(tasks, out_q, err_q, size):
 
-    for task in tasks:
-        task.start()
+    die = (lambda tasks : [task.terminate() for task in tasks
+                           if task.exitcode is None])
 
-    for task in tasks:
-        task.join()
+    try:
+        for task in tasks:
+            task.start()
+
+        for task in tasks:
+            task.join()
+
+    except KeyboardInterrupt, e:
+        # kill all slave processes on ctrl-C
+        die(tasks)
+        raise e
 
     if not err_q.empty():
         die(tasks)
         raise err_q.get()
 
-    size = out_q.qsize()
     lower_limits = size*[None]
     upper_limits = size*[None]
     eflags = size*[None]
     nfits = 0
 
     while not out_q.empty():
-        idx, singlebounds = out_q.get()
-        # Have to guarantee that the tuple returned by projection
-        # is always (array, array, array, int) for this to work.
-        lower_limits[idx] = singlebounds[0]
-        upper_limits[idx] = singlebounds[1]
-        eflags[idx] = singlebounds[2]
-        nfits += singlebounds[3]
+        for parid, singlebounds in out_q.get():
+            # Have to guarantee that the tuple returned by projection
+            # is always (array, array, array, int) for this to work.
+            lower_limits[parid] = singlebounds[0]
+            upper_limits[parid] = singlebounds[1]
+            eflags[parid] = singlebounds[2]
+            nfits += singlebounds[3]
 
     return (lower_limits, upper_limits, eflags, nfits, None)

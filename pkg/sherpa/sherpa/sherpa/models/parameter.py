@@ -215,8 +215,24 @@ class Parameter(NoNewAttributesAfterInit):
                 raise ParameterErr('frozennolink', self.fullname)
             if not isinstance(link, Parameter):
                 raise ParameterErr('notlink')
+
+            # Short cycles produce error
+            # e.g. par = 2*par+3
             if self in link:
-                raise ParameterErr('linkcycle')
+               raise ParameterErr('linkcycle')
+
+            # Correctly test for link cycles in long trees.
+            cycle = False
+            ll = link
+            while isinstance(ll, Parameter):
+                if ll == self or self in ll:
+                    cycle = True
+                ll = ll.link
+
+            # Long cycles are overwritten BUG #12287
+            if cycle and isinstance(link, Parameter):
+                link.link = None
+
         self._link = link
     link = property(_get_link, _set_link)
 
@@ -272,18 +288,18 @@ class Parameter(NoNewAttributesAfterInit):
         else:
             linkstr = str(None)
 
-	return (('val         = %g\n' +
-		 'min         = %g\n' +
-		 'max         = %g\n' +
+	return (('val         = %s\n' +
+		 'min         = %s\n' +
+		 'max         = %s\n' +
 		 'units       = %s\n' +
 		 'frozen      = %s\n' +
                  'link        = %s\n'
-                 'default_val = %g\n' +
-                 'default_min = %g\n' +
-                 'default_max = %g') %
-		(self.val, self.min, self.max, self.units,
-                 self.frozen, linkstr, self.default_val, self.default_min,
-                 self.default_max))
+                 'default_val = %s\n' +
+                 'default_min = %s\n' +
+                 'default_max = %s') %
+		(str(self.val), str(self.min), str(self.max), self.units,
+                 self.frozen, linkstr, str(self.default_val), str(self.default_min),
+                 str(self.default_max)))
 
     # Unary operations
     __neg__ = _make_unop(numpy.negative, '-')

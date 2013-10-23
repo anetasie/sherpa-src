@@ -24,9 +24,173 @@
 #include <sherpa/integration.hh>
 #include <sstream>
 #include <iostream>
+#include <limits>
+
+#define TOL (std::numeric_limits< double >::epsilon());
+
+template <typename ArrayType>
+class FunctionWithParams {
+
+public:
+
+  FunctionWithParams(ArrayType *p, PyObject *f) : params(p), model_func(f) {}
+  
+  ~FunctionWithParams() {}
+
+  ArrayType& get_params() {
+
+    return *( static_cast< ArrayType* >(params) );
+
+  }
+
+  PyObject* get_func() {
+    
+    return static_cast< PyObject* >(model_func);
+
+  }
+  
+
+protected:
+  ArrayType *params;
+  PyObject *model_func;
+  
+};
 
 
 namespace sherpa { namespace models {
+
+  int integrand_1d_cb(double *xptr, int len, void* params) {
+      
+    DoubleArray x;
+    DoubleArray res;
+    npy_intp dims[1];
+    dims[0] = npy_intp(len);
+    
+    if ( EXIT_SUCCESS != x.create(1, dims, xptr) )
+      return EXIT_FAILURE;
+
+    PyObject *rv_obj = NULL;
+    FunctionWithParams<DoubleArray> *funcAndPars = \
+      static_cast< FunctionWithParams<DoubleArray>* >( params );
+    
+    /* call arbitrary user-defined model */
+    rv_obj = PyObject_CallFunction( funcAndPars->get_func(),
+				    (char*)"NN",
+				    funcAndPars->get_params().new_ref(),
+				    x.new_ref() );
+    
+    if ( rv_obj == NULL || rv_obj == Py_None ) {
+      return EXIT_FAILURE;
+    }
+    
+    // convert pyobject into double array obj
+    CONVERTME(DoubleArray)(rv_obj, &res);
+    
+    // fill res pointer
+    for( int ii = 0; ii < len; ii++ )
+      xptr[ii] = res[ii];
+    
+    Py_DECREF( rv_obj );
+    
+    return EXIT_SUCCESS;
+  
+  }
+
+  int py_integrated_1d(const double xlo, const double xhi, double &val,
+		       FunctionWithParams<DoubleArray> *funcAndPars,
+		       int errflag, double epsabs, double epsrel,
+		       unsigned int maxeval, std::ostringstream& err)
+  {
+    double abserr;
+    
+    return py_integrate_1d( (integrand_1d_vec)(integrand_1d_cb),
+			    (void*)funcAndPars, xlo, xhi,
+			    maxeval, epsabs, epsrel, val, abserr, errflag,
+			    err);
+    
+  }
+
+  template <typename ArrayType>
+  PyObject* py_modelfct1d_int( PyObject* self, PyObject* args, PyObject *kwds )
+  {
+
+    ArrayType pars;
+    ArrayType xlo;
+    ArrayType xhi;
+    PyObject* model_func = NULL;
+    PyObject* logger = NULL;
+    int errflag = 0, maxeval = 10000;
+    double epsabs = TOL;
+    double epsrel = 0.0;
+
+    static char *kwlist[] = {(char*)"model", (char*)"pars", (char*)"xlo",
+			     (char*)"xhi", (char*)"errflag", (char*)"epsabs",
+			     (char*)"epsrel", (char*)"maxeval", (char*)"logger",
+			     NULL};
+
+    if ( !PyArg_ParseTupleAndKeywords( args, kwds,
+				       (char*)"OO&O&O&|iddiO:pymodelfct1d_int",
+				       kwlist,
+				       &model_func,
+				       (converter)convert_to_array< ArrayType >,
+				       &pars,
+				       (converter)convert_to_array< ArrayType >,
+				       &xlo,
+				       (converter)convert_to_array< ArrayType >,
+				       &xhi,
+				       &errflag, &epsabs, &epsrel, &maxeval,
+				       &logger) )
+      return NULL;
+
+    npy_intp nelem = xlo.get_size();
+    std::ostringstream err;
+
+    if ( xhi.get_size() != nelem ) {
+      err << "1D integrated model evaluation input array sizes do not match, "
+	  << "xlo: " << nelem << " vs xhi: " << xhi.get_size();
+      PyErr_SetString( PyExc_TypeError, err.str().c_str() );
+      return NULL;
+    }
+
+    ArrayType result;
+    if ( EXIT_SUCCESS != result.create( xlo.get_ndim(), xlo.get_dims() ) )
+      return NULL;
+
+    if ( !PyCallable_Check(model_func) ) {
+      PyErr_SetString( PyExc_ValueError,
+		       (char*)"model object is not callable" );
+      return NULL;
+    }
+    
+    FunctionWithParams<ArrayType> *funcAndPars =		\
+      new FunctionWithParams<ArrayType>(&pars, model_func);
+    
+    for ( npy_intp ii = 0; ii < nelem; ii++ )
+      if ( EXIT_SUCCESS != py_integrated_1d( xlo[ii], xhi[ii],
+					     result[ii], funcAndPars,
+					     errflag, epsabs, epsrel,
+					     (unsigned int)maxeval,
+					     err) ) {
+	PyErr_SetString( PyExc_ValueError,
+			 (char*)"model evaluation failed" );
+	return NULL;
+      }
+
+    delete funcAndPars;
+    
+    
+    if( logger && err.str() != "" ) {
+
+      PyObject *rv = PyObject_CallFunction( logger, (char*)"s",
+					    err.str().c_str() );
+      (void)rv;
+
+    }
+    
+    return result.return_new_ref();
+
+  }
+
 
   template <int (*PtFunc)( const DoubleArray& p, double x, double& val )>
   double integrand_model1d( double x, void* params )
@@ -49,7 +213,7 @@ namespace sherpa { namespace models {
   {
 
     // FIXME: make these user-settable function args!
-    double epsabs = 1.0e-14;
+    double epsabs = TOL;
     double epsrel = 0.0;
     unsigned int maxeval = 10000;
 
@@ -87,7 +251,7 @@ namespace sherpa { namespace models {
   {
 
     // FIXME: make these user-settable function args!
-    double epsabs = 1.0e-14;
+    double epsabs = TOL;
     double epsrel = 0.0;
     unsigned int maxeval = 100000;
 
@@ -280,7 +444,8 @@ init##name(void) \
 // Allow this to be customized on a per-file basis
 
 #define MODSPEC(name, func) \
-  { (char*)#name, (PyCFunction)((PyCFunctionWithKeywords)func), METH_VARARGS|METH_KEYWORDS, NULL }
+  { (char*)#name, (PyCFunction)((PyCFunctionWithKeywords)func), \
+      METH_VARARGS|METH_KEYWORDS, NULL }
 
 #ifndef _MODELFCTPTR
 #define _MODELFCTPTR(name) \
@@ -305,5 +470,12 @@ init##name(void) \
   _MODELFCTSPEC_NOINT(name, modelfct1d, integrated_model1d, npars)
 #define MODELFCT2D_NOINT(name, npars) \
   _MODELFCTSPEC_NOINT(name, modelfct2d, integrated_model2d, npars)
+
+#define MODSPEC_INT(name, func, doc) \
+  { (char*)name, (PyCFunction)((PyCFunctionWithKeywords)func), METH_VARARGS|METH_KEYWORDS, \
+    (char*)doc }
+
+#define PY_MODELFCT1D_INT(name, doc) \
+  MODSPEC_INT(name, sherpa::models::py_modelfct1d_int<SherpaFloatArray>, doc)
 
 #endif /* __sherpa_model_extension_hh__ */

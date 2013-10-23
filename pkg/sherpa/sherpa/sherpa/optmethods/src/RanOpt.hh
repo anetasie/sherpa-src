@@ -57,12 +57,6 @@ namespace sherpa {
       return answer;
     }
 
-    // return a pseudo random number in the [ low, high ] real-interval
-    double random_number( double low, double high ) const {
-      double answer = low + int( (high - low + 1) * random_number( ) );
-      return answer;
-    }
-
     // return a pseudo random number in the ( lo, high ) real-interval
     double random_number_ee( double low, double high ) const { 
       return low + ( high - low ) * random_number_ee( );

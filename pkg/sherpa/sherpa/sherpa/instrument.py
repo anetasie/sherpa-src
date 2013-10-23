@@ -29,20 +29,7 @@ info = logging.getLogger(__name__).info
 
 
 __all__ = ('Kernel', 'PSFKernel', 'RadialProfileKernel', 'PSFModel',
-           'ConvolutionModel', 'psf_fold', 'table_model_fold')
-
-def table_model_fold(tbl_mdls, model, data):
-    if numpy.iterable(data.mask):
-        for tbl in tbl_mdls:
-            tbl.fold(data.mask)
-    return model
-
-# def psf_fold(psf, model, data):
-#     psf.fold(data)
-#     return model
-
-def psf_fold(psf, data):
-    psf.fold(data)
+           'ConvolutionModel')
 
 
 class ConvolutionModel(CompositeModel, ArithmeticModel):
@@ -67,9 +54,9 @@ class ConvolutionModel(CompositeModel, ArithmeticModel):
         self.rhs = self.wrapobj(rhs)
         self.psf = psf
 	CompositeModel.__init__(self,
-                                ('(%s) o (%s)' %
+                                ('%s(%s)' %
                                  (self.psf.name, self.rhs.name)),
-                                (self.lhs, self.rhs))
+                                (self.psf, self.lhs, self.rhs))
 
 
     def calc(self, p, *args, **kwargs):
@@ -99,7 +86,19 @@ class Kernel(NoNewAttributesAfterInit):
         self.do_pad = do_pad
         self.pad_mask = pad_mask
         self.frac = None
+        self._tcd = tcdData()
         NoNewAttributesAfterInit.__init__(self)
+
+
+    def __setstate__(self, state):
+        state['_tcd'] = tcdData()
+        self.__dict__.update(state)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop('_tcd')
+        return state
+
 
     def __repr__(self):
         return "<%s kernel instance>" % type(self).__name__
@@ -126,7 +125,7 @@ class Kernel(NoNewAttributesAfterInit):
 
     def init_kernel(self, kernel):
         if not self.frozen:
-            clear_kernel_fft()
+            self._tcd.clear_kernel_fft()
 
         renorm_shape = []
         for axis in self.dshape:
@@ -135,8 +134,9 @@ class Kernel(NoNewAttributesAfterInit):
 
         kernpad = pad_data( kernel, self.dshape, self.renorm_shape )
 
-        self.renorm = convolve( numpy.ones(len(kernel)), kernpad,
-                                self.dshape, renorm_shape, self.origin)
+        self.renorm = self._tcd.convolve( numpy.ones(len(kernel)), kernpad,
+                                          self.dshape, renorm_shape,
+                                          self.origin)
         self.renorm = unpad_data( self.renorm, renorm_shape, self.dshape )
         return (kernel, self.dshape)
 
@@ -163,7 +163,7 @@ class Kernel(NoNewAttributesAfterInit):
 
 
     def convolve(self, data, dshape, kernel, kshape):
-        return convolve(data, kernel, dshape, kshape, self.origin)
+        return self._tcd.convolve(data, kernel, dshape, kshape, self.origin)
 
 
     def calc(self, pl, pr, lhs, rhs, *args, **kwargs):
@@ -182,14 +182,23 @@ class Kernel(NoNewAttributesAfterInit):
         return self.deinit(vals)
 
 
-class ConvolutionKernel(NoNewAttributesAfterInit):
-
+class ConvolutionKernel(Model):
 
     def __init__(self, kernel, name='conv'):
         self.kernel = kernel
         self.name = name
-        NoNewAttributesAfterInit.__init__(self)
+        self._tcd = tcdData()
+        Model.__init__(self, name)
 
+
+    def __setstate__(self, state):
+        state['_tcd'] = tcdData()
+        self.__dict__.update(state)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop('_tcd')
+        return state
 
     def __repr__(self):
         return "<%s kernel instance>" % type(self).__name__
@@ -216,13 +225,14 @@ class ConvolutionKernel(NoNewAttributesAfterInit):
 
     def calc(self, pl, pr, lhs, rhs, *args, **kwargs):
 
-        clear_kernel_fft()
+        self._tcd.clear_kernel_fft()
 
         data = numpy.asarray(rhs(pr, *args, **kwargs))
         kern = numpy.asarray(lhs(pl, *args, **kwargs))
 
         size = data.size
-        return convolve(data, kern, size, kern.size, int(size/2))[:size]
+        return self._tcd.convolve(data, kern, size, kern.size,
+                                  int(size/2))[:size]
 
 
 class PSFKernel(Kernel):
@@ -271,6 +281,7 @@ class PSFKernel(Kernel):
         # If PSF model, then normalize integrated volume to 1, after
         # kernel extraction
         if self.is_model and self.norm:
+            self.frac = 1.0
             kernel = normalize(kernel)
 
         # Find brightest pixel of PSF--assume that is the origin
@@ -290,10 +301,7 @@ class PSFKernel(Kernel):
         if self.is_model and not self.frozen:
             # if the kernel model has thawed parameters, clear the old FFT and
             # recompute the kernel FFT at each model evaluation
-            clear_kernel_fft()
-
-        if numpy.iterable(kshape) and len(kshape) > 1:
-            kshape = kshape[::-1]
+            self._tcd.clear_kernel_fft()
 
         return (kernel, kshape)
 
@@ -340,7 +348,7 @@ class RadialProfileKernel(PSFKernel):
         if self.radialsize is not None:
             origin = self.origin + (numpy.asarray(dshape)-
                                     numpy.asarray(self.radialsize))
-        return convolve(data, kernel, dshape, kshape, origin)
+        return self._tcd.convolve(data, kernel, dshape, kshape, origin)
 
 
     def calc(self, pl, pr, lhs, rhs, *args, **kwargs):
@@ -398,11 +406,11 @@ def _get_axis_info(axis_list, dims):
         width = xlo[1] - xlo[0]
         return ( (lo,), (hi,), (width,) )
 
-    elif len(dims) == 1 and len(axislist) == 2:
+    elif len(dims) == 1 and len(axis_list) == 2:
         # 1D integrated grid
         #bin_width = data.get_xerr()[0]
         bin_width = axis_list[1] - axis_list[0]
-        return ( (axis_list[0].min(),), (axis_list[1].max(),), bin_width )
+        return ( (axis_list[0].min(),), (axis_list[1].max(),), (bin_width[0],))
 
     elif len(dims) == 2 and len(axis_list) == 2:
         # use the unfiltered data grid to obtain lo, hi, width
@@ -525,8 +533,6 @@ class PSFModel(Model):
         kshape = None
         dshape = data.get_dims()
 
-        clear_kernel_fft()  # very important, do not remove!!
-
         (size, center,
          kargs['norm'], radial) = (self.size, self.center,
                                    bool_cast(self.norm.val),
@@ -541,8 +547,12 @@ class PSFModel(Model):
         if isinstance(self.kernel, Data):
 
             kshape = self.kernel.get_dims()
-            (kargs['lo'], kargs['hi'],
-             kargs['width']) = _get_axis_info(self.kernel.get_indep(), kshape)
+            #(kargs['lo'], kargs['hi'],
+            # kargs['width']) = _get_axis_info(self.kernel.get_indep(), kshape)
+
+            kargs['lo'] = [1]*len(kshape)
+            kargs['hi'] = kshape
+            kargs['width'] = [1]*len(kshape)
 
             if center is None:
                 kargs['center'] = [int(dim/2.) for dim in kshape]
@@ -558,8 +568,12 @@ class PSFModel(Model):
             if (self.kernel is None) or (not callable(self.kernel)):
                 raise PSFErr('nopsf', psf.name)
             kshape = data.get_dims()
-            (kargs['lo'], kargs['hi'],
-             kargs['width']) = _get_axis_info(kargs['args'], dshape)
+            #(kargs['lo'], kargs['hi'],
+            # kargs['width']) = _get_axis_info(kargs['args'], dshape)
+
+            kargs['lo'] = [1]*len(kshape)
+            kargs['hi'] = kshape
+            kargs['width'] = [1]*len(kshape)
 
             if center is None:
                 kargs['center'] = [int(dim/2.) for dim in dshape]
@@ -572,6 +586,11 @@ class PSFModel(Model):
                 self.size = kargs['size']
 
             kargs['is_model']=True
+            if hasattr(self.kernel, 'pars'):
+                # freeze all PSF model parameters if not already.
+                for par in self.kernel.pars:
+                    par.freeze()
+
             if hasattr(self.kernel, 'thawedpars'):
                 kargs['frozen'] = (len(self.kernel.thawedpars) == 0)
 
@@ -615,13 +634,13 @@ class PSFModel(Model):
             kernel = kernel(*self.model.args, **self.model.kwargs)
 
         kshape = self.model.kshape
-        if self.model.is_model and numpy.iterable(kshape) and len(kshape) > 1:
-            kshape = kshape[::-1]
-
         if subkernel:
             (kernel, kshape) = self.model.init_kernel(kernel)
 
         if self.model.frac is not None:
             info('PSF frac: %s' % self.model.frac)
 
-        return (kernel, kshape)
+        if numpy.isscalar(kshape):
+            kshape = [kshape]
+
+        return (kernel, kshape[::-1])

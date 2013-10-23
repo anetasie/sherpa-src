@@ -1,5 +1,5 @@
 # 
-#  Copyright (C) 2009  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
@@ -25,6 +25,7 @@ from itertools import izip
 import logging
 import sys
 import os
+import re
 import numpy
 import sherpa.all
 from sherpa.utils import SherpaFloat, NoNewAttributesAfterInit, export_method
@@ -153,7 +154,6 @@ copy_reg.pickle(numpy.ufunc, reduce_ufunc)
 ###############################################################################
 
 
-
 class ModelWrapper(NoNewAttributesAfterInit):
 
     def __init__(self, session, modeltype):
@@ -174,9 +174,8 @@ class ModelWrapper(NoNewAttributesAfterInit):
 
     def __getattr__(self, name):
         if name.startswith('_'):
-            #raise AttributeErr('attributeerr', type(self).__name__, name)
-            raise AttributeError("'%s\' object has no attribute '%s'",
-                                 type(self).__name__, name)
+            raise AttributeError("'%s\' object has no attribute '%s'" %
+                                 (type(self).__name__, name))
         return self(name)
 
     def __repr__(self):
@@ -229,9 +228,13 @@ class Session(NoNewAttributesAfterInit):
 
     def __setstate__(self, state):
         self._model_globals = numpy.__dict__.copy()
-        self._model_globals.update(state['_model_types'])
-        self.__dict__.update(state)
 
+        self._model_globals.update(state['_model_types'])
+
+        if not state.has_key('_sources'):
+            self.__dict__['_sources'] = state.pop('_models')
+
+        self.__dict__.update(state)
 
     ###########################################################################
     # High-level utilities
@@ -284,6 +287,16 @@ class Session(NoNewAttributesAfterInit):
         self._paramprompt=False
 
         self._methods = {}
+        self._itermethods = {'none': {'name':'none'},
+                             'primini': {'name':'primini',
+                                         'maxiters':10,
+                                         'tol':1.0e-3},
+                             'sigmarej': {'name':'sigmarej',
+                                          'maxiters':5,
+                                          'hrej':3,
+                                          'lrej':3,
+                                          'grow':0}}
+
         self._stats = {}
         self._estmethods = {}
 
@@ -299,6 +312,7 @@ class Session(NoNewAttributesAfterInit):
                     odict[name.lower()] = cls()
 
         self._current_method = self._methods['levmar']
+        self._current_itermethod = self._itermethods['none']
         self._current_stat   = self._stats['chi2gehrels']
         # Add simplex as alias to neldermead
         self._methods['simplex'] = self._methods['neldermead']
@@ -306,10 +320,12 @@ class Session(NoNewAttributesAfterInit):
         self._data = {}
         self._psf = {}
         self._tbl_models = []
+        self._psf_models = []
 
         self._model_autoassign_func = _assign_model_to_main
         self._model_components = {}
         self._models = {}
+        self._sources = {}
 
         self._fit_results = None
 
@@ -321,6 +337,10 @@ class Session(NoNewAttributesAfterInit):
         self._jointplot = sherpa.plot.JointPlot()
         self._dataplot  = sherpa.plot.DataPlot()
         self._modelplot = sherpa.plot.ModelPlot()
+
+        self._compmdlplot = sherpa.plot.ComponentModelPlot()
+        self._compsrcplot = sherpa.plot.ComponentSourcePlot()
+
         self._sourceplot= sherpa.plot.SourcePlot()
         self._fitplot   = sherpa.plot.FitPlot()
         self._residplot = sherpa.plot.ResidPlot()
@@ -354,7 +374,9 @@ class Session(NoNewAttributesAfterInit):
             'delchi': self._delchiplot,
             'chisqr': self._chisqrplot,
             'psf': self._psfplot,
-            'kernel': self._kernelplot
+            'kernel': self._kernelplot,
+            'compsource' : self._compsrcplot,
+            'compmodel' : self._compmdlplot
             }
 
         self._contour_types = {
@@ -375,6 +397,8 @@ class Session(NoNewAttributesAfterInit):
         self._residimage = sherpa.image.ResidImage()
         self._psfimage  = sherpa.image.PSFImage()
         self._kernelimage  = sherpa.image.PSFKernelImage()
+        self._mdlcompimage = sherpa.image.ComponentModelImage()
+        self._srccompimage = sherpa.image.ComponentSourceImage()
 
 
     def save(self, filename='sherpa.save', clobber=False):
@@ -491,23 +515,25 @@ class Session(NoNewAttributesAfterInit):
     def _get_show_model(self, id=None):
         model_str = ''
         ids = self.list_data_ids()
+        mdl_ids = self.list_model_ids()
         if id is not None:
             ids = [self._fix_id(id)]
         for id in ids:
-            if id in self._models.keys():
+            if id in mdl_ids:
                 model_str += 'Model: %s\n' % id
-                model_str += self._get_full_model(id).__str__() + '\n\n'
+                model_str += self._get_model(id).__str__() + '\n\n'
         return model_str
 
     def _get_show_source(self, id=None):
         model_str = ''
         ids = self.list_data_ids()
+        src_ids = self._sources.keys()
         if id is not None:
             ids = [self._fix_id(id)]
         for id in ids:
-            if id in self._models.keys():
+            if id in src_ids:
                 model_str += 'Model: %s\n' % id
-                model_str += self._get_model(id).__str__() + '\n\n'
+                model_str += self._get_source(id).__str__() + '\n\n'
         return model_str
 
 
@@ -532,7 +558,7 @@ class Session(NoNewAttributesAfterInit):
         for id in ids:
             if id in self._psf.keys():
                 psf_str += 'PSF Model: %s\n' % id
-                # Show the PSF dataset or PSF model 
+                # Show the PSF dataset or PSF model
                 psf_str += self.get_psf(id).kernel.__str__() + '\n\n'
         return psf_str
 
@@ -1310,7 +1336,9 @@ class Session(NoNewAttributesAfterInit):
            get_method, get_method_name, set_method, get_method_opt,
            set_method_opt
         """
-        return self._methods.keys()
+        keys = self._methods.keys()[:]
+        keys.sort()
+        return keys
 
     def _get_method_by_name(self, name):
         meth = self._methods.get(name.lower())
@@ -1452,6 +1480,142 @@ class Session(NoNewAttributesAfterInit):
         self._check_method_opt(optname)
         self._current_method.config[optname] = val
 
+    #### Iterative Fitting Methods for CIAO 4.3 testing
+    def get_iter_method_name(self):
+        """
+        get_iter_method_name
+
+        SYNOPSIS
+           Return the name of the current Sherpa iterative fitting method
+
+        SYNTAX
+
+        Arguments:
+
+        Returns:
+           Name of Sherpa iterative fitting method
+           
+        DESCRIPTION
+
+        SEE ALSO
+           list_iter_methods, set_iter_method, get_iter_method_opt,
+           set_iter_method_opt
+        """
+        return self._current_itermethod['name']
+
+    def get_iter_method_opt(self, optname=None):
+        """
+        get_iter_method_opt
+
+        SYNOPSIS
+           Return a Sherpa iterative fitting method option by name
+
+        SYNTAX
+
+        Arguments:
+           name       - option name
+
+        Returns:
+           iterative fitting method option value
+        
+        DESCRIPTION
+
+        SEE ALSO
+           list_iter_methods, get_iter_method_name, set_iter_method,
+           set_iter_method_opt
+        """
+        itermethod_opts = dict(self._current_itermethod)
+        del itermethod_opts['name']
+        
+        if optname is None:
+            return itermethod_opts
+
+        _check_type(optname, basestring, 'optname', 'a string')
+        if optname not in itermethod_opts:
+            raise ArgumentErr('badopt', optname, self._current_itermethod['name'])
+        return itermethod_opts[optname]
+
+    def list_iter_methods(self):
+        """
+        list_iter_methods
+
+        SYNOPSIS
+           List the available iterative fitting methods in Sherpa
+
+        SYNTAX
+
+        Arguments:
+           None
+
+        Returns:
+           list of iterative fitting methods
+
+        DESCRIPTION
+
+        SEE ALSO
+           get_iter_method_name, set_iter_method, get_iter_method_opt,
+           set_iter_method_opt
+        """
+        keys = self._itermethods.keys()[:]
+        keys.sort()
+        return keys
+
+    def set_iter_method(self, meth):
+        """
+        set_iter_method
+
+        SYNOPSIS
+           Set the Sherpa iterative fitting method by name
+
+        SYNTAX
+
+        Arguments:
+           name       - name of iterative method ['none'|'primini'|'sigmarej']
+
+        Returns:
+           None
+
+        DESCRIPTION
+
+        SEE ALSO
+           list_iter_methods, get_iter_method_name, get_iter_method_opt,
+           set_iter_method_opt
+        """
+        if isinstance(meth, basestring):
+            if (self._itermethods.has_key(meth) == True):
+                self._current_itermethod = self._itermethods[meth]
+            else:
+                raise TypeError(meth + ' is not an iterative fitting method')
+        else:
+            _argument_type_error(meth, 'a string')
+
+    def set_iter_method_opt(self, optname, val):
+        """
+        set_iter_method_opt
+
+        SYNOPSIS
+           Set a Sherpa iterative fitting method option by name
+
+        SYNTAX
+
+        Arguments:
+           name       - option name
+           val        - option value
+
+        Returns:
+           None
+
+        DESCRIPTION
+
+        SEE ALSO
+           list_methods, get_method, get_method_name, set_method,
+           get_method_opt
+        """
+        _check_type(optname, basestring, 'optname', 'a string')
+        if (optname not in self._current_itermethod or
+            optname == 'name'):
+            raise ArgumentErr('badopt', optname, self._current_itermethod['name'])
+        self._current_itermethod[optname] = val
 
     ###########################################################################
     # Statistics
@@ -1496,7 +1660,9 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            get_stat, get_stat_name, set_stat
         """
-        return self._stats.keys()
+        keys = self._stats.keys()[:]
+        keys.sort()
+        return keys
 
     def _get_stat_by_name(self, name):
         stat = self._stats.get(name.lower())
@@ -1661,7 +1827,9 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            set_default_id, get_default_id
         """
-        return self._data.keys()
+        keys = self._data.keys()[:]
+        keys.sort()
+        return keys
 
     def get_data(self, id=None):
         """
@@ -1749,7 +1917,7 @@ class Session(NoNewAttributesAfterInit):
            colkeys    - column keys
                         default = None
 
-           sep        - separater character
+           sep        - separator character
                         default = ' '
 
            comment    - comment character
@@ -1797,7 +1965,7 @@ class Session(NoNewAttributesAfterInit):
            colkeys    - column keys
                         default = None
 
-           sep        - separater character
+           sep        - separator character
                         default = ' '
 
            comment    - comment character
@@ -1824,7 +1992,8 @@ class Session(NoNewAttributesAfterInit):
                                                *args, **kwargs))
 
 
-    def load_filter(self, id, filename=None, ncols=2, *args, **kwargs):
+    def load_filter(self, id, filename=None, ignore=False, ncols=2,
+                    *args, **kwargs):
         """
         load_filter
 
@@ -1839,13 +2008,16 @@ class Session(NoNewAttributesAfterInit):
 
            filename   - filename with path
 
+           ignore     - non-zero values ignore instead of notice
+                        default = False
+
            ncols      - number of columns to read from
                         default = 2
 
            colkeys    - column keys
                         default = None
 
-           sep        - separater character
+           sep        - separator character
                         default = ' '
 
            comment    - comment character
@@ -1866,11 +2038,12 @@ class Session(NoNewAttributesAfterInit):
         if filename is None:
             id, filename = filename, id
 
-        self.set_filter(id, self._read_error(filename, ncols=ncols,
-                                             *args, **kwargs))
+        self.set_filter(id,
+            self._read_error(filename, ncols=ncols, *args, **kwargs),
+                        ignore=ignore)
 
 
-    def set_filter(self, id, val=None):
+    def set_filter(self, id, val=None, ignore=False):
         """
         set_filter
 
@@ -1884,6 +2057,9 @@ class Session(NoNewAttributesAfterInit):
                         default = default data id
 
            val        - array of 0s or 1s
+
+           ignore     - non-zero values ignore instead of notice
+                        default = False
 
         Returns:
            None
@@ -1899,10 +2075,26 @@ class Session(NoNewAttributesAfterInit):
         """
         if val is None:
             val, id = id, val
-        #err=None
-        #if numpy.iterable(val):
         filter = numpy.asarray(val, dtype=numpy.bool_)
-        self.get_data(id).mask = filter
+        d = self.get_data(id)
+        if numpy.iterable(d.mask):
+            if len(d.mask) == len(filter):
+                if not ignore:
+                    d.mask |= filter
+                else:
+                    d.mask &= ~filter
+            else:
+                raise sherpa.utils.err.DataErr('mismatch',
+                                               len(d.mask), len(filter))
+        else:
+            if len(d.get_y(False)) == len(filter):
+                if not ignore:
+                    d.mask = filter
+                else:
+                    d.mask = ~filter
+            else:
+                raise sherpa.utils.err.DataErr('mismatch',
+                                               len(d.get_y(False)), len(filter))
 
 
     def set_dep(self, id, val=None):
@@ -1939,7 +2131,7 @@ class Session(NoNewAttributesAfterInit):
         d = self.get_data(id)
         dep=None
         if numpy.iterable(val):
-            dep = numpy.asarray(val)
+            dep = numpy.asarray(val, SherpaFloat)
         else:
             val = SherpaFloat(val)
             dep = numpy.array([val]*len(d.get_indep()[0]))
@@ -1990,8 +2182,8 @@ class Session(NoNewAttributesAfterInit):
         d = self.get_data(id)
         fractional=sherpa.utils.bool_cast(fractional)
         if numpy.iterable(val):
-            err = numpy.asarray(val)
-        else:
+            err = numpy.asarray(val, SherpaFloat)
+        elif val is not None:
             val = SherpaFloat(val)
             if fractional:
                 err = val*d.get_dep()
@@ -2043,8 +2235,8 @@ class Session(NoNewAttributesAfterInit):
         err=None
         fractional=sherpa.utils.bool_cast(fractional)        
         if numpy.iterable(val):
-            err = numpy.asarray(val)
-        else:
+            err = numpy.asarray(val, SherpaFloat)
+        elif val is not None:
             val = SherpaFloat(val)
             if fractional:
                 err = val*d.get_dep()
@@ -2401,6 +2593,10 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            dataspace2d
         """
+        # support non-integrated grids with inclusive boundaries
+        if dstype in (sherpa.data.Data1D,):
+            stop += step
+
         xlo,xhi,y = sherpa.utils.dataspace1d(start, stop, step=step,
                                              numbins=numbins)
         args = [xlo,xhi,y]
@@ -2438,8 +2634,16 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            dataspace1d
         """
-        args = sherpa.utils.dataspace2d(dims)
-        self.set_data(id, dstype('dataspace2d', *args))
+        x0, x1, y, shape = sherpa.utils.dataspace2d(dims)
+
+        dataset = None
+        if issubclass(dstype, sherpa.data.Data2DInt):
+            dataset = dstype('dataspace2d', x0-0.5, x1-0.5, x0+0.5, x1+0.5,
+                             y, shape)
+        else:
+            dataset = dstype('dataspace2d', x0, x1, y, shape)
+
+        self.set_data(id, dataset)
 
 
     def fake(self, id=None, method=sherpa.utils.poisson_noise):
@@ -3448,6 +3652,38 @@ class Session(NoNewAttributesAfterInit):
             self._model_types[name] = ModelWrapper(self, cls)
             self._model_globals.update(self._model_types)
 
+
+    def add_model(self, modelclass):
+        """
+        add_model
+
+        SYNOPSIS
+           Add a user-defined model class as a Sherpa model
+
+        SYNTAX
+
+        Arguments:
+           modelclass     - User-defined model class
+
+        Returns:
+           None
+
+        DESCRIPTION
+
+        SEE ALSO
+           list_models
+        """
+        name = modelclass.__name__.lower()
+
+        if not _is_subclass(modelclass, sherpa.models.ArithmeticModel):
+            raise TypeError("model class '%s' is not a derived class" % name + 
+                            " from sherpa.models.ArithmeticModel")
+
+        self._model_types[name] = ModelWrapper(self, modelclass)
+        self._model_globals.update(self._model_types)
+        _assign_obj_to_main(name, self._model_types[name])
+
+
     #
     # Model components
     #
@@ -3500,7 +3736,7 @@ class Session(NoNewAttributesAfterInit):
             _argument_type_error('func', 'a function or other callable object')
         self._model_autoassign_func = func
 
-    def list_models(self):
+    def list_models(self, show="all"):
         """
         list_models
 
@@ -3510,7 +3746,8 @@ class Session(NoNewAttributesAfterInit):
         SYNTAX
 
         Arguments:
-           None
+           show  -  filter list by keywords "all", "xspec", "1d", and "2d"
+                    default = "all"
 
         Returns:
            list of available model types
@@ -3521,9 +3758,23 @@ class Session(NoNewAttributesAfterInit):
            list_model_components, create_model_component,
            delete_model_component
         """
-        models = self._model_types.keys()[:]
-        models.sort()
-        return models
+        keys = self._model_types.keys()[:]
+        keys.sort()
+
+        show = show.strip().lower()
+        for item in ["arfmodel", "convolutionmodel", "multiresponsesummodel", "pileuprmfmodel",
+                     "jdpileup", "rmfmodel", "tablemodel", "usermodel"]:
+            if item in keys:
+                keys.remove(item)
+
+        if show.startswith("xspec"):
+            return filter(lambda x: x.startswith('xs'), keys)
+        elif show.startswith("1d"):
+            return filter(lambda x: (not x.startswith('xs')) and (not x.endswith("2d")) , keys)
+        elif show.startswith("2d"):
+            return filter(lambda x: x.endswith('2d'), keys)
+
+        return keys
 
     def list_model_components(self):
         """
@@ -3546,7 +3797,9 @@ class Session(NoNewAttributesAfterInit):
            list_models, create_model_component,
            delete_model_component
         """
-        return self._model_components.keys()
+        keys = self._model_components.keys()[:]
+        keys.sort()
+        return keys
 
     def _add_model_component(self, cmpt):
         # If model component name is a model type name
@@ -3582,6 +3835,36 @@ class Session(NoNewAttributesAfterInit):
             userstat = self._get_model_component(statname, True)
 
         return userstat
+
+
+    def get_model_component(self, name):
+        """
+        get_model_component
+
+        SYNOPSIS
+           Access a Sherpa model component by name
+
+        SYNTAX
+
+        Arguments:
+           name       - component label as a string
+
+        Returns:
+           Sherpa model component
+
+        DESCRIPTION
+
+        SEE ALSO
+           list_models, list_model_components,
+           delete_model_component, create_model_component
+        """   
+        # If user mistakenly passes an actual model reference,
+        # just return the reference
+        if isinstance(name, sherpa.models.Model):
+            return name
+
+        _check_type(name, basestring, 'name', 'a string')
+        return self._get_model_component(name, require=True)
 
 
     def create_model_component(self, typename=None, name=None):
@@ -3628,7 +3911,7 @@ class Session(NoNewAttributesAfterInit):
         self._model_components[name] = cls(name)
         #self._add_model_component(cls(name))
 
-    def reset(self, model):
+    def reset(self, model=None, id=None):
         """
         reset
 
@@ -3662,7 +3945,17 @@ class Session(NoNewAttributesAfterInit):
            list_models, list_model_components,
            delete_model_component
         """
-        model.reset()        
+        ids = [id]
+        if id is None:
+            ids = self._sources.keys()
+
+        if model is None:
+            for id in ids:
+                model = self._get_source(id)
+                model.reset()
+        elif model is not None:
+            model.reset()
+
 
     def delete_model_component(self, name):
         """
@@ -3688,9 +3981,10 @@ class Session(NoNewAttributesAfterInit):
         _check_type(name, basestring, 'name', 'a string')
         mod = self._model_components.pop(name, None)
         if mod is not None:
-            for key in self._models.keys():
-                if mod in self._models[key]:
-                    warning("the model component '%s' is found in model %s and cannot be deleted" % (mod.name, str(key)))
+            for key in self.list_model_ids():
+                if mod in self._models[key] or mod in self._sources[key]:
+                    warning("the model component '%s' is found in model %s" %
+                            (mod.name, str(key) + " and cannot be deleted" ))
                     # restore the model component in use and return
                     self._model_components[name]=mod
                     return
@@ -3734,23 +4028,55 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            get_model, set_model, delete_model, get_model_type, get_model_pars
         """
-        return self._models.keys()
+        keys = self._models.keys()[:]
+        keys.extend(self._sources.keys()[:])
+        keys = list(set(keys))
+        keys.sort()
+        return keys
 
     # Return full model for fitting, plotting, etc.  Expects a corresponding
     # data set to be available.
-    #_get_full_model = get_model
+    def _get_model_status(self, id=None):
+        id = self._fix_id(id)
+        src = self._sources.get(id)
+        mdl = self._models.get(id)
 
-    def _get_full_model(self, id=None):
-        data = self.get_data(id)
-        model = self._get_model(id)
+        if src is None and mdl is None:
+            raise IdentifierErr('getitem', 'model', id, 'has not been set')
 
-        tbl_mdls = [tbl for tbl in self._tbl_models if tbl in model]
-        model = sherpa.instrument.table_model_fold(tbl_mdls, model, data)
+        model = mdl
+        is_source = False
 
-        return self._add_psf(id, data, model)
+        if mdl is None and src is not None:
+            is_source = True
+            model = src
+
+        return (model, is_source)
+
+
+    def _add_convolution_models(self, id, data, model, is_source):
+
+        [tbl.fold(data) for tbl in self._tbl_models if tbl in model]
+
+        if is_source:
+            model = self._add_psf(id, data, model)
+        else:
+            [psf.fold(data) for psf in self._psf_models if psf in model]
+
+        return model
+
 
     def _get_model(self, id=None):
-        return self._get_item(id, self._models, 'model', 'has not been set')
+        data = self.get_data(id)
+        model, is_source = self._get_model_status(id)
+        return self._add_convolution_models(id, data, model, is_source)
+
+
+    def _get_source(self, id=None):
+        return self._get_item(id, self._sources, 'source',
+                              'has not been set, consider using set_source()' +
+                              ' or set_model()')
+
 
     def get_source(self, id=None):
         """
@@ -3775,7 +4101,7 @@ class Session(NoNewAttributesAfterInit):
            list_model_ids, set_model, delete_model, get_model_type,
            get_model_pars
         """
-        return self._get_model(id)
+        return self._get_source(id)
 
     def get_model(self, id=None):
         """
@@ -3800,48 +4126,17 @@ class Session(NoNewAttributesAfterInit):
            list_model_ids, set_model, delete_model, get_model_type,
            get_model_pars, get_model
         """
-        return self._get_full_model(id)
+        return self._get_model(id)
 
-    def set_model(self, id, model=None):
-        """
-        set_model
 
-        SYNOPSIS
-           Set a Sherpa model by model id
-
-        SYNTAX
-
-        Arguments:
-           id         - model id
-                        default = default model id
-
-           model      - Sherpa model
-
-        Returns:
-           None
-
-        DESCRIPTION
-           Add a Sherpa model to the list of current active Sherpa model
-           by model id.
-
-        SEE ALSO
-           list_model_ids, get_model, delete_model, get_model_type,
-           get_model_pars        
-        """
-        if model is None:
-            id, model = model, id
-        if isinstance(model, basestring):
-            model = self._eval_model_expression(model)
-        
-
-        self._set_item(id, model, self._models, sherpa.models.Model, 'model',
-                       'a model object or model expression string')
+    def _runparamprompt(self, pars):
 
         # paramprompt
         if self._paramprompt:
-            for par in model.pars:
+            for par in pars:
                 while True:
-                    input = raw_input("%s parameter value [%g] " % (par.fullname, par.val))
+                    input = raw_input("%s parameter value [%g] " %
+                                      (par.fullname, par.val))
                     if input != "":
                         val = min = max = None
                         count = input.count(',')
@@ -3878,8 +4173,8 @@ class Session(NoNewAttributesAfterInit):
                                 info("Please provide a float value; " + str(e))
                                 continue
                         else:
-                            info("Error: Please provide a comma separated list of floats; "+
-                                 "e.g. val,min,max")
+                            info("Error: Please provide a comma separated list"+
+                                 " of floats; e.g. val,min,max")
                             continue
 
                         try:
@@ -3890,6 +4185,90 @@ class Session(NoNewAttributesAfterInit):
                             continue
                     else:
                         break
+
+
+    def set_full_model(self, id, model=None):
+        """
+        set_full_model
+
+        SYNOPSIS
+           Set a convolved Sherpa model by model id
+
+        SYNTAX
+
+        Arguments:
+           id         - model id
+                        default = default model id
+
+           model      - Sherpa model
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Add a Sherpa model to the list of current active Sherpa model
+           by model id.
+
+        SEE ALSO
+           list_model_ids, get_model, delete_model, get_model_type,
+           get_model_pars        
+        """
+        if model is None:
+            id, model = model, id
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._set_item(id, model, self._models, sherpa.models.Model, 'model',
+                       'a model object or model expression string')
+        self._runparamprompt(model.pars)
+
+
+    def set_model(self, id, model=None):
+        """
+        set_model
+
+        SYNOPSIS
+           Set a Sherpa source model by model id
+
+        SYNTAX
+
+        Arguments:
+           id         - model id
+                        default = default model id
+
+           model      - Sherpa model
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Add a Sherpa source model to the list of current active 
+           Sherpa source models by model id.
+
+        SEE ALSO
+           list_model_ids, get_model, delete_model, get_model_type,
+           get_model_pars        
+        """
+        if model is None:
+            id, model = model, id
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._set_item(id, model, self._sources, sherpa.models.Model,
+                       'source model',
+                       'a model object or model expression string')
+
+        self._runparamprompt(model.pars)
+
+        # Delete any previous model set with set_full_model()
+        id = self._fix_id(id)
+        mdl = self._models.pop(id, None)
+        if mdl is not None:
+            warning("Clearing convolved model\n'%s'\nfor dataset %s" % 
+                    (mdl.name, str(id)))
+
+
+    set_source = set_model
 
 
     def delete_model(self, id=None):
@@ -3917,6 +4296,8 @@ class Session(NoNewAttributesAfterInit):
         """
         id = self._fix_id(id)
         self._models.pop(id, None)
+        self._sources.pop(id, None)
+
 
     def _check_model(self, model):
         if isinstance(model, basestring):
@@ -4024,7 +4405,7 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            get_num_par_thawed, get_num_par_frozen
         """
-        return len(self._get_model(id).pars)
+        return len(self._get_source(id).pars)
     
     def get_num_par_thawed(self, id=None):
         """
@@ -4049,7 +4430,7 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            get_num_par, get_num_par_frozen
         """
-        return len(self._get_model(id).thawedpars)
+        return len(self._get_source(id).thawedpars)
 
     def get_num_par_frozen(self, id=None):
         """
@@ -4074,7 +4455,7 @@ class Session(NoNewAttributesAfterInit):
         SEE ALSO
            get_num_par, get_num_par_thawed
         """
-        model = self._get_model(id)
+        model = self._get_source(id)
         return len(model.pars)-len(model.thawedpars)
 
     #
@@ -4083,11 +4464,13 @@ class Session(NoNewAttributesAfterInit):
 
     def _read_user_model(self, filename, ncols=2, colkeys=None,
                          dstype=sherpa.data.Data1D, sep=' ', comment='#'):
+        x = None
         y = None
         try:
             data = self.unpack_data(filename, ncols, colkeys,
                                     dstype, sep, comment)
-            y = data.get_dep()
+            y = data.get_y()
+            x = data.get_x()
         # we have to check for the case of a *single* column in ascii file
         # extract the single array from the read and bypass the dataset
         except TypeError:
@@ -4096,7 +4479,7 @@ class Session(NoNewAttributesAfterInit):
                                            comment=comment)[1].pop()
         except:
             raise
-        return y
+        return (x,y)
 
 
     def load_table_model(self, modelname, filename, ncols=2, colkeys=None,
@@ -4123,7 +4506,7 @@ class Session(NoNewAttributesAfterInit):
            dstype     - Sherpa data class to contain table model data
                         default = sherpa.data.Data1D
         
-           sep        - separater character
+           sep        - separator character
                         default = ' '
 
            comment    - comment character
@@ -4141,9 +4524,10 @@ class Session(NoNewAttributesAfterInit):
            set_model, load_user_model, add_user_pars
         """
         tablemodel = sherpa.models.TableModel(modelname)
-        tablemodel._file = filename
-        tablemodel._y = self._read_user_model(filename, ncols, colkeys,
-                                             dstype, sep, comment)
+        tablemodel.filename = filename
+        x, y = self._read_user_model(filename, ncols, colkeys,
+                                     dstype, sep, comment)
+        tablemodel.load(x,y)
         self._tbl_models.append(tablemodel)
         self._add_model_component(tablemodel)
 
@@ -4175,7 +4559,7 @@ class Session(NoNewAttributesAfterInit):
            dstype     - Sherpa data class to contain table model data
                         default = sherpa.data.Data1D
         
-           sep        - separater character
+           sep        - separator character
                         default = ' '
         
            comment    - comment character
@@ -4201,8 +4585,8 @@ class Session(NoNewAttributesAfterInit):
         usermodel.calc = func
         usermodel._file = filename
         if (filename is not None):
-            usermodel._y = self._read_user_model(filename, ncols, colkeys,
-                                                dstype, sep, comment)
+            x, usermodel._y = self._read_user_model(filename, ncols, colkeys,
+                                                    dstype, sep, comment)
         self._add_model_component(usermodel)
 
     def add_user_pars(self, modelname, parnames,
@@ -4350,7 +4734,7 @@ class Session(NoNewAttributesAfterInit):
 
 
     # Back-compatibility
-    set_source = set_model
+    #set_source = set_model
 
     #
     # Conv
@@ -4362,7 +4746,7 @@ class Session(NoNewAttributesAfterInit):
         load_conv
 
         SYNOPSIS
-           load a file-based or model-based kernel into a convolution model
+           load a file-based or model-based 1D kernel into a 1D convolution model
 
         SYNTAX
 
@@ -4384,6 +4768,9 @@ class Session(NoNewAttributesAfterInit):
            Create a convolution model object with identifier 'modelname' and 
            initializes the convolution kernel to be either a Sherpa dataset
            loaded from file or a Sherpa model.
+
+           NOTE: load_conv() is intended for 1D convolution only.  It uses the
+                 midpoint as the origin.
 
         SEE ALSO
            set_psf, get_psf, delete_psf
@@ -4452,6 +4839,7 @@ class Session(NoNewAttributesAfterInit):
 
         psf = sherpa.instrument.PSFModel(modelname, kernel)
         self._add_model_component(psf)
+        self._psf_models.append(psf)
 
 
     def set_psf(self, id, psf=None):
@@ -4485,17 +4873,15 @@ class Session(NoNewAttributesAfterInit):
         if isinstance(psf, basestring):
             psf = self._eval_model_expression(psf)
 
-        self._set_item(id, psf, self._psf, sherpa.models.Model, 'psf',
+        self._set_item(id, psf, self._psf, sherpa.instrument.PSFModel, 'psf',
                        'a PSF model object or PSF model expression string')
 
         # fold the PSF with data and model if available, if not pass
         try:
             data = self.get_data(id)
-#            model = self._get_model(id)
-#            self._add_psf(id, data, model)
             psf = self._psf.get(id, None)
             if psf is not None:
-                sherpa.instrument.psf_fold(psf, data)
+                psf.fold(data)
 
         except IdentifierErr:
             pass
@@ -4558,7 +4944,7 @@ class Session(NoNewAttributesAfterInit):
 
         if psf is not None:
             model = psf(model)
-            sherpa.instrument.psf_fold(psf, data)
+            psf.fold(data)
         return model
 
 
@@ -4799,12 +5185,12 @@ class Session(NoNewAttributesAfterInit):
             m = sherpa.models.SimulFitModel('simulfit model', models)
 
         f = sherpa.fit.Fit(d, m, self._current_stat, self._current_method,
-                           estmethod)
+                           estmethod, self._current_itermethod)
 
         return f
 
 
-    def _get_fit(self, id, otherids=(), estmethod=None):
+    def _prepare_fit(self, id, otherids=()):
 
         # prep data ids for fitting
         ids = self._get_fit_ids(id, otherids)
@@ -4821,8 +5207,8 @@ class Session(NoNewAttributesAfterInit):
         for i in ids:
             ds = self.get_data(i)
             mod = None
-            if self._models.has_key(i):
-                mod = self._get_full_model(i)
+            if self._models.has_key(i) or self._sources.has_key(i):
+                mod = self._get_model(i)
 
             # The issue with putting a try/catch here is that if an exception
             # is thrown folding a model, it will be swallowed up and the user
@@ -4831,7 +5217,7 @@ class Session(NoNewAttributesAfterInit):
             #
             #
             #try:
-            #    mod = self._get_full_model(i)
+            #    mod = self._get_model(i)
             #except:
             #    mod = None
             if mod is not None:
@@ -4840,8 +5226,15 @@ class Session(NoNewAttributesAfterInit):
                 fit_to_ids.append(i)
 
         # If no data sets have models assigned to them, stop now.
-        if len(fit_to_ids) < 1:
-            raise IdentifierErr("nodatasets")
+        if len(models) < 1:
+            raise IdentifierErr("nomodels")
+        
+        return fit_to_ids, datasets, models
+
+
+    def _get_fit(self, id, otherids=(), estmethod=None):
+        
+        fit_to_ids, datasets, models = self._prepare_fit(id, otherids)
 
         self._add_extra_data_and_models(fit_to_ids, datasets, models)
 
@@ -4850,6 +5243,120 @@ class Session(NoNewAttributesAfterInit):
         fit_to_ids = tuple(fit_to_ids)
 
         return fit_to_ids, f
+
+
+    def _get_stat_info(self):
+        
+        ids, datasets, models = self._prepare_fit(None)
+
+        self._add_extra_data_and_models(ids, datasets, models)
+
+        output = []
+        if len(datasets) > 1:
+            for id, d, m in izip(ids, datasets, models):
+                f = sherpa.fit.Fit(d, m, self._current_stat)
+
+                statinfo = f.calc_stat_info()
+                statinfo.name = 'Dataset %s' % (str(id))
+                statinfo.ids = (id,)
+                if d.staterror is not None:
+                    statinfo.statname = 'chi2'
+                output.append(statinfo)
+
+        f = self._get_fit_obj(datasets, models, None)
+        statinfo = f.calc_stat_info()
+        if len(ids) == 1:
+            statinfo.name = 'Dataset %s' % str(ids)
+            isSimulFit = isinstance(f.data, sherpa.data.DataSimulFit)
+            if ((isSimulFit and f.data.datasets[0].staterror is not None) or
+                (not isSimulFit and f.data.staterror is not None)):
+                statinfo.statname = 'chi2'
+        else:
+            statinfo.name = 'Datasets %s' % str(ids).strip("()")
+        statinfo.ids = ids
+        output.append(statinfo)
+
+        return output
+
+
+    def calc_stat_info(self):
+        """
+        calc_stat_info
+
+        SYNOPSIS
+           Shows calculated information of the goodness-of-fit
+
+        SYNTAX
+
+        Arguments:
+           None
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Shows calculated results of the current goodness-of-fit by data id.
+
+           Example 1:
+
+              calc_stat_info()
+              Dataset               = Sherpa data id
+              Statistic             = Fit statistic
+              Fit statistic value   = Fit statistic value
+              Data points           = Number of data points
+              Degrees of freedom    = (number of points - number of thawed
+                                       parameters)
+              Probability [Q-value] = Null hypothesis probability
+              Reduced statistic     = Reduced statistic value (statval/dof)
+
+        SEE ALSO
+           get_stat_info
+        """
+        output = self._get_stat_info()
+        output = [statinfo.format() for statinfo in output]
+
+        if len(output) > 1:
+            info('\n\n'.join(output))
+        else:
+            info(output[0])
+
+
+    def get_stat_info(self):
+        """
+        calc_stat_info
+
+        SYNOPSIS
+           Access calculated information of the goodness-of-fit
+
+        SYNTAX
+
+        Arguments:
+           None
+
+        Returns:
+           List of StatInfoResults objects
+
+        DESCRIPTION
+           Return a list of calculated results of the current goodness-of-fit
+           by data id.
+
+           Example 1:
+
+              print get_stat_info()[0]
+              name      = Sherpa dataset label
+              ids       = Sherpa dataset ids
+              bkg_ids   = Sherpa background dataset ids
+              statname  = Fit statistic
+              statval   = Fit statistic value
+              numpoints = Number of data points
+              dof       = (numpoints - number of thawed parameters)
+              qval      = Null hypothesis probability
+              rstat     = Reduced statistic value (statval/dof)
+
+        SEE ALSO
+           calc_stat_info
+        """
+        return self._get_stat_info()
 
 
     def get_fit_results(self):
@@ -4958,7 +5465,7 @@ class Session(NoNewAttributesAfterInit):
         except NotImplementedError:
             #raise NotImplementedError('No guess found for model %s' %
             info('WARNING: No guess found for %s' %
-                 self._get_full_model(id).name)
+                 self._get_model(id).name)
 
 
     def calc_stat(self, id=None, *otherids):
@@ -5950,6 +6457,123 @@ class Session(NoNewAttributesAfterInit):
         """
         self._prepare_plotobj(id, self._sourceplot)
         return self._sourceplot
+
+
+    def get_model_component_plot(self, id, model=None):
+        """
+        get_model_component_plot
+
+        SYNOPSIS
+           Return a Sherpa model component plot
+
+        SYNTAX
+
+        Arguments:
+           id        - Sherpa data id
+                       default = default data id
+
+           model     - Sherpa model component
+
+        Returns:
+           Sherpa ComponentModelPlot object
+
+        DESCRIPTION
+           The Sherpa model component plot object holds references to 
+           various plot preferences and data arrays.
+
+           Attributes:
+              title        - title of plot, read-only
+
+              xlabel       - x axis label, read-only
+
+              ylabel       - y axis label, read-only
+
+              x            - independent variable array
+
+              y            - dependent variable array
+
+              yerr         - dependent variable uncertainties array
+
+              xerr         - bin size array
+
+           Functions:
+
+              prepare()
+                 calculate the source and populate the data arrays
+
+              plot( overplot=False, clearwindow=True )
+                 send data arrays to plotter for visualization
+
+        SEE ALSO
+           plot_model_component, plot_source_component
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._prepare_plotobj(id, self._compmdlplot, model=model)
+        return self._compmdlplot
+
+
+    def get_source_component_plot(self, id, model=None):
+        """
+        get_source_component_plot
+
+        SYNOPSIS
+           Return a Sherpa source model component plot
+
+        SYNTAX
+
+        Arguments:
+           id        - Sherpa data id
+                       default = default data id
+
+           model     - Sherpa source model component
+
+        Returns:
+           Sherpa ComponentSourcePlot object
+
+        DESCRIPTION
+           The Sherpa source model component plot object holds references to 
+           various plot preferences and data arrays.
+
+           Attributes:
+              title        - title of plot, read-only
+
+              xlabel       - x axis label, read-only
+
+              ylabel       - y axis label, read-only
+
+              x            - independent variable array
+
+              y            - dependent variable array
+
+              yerr         - dependent variable uncertainties array
+
+              xerr         - bin size array
+
+           Functions:
+
+              prepare()
+                 calculate the source and populate the data arrays
+
+              plot( overplot=False, clearwindow=True )
+                 send data arrays to plotter for visualization
+
+        SEE ALSO
+           plot_model_component, plot_source_component
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._prepare_plotobj(id, self._compsrcplot, model=model)
+        return self._compsrcplot
+
 
     def get_model_plot_prefs(self):
         """
@@ -6950,7 +7574,7 @@ class Session(NoNewAttributesAfterInit):
     # Line plots
     #
 
-    def _prepare_plotobj(self, id, plotobj):
+    def _prepare_plotobj(self, id, plotobj, model=None):
         id = self._fix_id(id)
         if isinstance(plotobj, sherpa.plot.FitPlot):
             plotobj.prepare(self._prepare_plotobj(id, self._dataplot),
@@ -6967,16 +7591,19 @@ class Session(NoNewAttributesAfterInit):
             elif(isinstance(plotobj, sherpa.plot.DataPlot) or
                  isinstance(plotobj, sherpa.plot.DataContour)):
                 plotobj.prepare(self.get_data(id), self.get_stat())
+            elif(isinstance(plotobj, sherpa.plot.ComponentModelPlot) or 
+                 isinstance(plotobj, sherpa.plot.ComponentSourcePlot)):
+                plotobj.prepare(self.get_data(id), model, self.get_stat())
             elif(isinstance(plotobj, sherpa.plot.SourcePlot) or
                  isinstance(plotobj, sherpa.plot.SourceContour)):
-                plotobj.prepare(self.get_data(id), self._get_model(id),
+                plotobj.prepare(self.get_data(id), self._get_source(id),
                                 self.get_stat())
             else:
                 # Using _get_fit becomes very complicated using simulfit
                 # models and datasets
                 #
                 #ids, f = self._get_fit(id)
-                plotobj.prepare(self.get_data(id), self._get_full_model(id),
+                plotobj.prepare(self.get_data(id), self.get_model(id),
                                 self.get_stat())
 
         return plotobj
@@ -7062,6 +7689,39 @@ class Session(NoNewAttributesAfterInit):
             raise
         else:
             sherpa.plot.end()
+
+
+    def _set_plot_item(self, plottype, item, value):
+        keys = self._plot_types.keys()[:]
+
+        if plottype.strip().lower() != "all":
+            if plottype not in keys:
+                raise sherpa.utils.err.PlotErr('wrongtype', plottype, str(keys))
+            keys = [plottype]
+
+        for key in keys:
+            plot = self._plot_types[key]
+            if _is_subclass(plot.__class__, sherpa.plot.Plot):
+                plot.plot_prefs[item] = value
+            elif _is_subclass(plot.__class__, sherpa.plot.Histogram):
+                plot.histo_prefs[item] = value
+
+
+    def set_xlog(self, plottype="all"):
+        self._set_plot_item(plottype, 'xlog', True)
+
+
+    def set_ylog(self, plottype="all"):
+        self._set_plot_item(plottype, 'ylog', True)
+
+
+    def set_xlinear(self, plottype="all"):
+        self._set_plot_item(plottype, 'xlog', False)
+
+
+    def set_ylinear(self, plottype="all"):
+        self._set_plot_item(plottype, 'ylog', False)
+
 
     def plot(self, *args):
         """
@@ -7167,6 +7827,92 @@ class Session(NoNewAttributesAfterInit):
            get_model_plot, plot_data, plot_fit, plot_fit_resid, plot_fit_delchi
         """
         self._plot(id, self._modelplot, **kwargs)
+
+
+    def plot_source_component(self, id, model=None, **kwargs):
+        """
+        plot_source_component
+
+        SYNOPSIS
+           Send a source model component plot to the visualizer
+
+        SYNTAX
+
+        Arguments:
+           id          - Sherpa data id
+                         default = default data id
+
+           model       - Sherpa model component or expression string
+
+           replot      - Send cached data arrays to visualizer
+                         default = False
+
+           overplot    - Plot data without clearing previous plot
+                         default = False
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Visualize a source model component by Sherpa data id.
+
+        SEE ALSO
+           get_model_component_plot, plot_model_component, plot_data,
+           plot_fit, plot_fit_resid, plot_fit_delchi
+        """
+
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._plot(id, self._compsrcplot, model, **kwargs)
+
+
+    def plot_model_component(self, id, model=None, **kwargs):
+        """
+        plot_model_component
+
+        SYNOPSIS
+           Send a model component plot to the visualizer
+
+        SYNTAX
+
+        Arguments:
+           id          - Sherpa data id
+                         default = default data id
+
+           model       - Sherpa model component or expression string
+
+           replot      - Send cached data arrays to visualizer
+                         default = False
+
+           overplot    - Plot data without clearing previous plot
+                         default = False
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Visualize a model component by Sherpa data id.
+
+        SEE ALSO
+           get_model_component_plot, plot_source_component, plot_data,
+           plot_fit, plot_fit_resid, plot_fit_delchi
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        is_source = self._get_model_status(id)[1]
+        model = self._add_convolution_models(id, self.get_data(id),
+                                             model, is_source)
+
+        self._plot(id, self._compmdlplot, model, **kwargs)
+
 
     def plot_source(self, id=None, **kwargs):
         """
@@ -7916,7 +8662,8 @@ class Session(NoNewAttributesAfterInit):
     ###########################################################################
 
     def get_int_proj(self, par=None, id=None, otherids=None, recalc=False,
-                     min=None, max=None, nloop=20, delv=None, fac=1,log=False):
+                     min=None, max=None, nloop=20, delv=None, fac=1, 
+                     log=False, numcores=None):
         """
         get_int_proj
 
@@ -7959,6 +8706,10 @@ class Session(NoNewAttributesAfterInit):
            log       - boolean to use log space for interval
                        default=False
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
         Returns:
            int_proj object
 
@@ -7977,12 +8728,13 @@ class Session(NoNewAttributesAfterInit):
                 otherids = ()
             ids, fit = self._get_fit(id, otherids)
             self._intproj.prepare(min, max, nloop, delv, fac,
-                                  sherpa.utils.bool_cast(log))
+                                  sherpa.utils.bool_cast(log), numcores)
             self._intproj.calc(fit,par,self._methods)
         return self._intproj
 
     def get_int_unc(self, par=None, id=None, otherids=None, recalc=False,
-                    min=None, max=None, nloop=20, delv=None, fac=1, log=False):
+                    min=None, max=None, nloop=20, delv=None, fac=1, log=False,
+                    numcores=None):
         """
         get_int_unc
 
@@ -8024,6 +8776,10 @@ class Session(NoNewAttributesAfterInit):
            log       - boolean to use log space for interval
                        default=False
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
         Returns:
            int_unc object
 
@@ -8042,14 +8798,14 @@ class Session(NoNewAttributesAfterInit):
                 otherids = ()
             ids, fit = self._get_fit(id, otherids)
             self._intunc.prepare(min, max, nloop, delv, fac,
-                                 sherpa.utils.bool_cast(log))
+                                 sherpa.utils.bool_cast(log), numcores)
             self._intunc.calc(fit,par)
         return self._intunc
 
     def get_reg_proj(self, par0=None, par1=None, id=None, otherids=None,
                      recalc=False, fast=True, min=None, max=None, 
                      nloop=(10,10),delv=None, fac=4, log=(False,False),
-                     sigma=(1,2,3), levels=None):
+                     sigma=(1,2,3), levels=None, numcores=None):
         """
         get_reg_proj
 
@@ -8106,6 +8862,10 @@ class Session(NoNewAttributesAfterInit):
            levels    - confidence level values
                        default=None
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
         Returns:
            reg_proj object
 
@@ -8125,13 +8885,15 @@ class Session(NoNewAttributesAfterInit):
                 otherids = ()
             ids, fit = self._get_fit(id, otherids)
             self._regproj.prepare(fast, min, max, nloop, delv, fac,
-                                  sherpa.utils.bool_cast(log), sigma, levels)
+                                  sherpa.utils.bool_cast(log), sigma, levels,
+                                  numcores)
             self._regproj.calc(fit,par0,par1,self._methods)
         return self._regproj
     
     def get_reg_unc(self, par0=None, par1=None, id=None, otherids=None,
                     recalc=False, min=None, max=None, nloop=(10,10), delv=None,
-                    fac=4, log=(False,False), sigma=(1,2,3), levels=None):
+                    fac=4, log=(False,False), sigma=(1,2,3), levels=None,
+                    numcores=None):
         """
         get_reg_unc
 
@@ -8184,6 +8946,10 @@ class Session(NoNewAttributesAfterInit):
            levels    - confidence level values
                        default=None
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
         Returns:
            reg_unc object 
 
@@ -8204,7 +8970,8 @@ class Session(NoNewAttributesAfterInit):
                 otherids = ()
             ids, fit = self._get_fit(id, otherids)
             self._regunc.prepare(min, max, nloop, delv, fac,
-                                 sherpa.utils.bool_cast(log), sigma, levels)
+                                 sherpa.utils.bool_cast(log), sigma, levels,
+                                 numcores)
             self._regunc.calc(fit,par0,par1)
         return self._regunc
 
@@ -8234,7 +9001,7 @@ class Session(NoNewAttributesAfterInit):
     
     def int_proj(self, par, id=None, otherids=None, replot=False, fast=True,
                  min=None, max=None, nloop=20, delv=None, fac=1, log=False,
-                 overplot=False):
+                 numcores=None, overplot=False):
         """
         int_proj
 
@@ -8280,6 +9047,10 @@ class Session(NoNewAttributesAfterInit):
            log       - boolean to use log space for interval
                        default=False
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
            overplot  - plot over existing plot
                        default=False
 
@@ -8293,11 +9064,12 @@ class Session(NoNewAttributesAfterInit):
         """
         self._int_plot(self._intproj, par, id=id, otherids=otherids,
                        replot=replot, fast=fast, min=min, max=max, nloop=nloop,
-                       delv=delv, fac=fac, log=log, overplot=overplot)
+                       delv=delv, fac=fac, log=log, numcores=numcores, 
+                       overplot=overplot)
 
     def int_unc(self, par, id=None, otherids=None, replot=False, min=None,
                  max=None, nloop=20, delv=None, fac=1, log=False,
-                 overplot=False):
+                 numcores=None, overplot=False):
         """
         int_unc
 
@@ -8339,6 +9111,10 @@ class Session(NoNewAttributesAfterInit):
            log       - boolean to use log space for interval
                        default=False
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
            overplot  - plot over existing plot
                        default=False
 
@@ -8352,7 +9128,8 @@ class Session(NoNewAttributesAfterInit):
         """
         self._int_plot(self._intunc, par, id=id, otherids=otherids,
                        replot=replot, min=min, max=max, nloop=nloop,
-                       delv=delv, fac=fac, log=log, overplot=overplot)
+                       delv=delv, fac=fac, log=log, numcores=numcores, 
+                       overplot=overplot)
 
     def _reg_plot(self, plotobj, par0, par1, **kwargs):
         prepare_dict = sherpa.utils.get_keyword_defaults(plotobj.prepare)
@@ -8382,7 +9159,8 @@ class Session(NoNewAttributesAfterInit):
 
     def reg_proj(self, par0, par1, id=None, otherids=None, replot=False,
                  fast=True, min=None, max=None, nloop=(10,10), delv=None, fac=4,
-                 log=(False,False), sigma=(1,2,3), levels=None, overplot=False):
+                 log=(False,False), sigma=(1,2,3), levels=None, numcores=None, 
+                 overplot=False):
         """
         reg_proj
 
@@ -8437,6 +9215,10 @@ class Session(NoNewAttributesAfterInit):
            levels    - confidence level values
                        default=None
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
            overplot  - plot over existing plot
                        default=False
 
@@ -8451,11 +9233,12 @@ class Session(NoNewAttributesAfterInit):
         self._reg_plot(self._regproj, par0, par1, id=id, otherids=otherids,
                        replot=replot, fast=fast, min=min, max=max, nloop=nloop,
                        delv=delv, fac=fac, log=log, sigma=sigma, levels=levels,
-                       overplot=overplot)
+                       numcores=numcores, overplot=overplot)
 
     def reg_unc(self, par0, par1, id=None, otherids=None, replot=False,
-                 min=None, max=None, nloop=(10,10), delv=None, fac=4,
-                 log=(False,False), sigma=(1,2,3), levels=None, overplot=False):
+                min=None, max=None, nloop=(10,10), delv=None, fac=4,
+                log=(False,False), sigma=(1,2,3), levels=None, numcores=None, 
+                overplot=False):
         """
         reg_unc
 
@@ -8506,6 +9289,10 @@ class Session(NoNewAttributesAfterInit):
            levels    - confidence level values
                        default=None
 
+           numcores  - specify the number of cores for parallel processing.
+                       All available cores are used by default.
+                       default=None
+
            overplot  - plot over existing plot
                        default=False
 
@@ -8520,7 +9307,7 @@ class Session(NoNewAttributesAfterInit):
         self._reg_plot(self._regunc, par0, par1, id=id, otherids=otherids,
                        replot=replot, min=min, max=max, nloop=nloop, delv=delv,
                        fac=fac, log=log, sigma=sigma, levels=levels, 
-                       overplot=overplot)
+                       numcores=numcores, overplot=overplot)
 
 
     # Aliases
@@ -8534,16 +9321,19 @@ class Session(NoNewAttributesAfterInit):
     ###########################################################################
 
 
-    def _prepare_imageobj(self, id, imageobj):
-        if (isinstance(imageobj, sherpa.image.PSFImage) or
-            isinstance(imageobj, sherpa.image.PSFKernelImage)):
+    def _prepare_imageobj(self, id, imageobj, model=None):
+        if( isinstance(imageobj, sherpa.image.ComponentModelImage) or
+            isinstance(imageobj, sherpa.image.ComponentSourceImage)):
+            imageobj.prepare_image(self.get_data(id), model)
+        elif (isinstance(imageobj, sherpa.image.PSFImage) or
+              isinstance(imageobj, sherpa.image.PSFKernelImage)):
             imageobj.prepare_image(self.get_psf(id), self.get_data(id))
         elif isinstance(imageobj, sherpa.image.DataImage):
             imageobj.prepare_image(self.get_data(id))
         elif isinstance(imageobj, sherpa.image.SourceImage):
-            imageobj.prepare_image(self.get_data(id), self._get_model(id))
+            imageobj.prepare_image(self.get_data(id), self.get_source(id))
         else:
-            imageobj.prepare_image(self.get_data(id), self._get_full_model(id))
+            imageobj.prepare_image(self.get_data(id), self.get_model(id))
         return imageobj
 
     #
@@ -8633,6 +9423,77 @@ class Session(NoNewAttributesAfterInit):
         """
         self._prepare_imageobj(id, self._sourceimage)
         return self._sourceimage
+
+
+    def get_model_component_image(self, id, model=None):
+        """
+        get_model_component_image
+
+        SYNOPSIS
+           Return a Sherpa model image obj
+
+        SYNTAX
+
+        Arguments:
+           id        - Sherpa data id
+                       default = default data id
+
+        Returns:
+           Sherpa ModelImage object
+
+        DESCRIPTION
+           The model image object holds the reference to the image array.
+
+           Attributes:
+              y            - image array
+
+        SEE ALSO
+           image_model
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._prepare_imageobj(id, self._mdlcompimage, model=model)
+        return self._mdlcompimage
+
+    def get_source_component_image(self, id, model=None):
+        """
+        get_source_component_image
+
+        SYNOPSIS
+           Return a Sherpa model component image obj
+
+        SYNTAX
+
+        Arguments:
+           id        - Sherpa data id
+                       default = default data id
+
+        Returns:
+           Sherpa ModelImage object
+
+        DESCRIPTION
+           The model component image object holds the reference to the 
+           image array.
+
+           Attributes:
+              y            - image array
+
+        SEE ALSO
+           image_model
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._prepare_imageobj(id, self._srccompimage, model=model)
+        return self._srccompimage
+
 
     def get_ratio_image(self, id=None):
         """
@@ -8751,8 +9612,8 @@ class Session(NoNewAttributesAfterInit):
     # Images
     #
 
-    def _image(self, id, imageobj, shape, newframe, tile):
-        self._prepare_imageobj(id, imageobj).image(shape, newframe, tile)
+    def _image(self, id, imageobj, shape, newframe, tile, model=None):
+        self._prepare_imageobj(id, imageobj, model).image(shape, newframe, tile)
         
     def image_data(self, id=None, newframe=False, tile=False):
         """
@@ -8817,6 +9678,92 @@ class Session(NoNewAttributesAfterInit):
         """
         self._image(id, self._modelimage, None,
                     newframe, tile)
+
+
+    def image_source_component(self, id, model=None, newframe=False,
+                               tile=False):
+        """
+        image_source_component
+
+        SYNOPSIS
+           Send a source model component image to the visualizer
+
+        SYNTAX
+
+        Arguments:
+           id          - Sherpa data id
+                         default = default data id
+
+           source       - Sherpa source component to image
+
+           newframe    - Add a new frame
+                         default = False
+
+           tile        - Tile image frame
+                         default = False
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Visualize a source model component image by Sherpa data id.
+
+        SEE ALSO
+           get_model_image, image_data, image_fit, image_resid,
+           image_ratio, image_fit_resid, image_psf, image_source
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        self._image(id, self._srccompimage, None, newframe, tile, model=model)
+
+
+    def image_model_component(self, id, model=None, newframe=False, tile=False):
+        """
+        image_model_component
+
+        SYNOPSIS
+           Send a model component image to the visualizer
+
+        SYNTAX
+
+        Arguments:
+           id          - Sherpa data id
+                         default = default data id
+
+           model       - Sherpa model component to image
+
+           newframe    - Add a new frame
+                         default = False
+
+           tile        - Tile image frame
+                         default = False
+
+        Returns:
+           None
+
+        DESCRIPTION
+           Visualize a model component image by Sherpa data id.
+
+        SEE ALSO
+           get_model_image, image_data, image_fit, image_resid,
+           image_ratio, image_fit_resid, image_psf, image_source
+        """
+        if model is None:
+            id, model = model, id
+        self._check_model(model)
+        if isinstance(model, basestring):
+            model = self._eval_model_expression(model)
+
+        is_source = self._get_model_status(id)[1]
+        model = self._add_convolution_models(id, self.get_data(id),
+                                             model, is_source)
+
+        self._image(id, self._mdlcompimage, None, newframe, tile, model=model)
+
 
     def image_source(self, id=None, newframe=False, tile=False):
         """
@@ -9091,7 +10038,7 @@ class Session(NoNewAttributesAfterInit):
         """
         sherpa.image.Image.close()
 
-    def image_getregion(self):
+    def image_getregion(self, coord=''):
         """
         image_getregion
 
@@ -9113,9 +10060,9 @@ class Session(NoNewAttributesAfterInit):
            image_open, image_close, image_deleteframes, image_setregion,
            image_xpaget, image_xpaset
         """
-        return sherpa.image.Image.get_region()
+        return sherpa.image.Image.get_region(coord)
 
-    def image_setregion(self, reg):
+    def image_setregion(self, reg, coord=''):
         """
         image_setregion
 
@@ -9137,7 +10084,7 @@ class Session(NoNewAttributesAfterInit):
            image_open, image_close, image_getregion, image_deleteframes,
            image_xpaget, image_xpaset
         """
-        sherpa.image.Image.set_region(reg)
+        sherpa.image.Image.set_region(reg, coord)
 
     def image_xpaget(self, arg):
         """
@@ -9163,7 +10110,7 @@ class Session(NoNewAttributesAfterInit):
         """
         return sherpa.image.Image.xpaget(arg)
 
-    def image_xpaset(self, arg):
+    def image_xpaset(self, arg, data=None):
         """
         image_deleteframes
 
@@ -9175,6 +10122,8 @@ class Session(NoNewAttributesAfterInit):
         Arguments:
            arg      - XPA agrument
 
+           data     - data to be sent as stdin to the
+                      XPA argument (None by default)
         Returns:
            None
 
@@ -9185,4 +10134,4 @@ class Session(NoNewAttributesAfterInit):
            image_open, image_close, image_getregion, image_setregion,
            image_xpaget, image_deleteframes
         """
-        return sherpa.image.Image.xpaset(arg)
+        return sherpa.image.Image.xpaset(arg, data)

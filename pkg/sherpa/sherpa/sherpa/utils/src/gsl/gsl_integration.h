@@ -179,6 +179,11 @@ int gsl_integration_qng (const gsl_function * f,
                          double *result, double *abserr,
                          size_t * neval);
 
+int sao_integration_qng (int (*f)(double *x, int len, void *params),
+			 double a, double b, void *params,
+			 double epsabs, double epsrel,
+			 double * result, double * abserr, size_t * neval);
+
 int gsl_integration_qag (const gsl_function * f,
                          double a, double b,
                          double epsabs, double epsrel, size_t limit,

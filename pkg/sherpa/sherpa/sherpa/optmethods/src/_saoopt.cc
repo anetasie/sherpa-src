@@ -18,7 +18,7 @@
 //
 
 
-#include <stdexcept>
+//#include <stdexcept>
 
 #include <sherpa/extension.hh>
 #include <sherpa/functor.hh>
@@ -29,7 +29,7 @@
 //#define haveClmdif 1
 
 #ifdef haveClmdif
-#include "minpack/LevMar.hh"
+#include "minpack/levmar.hh"
 static void lmdif_callback_func( int mfct, int npar, double* xpars,
 				 double* fvec, int& ierr,
 				 PyObject* py_fcn ) {
@@ -81,7 +81,7 @@ static PyObject* py_cpp_lmdif( PyObject* self, PyObject* args, Func func ) {
 
   PyObject* py_function=NULL;
   DoubleArray par, lb, ub;
-  int mfct, maxnfev, nfev, info=0, ifault=0, verbose;
+  int mfct, maxnfev, nfev, info, verbose;
   double fval, ftol, xtol, gtol, epsfcn, factor;
 
   if ( !PyArg_ParseTuple( args, (char*) "OiO&dddiddiO&O&",
@@ -116,9 +116,8 @@ static PyObject* py_cpp_lmdif( PyObject* self, PyObject* args, Func func ) {
     minpack::LevMar< Func, PyObject* > levmar( npar, &par[0], &lb[0], &ub[0],
 					       func, py_function, mfct );
 
-    std::pair<int,int> info_ifault =
-      levmar( &par[0], ftol, xtol, gtol, maxnfev, epsfcn, factor, verbose,
-	      nfev, fval, &covarerr[0] );
+    info = levmar( &par[0], ftol, xtol, gtol, maxnfev, epsfcn, factor,
+		   verbose, nfev, fval, &covarerr[0] );
 
   } catch( sherpa::OptErr& oe ) {
     if ( NULL == PyErr_Occurred() )
@@ -145,8 +144,8 @@ static PyObject* py_cpp_lmdif( PyObject* self, PyObject* args, Func func ) {
 
   std::copy( &covarerr[0], &covarerr[0] + npar, &lb[0] );
 
-  return Py_BuildValue( (char*)"(NdiiiN)", par.return_new_ref(), fval, nfev,
-			info, ifault, lb.return_new_ref() );
+  return Py_BuildValue( (char*)"(NdiiN)", par.return_new_ref(), fval, nfev,
+			info, lb.return_new_ref() );
 }
 static PyObject* py_lmdif( PyObject* self, PyObject* args ) {
 
@@ -525,12 +524,12 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
 				Func callback_func ) {
 
   PyObject* py_function=NULL;
-  DoubleArray par, step, lb, ub, g, h;
+  DoubleArray par, step, lb, ub;
   IntArray finalsimplex;
   int verbose, maxnfev, nfev, initsimplex, err_status;
   double fval, tol;
 
-  if ( !PyArg_ParseTuple( args, (char*) "iiiO&dO&O&O&O&O&O&O",
+  if ( !PyArg_ParseTuple( args, (char*) "iiiO&dO&O&O&O&O",
 			  &verbose,
 			  &maxnfev,
 			  &initsimplex,
@@ -540,8 +539,6 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
 			  CONVERTME(DoubleArray), &lb,
 			  CONVERTME(DoubleArray), &ub,
 			  CONVERTME(DoubleArray), &par,
-			  CONVERTME(DoubleArray), &g,
-			  CONVERTME(DoubleArray), &h,
 			  &py_function ) ) {
     return NULL;
   }
@@ -566,18 +563,6 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
     return NULL;
   }
 
-  if ( (npar+1)*npar != g.get_size( ) ) {
-    PyErr_Format( PyExc_ValueError, (char*)"len(g)=%d != npar*(npar+1)=%d",
-		  static_cast<int>( g.get_size( ) ), (npar+1)*npar );
-    return NULL;
-  }
-
-  if ( (npar+1) != h.get_size( ) ) {
-    PyErr_Format( PyExc_ValueError, (char*)"len(h)=%d != len(par+1)=%d",
-		  static_cast<int>( h.get_size( ) ), npar+1 );
-    return NULL;
-  }
-
   try {
 
     sherpa::NelderMead< Func, PyObject* >
@@ -588,7 +573,7 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
 				       finalsimplex.get_size( ) );
 
     err_status = nm( &par[0], verbose, initsimplex, myfinalsimplex, tol,
-		     &step[0], maxnfev, nfev, fval, &g[0], &h[0] );
+		     &step[0], maxnfev, nfev, fval );
 
   } catch( sherpa::OptErr& oe ) {
     if ( NULL == PyErr_Occurred() )
@@ -614,8 +599,8 @@ static PyObject* py_neldermead( PyObject* self, PyObject* args,
     return NULL;
   }
 
-  return Py_BuildValue( (char*)"(NdiiNN)", par.return_new_ref(), fval, nfev,
-			err_status, g.return_new_ref(), h.return_new_ref() );
+  return Py_BuildValue( (char*)"(Ndii)", par.return_new_ref(), fval, nfev,
+			err_status );
 
 }
 static PyObject* py_nm( PyObject* self, PyObject* args ) {

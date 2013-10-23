@@ -28,9 +28,9 @@ class BackgroundSumModel(CompositeModel, ArithmeticModel):
     def __init__(self, srcdata, bkgmodels):
         self.srcdata = srcdata
         self.bkgmodels = bkgmodels
-
+        scale_factor = self.srcdata.sum_background_data(lambda key, bkg:1)
         bkgnames = [model.name for model in bkgmodels.values()]
-        name = 'scale_factor * (' + ' + '.join(bkgnames) + ')'
+        name = '%g * (' % scale_factor + ' + '.join(bkgnames) + ')'
         CompositeModel.__init__(self, name, self.bkgmodels.values())
 
     def calc(self, p, *args, **kwargs):
