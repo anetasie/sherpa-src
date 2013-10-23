@@ -1,0 +1,9 @@
+phafile,s,a,"",,,"source (PHA) file"
+bkgfile,s,h,"",,,"backgound (PHA) file"
+outfile,s,a,"",,,"output of spectra fits and fluxes"
+nH,r,h,3.0,,,"H absorption column, 10**20 atoms/cm**2"
+mincts,i,h,16,,,"minimum grouping counts per bin"
+e_band,s,h,"0.5,7",,,"energy range (keV) for spectra fit"
+e_range,s,h,"0.2,10.0",,,"energy range (keV) for flux"
+verbose,i,h,0,0,5,"verbosity level"
+mode,s,h,"ql",,,

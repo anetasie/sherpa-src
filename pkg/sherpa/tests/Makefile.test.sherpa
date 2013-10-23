@@ -1,0 +1,8 @@
+#
+# Target definitions for Sherpa Smoke tests.
+#
+
+test-sherpa: test-sherpa-smoke001
+
+test-sherpa-smoke001: filelist
+	@(echo "sherpa-smoke001.sh" >> ${testfile})

@@ -1,0 +1,30 @@
+    -*- f90 -*-
+! Note: the context of this file is case sensitive.
+
+python module newuoa__user__routines 
+    interface newuoa_user_interface 
+        subroutine calfun(n,x,f)
+            integer depend(x),intent(hide) :: n=len(x)
+            double precision dimension(n),intent(in) :: x
+            double precision intent(out) :: f
+        end subroutine calfun
+    end interface newuoa_user_interface
+end python module newuoa__user__routines
+python module _newuoa
+    interface
+        subroutine newuoa(n,npt,x,rhobeg,rhoend,iprint,maxfun,w,calfun,nf,f)
+            use newuoa__user__routines
+            integer depend(x),intent(hide) :: n=len(x)
+            integer depend(n),intent(hide) :: npt=2*n+1
+            double precision dimension(n),intent(inout) :: x
+            double precision intent(in) :: rhobeg
+            double precision intent(in) :: rhoend
+            integer intent(in) :: iprint
+            integer intent(in) :: maxfun
+            double precision dimension((npt+13)*(npt+n)+3*n*(n+3)),intent(hide) :: w
+            external calfun
+            integer intent(out) :: nf
+            double precision intent(out) :: f
+        end subroutine newuoa
+    end interface 
+end python module _newuoa

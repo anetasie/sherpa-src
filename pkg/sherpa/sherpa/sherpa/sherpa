@@ -1,0 +1,224 @@
+#! /bin/sh
+# 
+#  Copyright (C) 2007  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+#
+
+usage() 
+{
+   echo "-- sherpa"
+   echo "  usage: sherpa [-x] [-l python|slang] [-n] [-b] [-rcfile file] [-norcfile] <file>"
+   echo "     -x       launch sherpa shell in separate display terminal"
+   echo "     -n       do not print banner"
+   echo "     -l       use python or slang shell"
+   echo "     -b       batch mode"
+   echo "     -rcfile  load a user specifiable preference file"
+   echo "     -norcfile do not load any user specifiable preference file (overrides -rcfile)"
+   echo "     <file>   appropriate slang or python command file to execute"
+   exit 1
+}
+
+banner()
+{
+   echo "-----------------------------------------------------"
+   echo "Welcome to Sherpa: CXC's Modeling and Fitting Package"
+   echo "-----------------------------------------------------"
+   echo `cat ${ASCDS_INSTALL}/VERSION`
+   echo ""
+}
+
+printbanner="yes" xterminal= lang= cmd= batch=
+scriptFile=
+argList=
+rcfile=
+xwin="no"
+
+while :
+do
+   case "$1" in
+      -x) xwin="yes";;
+      -l) shift; lang="$1"; argList="$argList -l $lang";
+
+	  # verify that lang is a valid option
+          if test "$lang" = "" ; then
+             echo "Sherpa ERROR: The -l switch takes one parameter. Please specify 'slang' or 'python'."
+             exit -1
+          elif test "$lang" != "python" -a "$lang" != "slang"; then
+             echo "Sherpa ERROR: '$lang' is an invalid option for the -l switch. Please specify 'slang' or 'python'."
+             exit -1
+          fi ;;
+ 
+      -b) batch="yes"; argList="$argList -b";;
+      -n) printbanner="no"; argList="$argList -n";;
+      -rcfile) shift; rcfile="$1";
+	  # Setting the rcfile on the command line ALWAYS overrides
+	  # the SHERPARC environment variable setting (if any)
+	  # verify that an rcfile was included
+	  if test "$rcfile" = "" ; then
+	     echo "Sherpa ERROR: The -rcfile switch takes one parameter. Please specify new rcfile."
+             exit -1
+	  else
+             first_char=`expr "$rcfile" : '\(.\).*'`
+             if test "$first_char" = "-"; then
+                echo "Sherpa ERROR: The -rcfile switch takes one parameter. Please specify new rcfile."
+                exit -1
+             fi
+	  fi
+	  if [ ! -e "$rcfile" ]; then
+	     echo "Sherpa ERROR: rcfile $rcfile does not exist."
+             exit -1
+	  fi
+	  SHERPARC=$rcfile
+	  export SHERPARC ;;
+
+      -norcfile) NOSHERPARC=true; export NOSHERPARC;;
+      --) shift; break;;
+      -*) usage "bad argument $1";;
+      *)
+	  len=`expr "$1" : '.*'`
+	  if test $len -eq 0; then
+             # zero length entry- reached end of argument list processing
+             break;
+          else
+             # support at most 1 script file
+             if test "$scriptFile" = ""; then
+                scriptFile="$1";
+             else
+                echo "Sherpa ERROR: Expected a single file script: $scriptFile -vs- $1"
+                exit -1
+             fi
+          fi
+          ;;
+   esac
+   shift
+done
+
+# now that we've processed the arg list- we can run xterm -e if specified
+if test "$xwin" = "yes"; then
+   xterm -e $0 $argList $scriptFile;
+   exit $?
+fi
+
+# setup the users home directory with all the Sherpa, ChIPS config files
+if test "$batch" = "yes"; then
+    sherpa_py "batch"
+else
+    sherpa_py
+fi
+
+# if language is not specified on the commandline fallback to env var method
+if test "$lang" = ""; then
+   if test "$SHERPA_SCRIPT_LANG" = "slang" || test "$SHERPA_SCRIPT_LANG" = "python" ; then
+      lang="$SHERPA_SCRIPT_LANG"
+   elif test "$SHERPA_SCRIPT_LANG" != "" ; then
+      echo "Sherpa ERROR: SHERPA_SCRIPT_LANG environment variable should be set to slang or python"
+      exit -1
+   fi
+fi
+
+if test "$lang" = ""; then
+   if test "$CIAO_SCRIPT_LANG" = "slang"  ; then
+      lang="slang"
+   else
+      if test "$CIAO_SCRIPT_LANG" = "python"  ; then
+         lang="python"
+      else 
+         if test "$CIAO_SCRIPT_LANG" != "" ; then
+            echo "Sherpa ERROR: CIAO_SCRIPT_LANG environment variable should be set to slang or python"
+	    exit -1
+	 else 
+	    # env var not set - check resource file 
+            if test -s $HOME/.sherpa.rc ; then 
+               a=`grep shell $HOME/.sherpa.rc | grep -v '#' | tail -1 | grep -i slang`
+               if [ $? = 0 ]; then
+	          lang="slang"
+	       else
+	          lang="python"
+	       fi
+	    fi
+	 fi
+      fi
+   fi
+fi
+
+# test for file existence before firing up an interpreter
+if test "$scriptFile" != ""; then
+    if [ ! -e "$scriptFile" ]; then
+	echo "Sherpa ERROR: script file $scriptFile does not exist."
+	exit -1
+    fi
+fi
+
+if test "$lang" = "slang"; then
+   cmd="()=evalfile("\""$ASCDS_INSTALL/share/slsh/local-packages/sherpa_slsh.sl"\"");"
+
+   # if we have an additional argument treat it as a file for evalfile 
+   if test "$scriptFile" != ""; then
+      cmd="${cmd} ()=evalfile("\"$scriptFile\"");"
+   fi
+
+   # make sure we use the CIAO version of slang 
+   CIAO_SLSH=${CIAO_APP_SLSH}
+   export CIAO_SLSH
+
+   if test "$batch" = "yes"; then
+      slsh -e "${cmd}"
+   else
+      if test "$printbanner" = "yes"; then
+         banner
+      fi
+      slsh_switches="-i -e"
+      slsh -q -e ";" > /dev/null 2>&1
+      if test $? -eq 0
+      then
+         slsh_switches="-i -q -e"
+      fi
+      slsh $slsh_switches "${cmd}"
+   fi
+
+
+else
+   cmd=""
+
+   # if we have an additional argument treat it as a file for execfile
+   if test "$scriptFile" != ""; then
+      cmd="${cmd}execfile('$scriptFile');"
+   fi
+
+   # make sure we use the CIAO version of python
+   CIAO_PYTHON=${CIAO_APP_PYTHON}
+   CIAO_IPYTHON=${CIAO_APP_IPYTHON}
+   export CIAO_PYTHON
+   export CIAO_IPYTHON
+
+
+   if test "$batch" = "yes"; then
+      ipython -p sherpa-user -nomessages -noconfirm_exit -nobanner -c "${cmd}quit()"
+   else
+      if test "$printbanner" = "yes"; then
+         banner
+      fi
+      # python shell options should follow a -- w/ any sherpa command file last 
+      if test "$cmd" = ""; then
+         ipython -p sherpa-user
+      else
+         ipython -i -p sherpa-user -c ${cmd}
+      fi
+   fi
+fi

@@ -1,0 +1,5 @@
+srcfile,f,a,"",,,"mho output file from measured source"
+psffile,f,a,"",,,"mho output file from PSF"
+outfile,f,a,"",,,"iss output file of source extent"
+extent_flag_threshold,r,h,5,,,"threshold of source extend flag factor"
+mode,s,h,"ql",,,

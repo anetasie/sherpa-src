@@ -1,0 +1,822 @@
+#!/usr/bin/env python
+
+# 
+#  Copyright (C) 2009  Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+
+
+import os
+import sys
+import string
+import numpy
+import pycrates
+import paramio
+from itertools import izip
+from sherpa.utils import is_binary_file
+
+import lev3_mho
+import lev3_iss
+
+import logging
+
+def set_verbose(verb):
+#    lev3_mho.set_verbose(verb)
+    if verb > 0:
+        lev3_mho.set_verbose(verb-1)
+    else:
+        lev3_mho.set_verbose(verb)
+    log = logging.getLogger(__name__)
+    log.setLevel(lev3_mho.verbosity_conversion[verb])
+    del log
+
+def get_verbose():
+    log = logging.getLogger(__name__)
+    level = log.level
+    del log
+    return level
+
+
+def get_parameters(filename):
+    params = {}
+    try:
+        pfile = paramio.paramopen(filename, "rw", sys.argv)
+    except:
+        print "Error: could not open parameter file '%s'" % filename
+        raise
+
+    for key in ["srcfile", "psffile", "regfile", "outfile"]:
+        pkey = key+'s'
+        params[pkey] = paramio.pgetstr(pfile,key)
+        params[pkey] = params[pkey].strip(string.whitespace+',').split(',')
+
+    params["shape"]     = paramio.pgetstr(pfile,"shape")
+    params["srcsize"]   = paramio.pgetd(pfile,"srcsize")
+    params["imgsize"]   = paramio.pgetd(pfile,"imgsize")
+    params["binfactor"] = paramio.pgeti(pfile,"binfactor")
+    params["mincounts"] = paramio.pgeti(pfile,"mincounts")
+    params["minthresh"] = paramio.pgeti(pfile,"minthresh")
+
+    clob    = paramio.pgetb(pfile, "clobber")
+    verbose = paramio.pgeti(pfile, "verbose")
+    paramio.paramclose(pfile)
+
+    shape=False
+    if params["shape"].startswith("gaussian"):
+        shape=True
+    params["shape"]=shape
+
+    if len(params["srcfiles"]) == 1 and params["srcfiles"][0] == "":
+        raise IOError("no source file found")
+
+    if len(params["outfiles"]) == 1 and params["outfiles"][0] == "":
+        raise IOError("no output file found")
+
+    if len(params["srcfiles"]) != len(params["outfiles"]):
+        raise IOError("number of source files must match number of output files")
+
+    for outfile in params["outfiles"]:
+        if outfile == "":
+            raise IOError("please enter an output file")
+        if os.path.isfile(outfile):
+            if not bool(clob):
+                raise IOError("output file '%s' exists and clobber is not set." % outfile)
+            else:
+                # Remove outfile if it exists
+                os.remove(outfile)
+
+    return (params, verbose)
+
+
+def find_brightest_pixel(pix):
+    x0, x1 = numpy.where(pix==pix.max())
+
+    # if there is more than one brightest pixel, choose the one in the middle
+    # of the lot.
+    if len(x0) > 1:
+        pivot = len(x0)/2
+        x0 = x0[pivot]
+        x1 = x1[pivot]
+
+    x0 = int(x0)
+    x1 = int(x1)
+    return (x0, x1)
+
+
+def check_normalized_psf(pix, num):
+
+    if num > 0.0 and num <= 1.0:
+        pix = pix.ravel()
+        lows = pix[pix>0.0]
+        val = 1.
+        if len(lows) > 0:
+            val = lows.min()
+        if val != 0.0:
+            pix = pix / val
+            num = pix.sum()
+
+    return num
+
+
+def get_half_max(half_max_val, x, x_max, range):
+    for ii, val in enumerate(range):
+        if val <= half_max_val:
+            return numpy.abs(x[ii] - x_max)
+    return x_max
+
+
+def get_fwhm(vals):
+    y = numpy.asarray(vals)
+    x = numpy.arange(1, len(vals)+1,dtype=float)
+
+    half_max_val = y.max() / 2.0
+
+    pivot = y.argmax()
+    x_max = x[pivot]
+
+    lhs = get_half_max(half_max_val, x[pivot:], x_max, y[pivot:])
+    rhs = get_half_max(half_max_val, x[:pivot][::-1], x_max, y[:pivot][::-1])
+
+    fwhm = (lhs+rhs)
+    if fwhm > 1:
+        fwhm -= 1
+
+    return fwhm
+
+
+def read_image(img):
+    ysize, xsize = img.get_dimarr()
+    y = img.get_image_values()
+    ax0 = numpy.arange(1,xsize+1, dtype=float)
+    ax1 = numpy.arange(1,ysize+1, dtype=float)
+    x0, x1 = numpy.meshgrid(ax0, ax1)
+    x0 = x0.ravel()
+    x1 = x1.ravel()
+
+    sky = img.get_transform("sky")
+    if sky is None:
+        sky = img.get_transform("SKY")
+    if sky is None:
+        raise AttributeError("sky coordinates not found")
+
+    vals = sky.apply(numpy.array([x0,x1]).transpose())
+    x0, x1 = vals.transpose()
+
+    dummy0 = numpy.ones(ax0.size, dtype=float)
+    dummy1 = numpy.ones(ax1.size, dtype=float)
+
+    vals = sky.apply(numpy.array([ax0,dummy0]).transpose())
+    ax0, dummy = vals.transpose()
+
+    vals = sky.apply(numpy.array([dummy1,ax1]).transpose())
+    dummy, ax1 = vals.transpose()
+
+    return x0, x1, ax0, ax1, y
+
+
+def calc_num_counts_tbl(file, reg):
+    tbl = pycrates.TABLECrate(file + reg)
+    if tbl.get_column("X") is None:
+        counts = 0
+    else:
+        counts = tbl.get_column("X").get_values().size
+    return counts
+
+
+def calc_num_counts_img(file, reg):
+    img = pycrates.IMAGECrate(file + reg)
+
+    # FIXME What to do if the image is normalized PSF??
+
+    pix = img.get_image_values()
+
+    if pix is None:
+        return 0
+
+    num = check_normalized_psf(pix, pix.sum())
+
+    return num
+
+#    if pix is None:
+#        counts = 0
+#    else:
+#        counts = pix.sum()
+#        if counts <= 1.0:
+#            i = pix.nonzero()
+#            if len(i) > 1:
+#                pix = pix / pix[i].min()
+#                counts = pix.sum()
+#
+#    return counts
+
+
+def image_guess(ax0, ax1, y):
+
+    argmax = y.argmax()
+    x0 = ax0[argmax]
+    y0 = ax1[argmax]
+
+    shape = y.shape
+    i0, i1 = find_brightest_pixel(y)
+    s0 = y[ 0:shape[0], i1 ]  # choose image column with brightest pixel
+    s1 = y[ i0, 0:shape[1] ]  # choose image row with brightest pixel
+    fwhm0 = get_fwhm(s0)
+    fwhm1 = get_fwhm(s1)
+    # take geometric average of FWHMs from slices.
+    size = numpy.sqrt(numpy.square(fwhm0)+numpy.square(fwhm1))
+#   size = (fwhm0+fwhm1)/2.0
+
+    return (x0,y0,size)
+
+
+def parse_regfile(regfile, _to_arcsecs=1.0):
+    if is_binary_file(regfile):
+        return parse_binary_regfile(regfile, _to_arcsecs)
+    return parse_ascii_regfile(regfile, _to_arcsecs)
+
+
+def _check_for_arcsecs(val=None, _to_arcsecs=1.0):
+    if "\"" in val:
+        val = float(val.strip("\""))
+        val /= _to_arcsecs
+    else:
+        val = float(val)
+    return val
+
+def parse_ascii_regfile(regfile, _to_arcsecs=1.0):
+
+    f = open(regfile, "r")
+    lines = f.readlines()
+    f.close()
+
+    if len(lines) > 1:
+        line = lines.pop(0)
+        while lines and line[0] == '#':
+            line = lines.pop(0)
+
+        if line == "":
+            raise IOError("could not parse ASCII region file")
+    else:
+        raise IOError("could not parse ASCII region file")
+
+    # Determine the region shape
+    start = line.index('(')
+    shape = line[:start].strip(string.punctuation + string.digits +
+                                string.whitespace).lower()
+    stop = line.index(')')
+
+    params = line[start+1:stop].split(',')
+
+    if shape == 'circle':
+        x0, y0, size = params
+        x0 = float(x0)
+        y0 = float(y0)
+        size = _check_for_arcsecs(size, _to_arcsecs)
+
+    elif shape == 'ellipse':
+        x0, y0, r1, r2, ang = params
+        x0 = float(x0)
+        y0 = float(y0)
+        r1 = _check_for_arcsecs(r1, _to_arcsecs)
+        r2 = _check_for_arcsecs(r2, _to_arcsecs)
+        size = numpy.sqrt(numpy.sum(numpy.square([r1,r2])))/numpy.sqrt(2.)
+
+    else:
+        raise IOError("cannot use '%s' shape," % shape.upper() +
+                      " please use CIRCLE or ELLIPSE")
+
+    return (x0,y0,size)
+
+
+def parse_binary_regfile(regfile, _to_arcsecs=1.0):
+
+    reg = pycrates.read_file(regfile)
+    if type(reg) != pycrates.TABLECrate:
+        raise IOError('region file is not a table')
+
+    xx = reg.get_column('x')
+    yy = reg.get_column('y')
+    rr = reg.get_column('r')
+
+    if xx is None:
+        raise IOError('region file does not contain a SKY X coordinate')
+
+    if yy is None:
+        raise IOError('region file does not contain a SKY Y coordinate')
+
+    if rr is None:
+        raise IOError('region file does not contain a radius')
+
+    rr_unit = ("arcsec" in rr.unit)
+
+    xx = xx.get_values()
+    yy = yy.get_values()
+    rr = rr.get_values()
+
+    while (not numpy.isscalar(xx) and len(xx) > 1):
+        xx = xx[0]
+
+    while (not numpy.isscalar(yy) and len(yy) > 1):
+        yy = yy[0]
+
+    while len(rr.shape) > 1:
+        rr = rr[0]
+
+    if rr_unit:
+        rr /= _to_arcsecs
+
+    # FIXME make 0.355 a user-setable parameter
+    # FIXME assumes that region is from wavdetect at 4.5 sigma
+    # size = numpy.sqrt(numpy.sum(numpy.square(rr)))/numpy.sqrt(2.) * 0.355
+
+    size = numpy.sqrt(numpy.sum(numpy.square(rr)))/numpy.sqrt(2.)
+    x0 = numpy.float(xx)
+    y0 = numpy.float(yy)
+
+    return (x0,y0,size)
+
+
+class MHO(lev3_mho.MHO):
+
+    def __init__(self, *args, **kwargs):
+        self._to_arcsecs = 1.0
+        self._to_degrees = 180./numpy.pi
+        self._units_size = 'pixel'
+
+        lev3_mho.MHO.__init__(self, *args, **kwargs)
+
+
+    def setup_image(self, img, imgfile, regfile=None):
+        x0, x1, ax0, ax1, y = read_image(img)
+
+        if((self.x0 is None) or (self.y0 is None) or (self.crude_src_size <= 0.0)):
+            xx, yy, size = image_guess(x0, x1, y)
+            if regfile is not None:
+                xx, yy, src = parse_regfile(regfile, self._to_arcsecs)
+
+            if self.x0 is None:
+                self.x0 = xx
+            if self.y0 is None:
+                self.y0 = yy
+            if self.crude_src_size <= 0.0:
+                self.crude_src_size = size
+            else:
+                # convert user input from arcseconds to pixels
+                self.crude_src_size /= self._to_arcsecs
+
+        if y is None:
+            return -1
+
+        num = check_normalized_psf(y, y.sum())
+        if num < self.min_thresh:
+            return -1
+
+        f = lev3_mho.MHOStruct(ax0, ax1, self.x0, self.y0, None,None,None, y)
+
+        f.x -= self.x0; f.y -= self.y0
+        dx = f.x[1] - f.x[0]
+        dy = f.y[1] - f.y[0]
+        f.x += 0.5*dx; f.y += 0.5*dy
+
+        (f.x_0, f.x_1) = numpy.meshgrid(f.x, f.y)
+        f.i = f.image.nonzero()
+
+        self.f = f
+
+        lev3_mho.set_data(lev3_mho.MHOData("",None,None,None))
+
+        self.improve_source_position()
+
+        return 0
+
+
+    def setup_table(self, tbl, evtfile, regfile=None):
+
+        if((self.x0 is None) or (self.y0 is None) or (self.crude_src_size <= 0.0)):
+            if regfile is None:
+                raise IOError('A region file must be supplied for an event file')
+
+            xx, yy, size = parse_regfile(regfile, self._to_arcsecs)
+            if self.x0 is None:
+                self.x0 = xx
+            if self.y0 is None:
+                self.y0 = yy
+            if self.crude_src_size <= 0.0:
+                self.crude_src_size = size
+            else:
+                # convert user input from arcseconds to pixels
+                self.crude_src_size /= self._to_arcsecs
+
+        if tbl.get_column("X") is None:
+            return -1
+
+        X = pycrates.get_colvals(tbl, "X")
+        Y = pycrates.get_colvals(tbl, "Y")
+
+        if X.size < self.min_thresh:
+            return -1
+
+        if self.img_size <= 0:
+            # img_size should be _much_ larger than the max allowed
+            # elliptical region size
+            max_major_axis = 2 * (lev3_mho.Mho_Max_Size_Factor * self.crude_src_size)
+            self.img_size = 10 * max_major_axis
+        else:
+            # convert user input from arcseconds to pixels
+            self.img_size /= self._to_arcsecs
+
+        adjustable_bin_factor = False
+        if self.bin_factor <= 0:
+            adjustable_bin_factor = True
+            if self.img_size < 128:
+                self.bin_factor = 1
+            else:
+                self.bin_factor = int(numpy.round(self.img_size/128.))
+
+
+        self.f = lev3_mho.extract_image(X,Y,self.x0, self.y0, self.img_size,
+                               self.img_size, self.bin_factor)
+
+        lev3_mho.set_data(lev3_mho.MHOData("",None,None,None))
+
+        if adjustable_bin_factor and self.bin_factor > 1:
+            # If the source region looks bright, don't use coarse binning.
+            while True:
+                dims = self.f.image.shape
+                ny = dims[0]
+                nx = dims[1]
+                slice = self.f.image[ny/2-ny/8:ny/2+ny/8+1,
+                                     nx/2-nx/8:nx/2+nx/8+1]
+                if slice.max() < 100 or self.bin_factor == 1:
+                    break
+                self.bin_factor /= 2
+                self.f = lev3_mho.extract_image(X,Y,self.x0, self.y0, self.img_size,
+                                       self.img_size, self.bin_factor)
+
+        if self.improve_source_position():
+            self.f = lev3_mho.extract_image(X,Y,self.x0, self.y0, self.img_size,
+                                   self.img_size, self.bin_factor)
+
+        return 0
+
+
+    def mho_find_source_extent(self, file, source_shape=True, regfile=None):
+        if file is None:
+            return [None, None,
+                    numpy.array([numpy.nan]*3),
+                    numpy.array([numpy.nan]*2)]
+
+        obj = pycrates.read_file(file)
+
+        # retrieve the WCS for pixel to arcsecond conversion
+        pos = obj.get_transform("EQPOS")
+        if pos is not None:
+            cdelt = pos.get_parameter_value("CDELT")
+            self._to_arcsecs = numpy.abs(cdelt[1]) * 3600.0
+            assert self._to_arcsecs > 0.0, "WCS - CDELT is malformed, cannot convert arcseconds to pixels"
+            self._units_size = 'arcsec'
+        else:
+            raise ValueError("WCS information not found in '%s', cannot convert arcseconds to pixels" % file)
+
+        if type(obj) == pycrates.IMAGECrate:
+            if 0 != self.setup_image(obj, file, regfile):
+                return self.counts_error(file)
+
+        elif type(obj) == pycrates.TABLECrate:
+            if 0 != self.setup_table(obj, file, regfile):
+                return self.counts_error(file)
+
+        else:
+            raise IOError("source '%s' is not a table or image" % file)
+
+        pars = self.mho_optimize_axes()
+
+        if source_shape:
+            # source = 2-D Gaussian => sigma_i = a_i / sqrt(3)
+            pars[[0,1]] /= numpy.sqrt(3)
+
+        else:
+            # source = uniform circular disk =>  R = a * sqrt(2)
+            pars[[0,1]] *= numpy.sqrt(2)
+
+        # determine number of counts inside source ellipse
+        reg = "[sky=ellipse(%s,%s,%s,%s,%s)]" % (self.x0, self.y0,
+                                                 pars[0], pars[1], pars[2])
+
+        counts=None
+        if type(obj) == pycrates.IMAGECrate:
+            counts = calc_num_counts_img(file, reg)
+        else:
+            counts = calc_num_counts_tbl(file, reg)
+
+        if counts < self.min_counts:
+            print("Error: less than %s counts detected in " % self.min_counts +
+                   "detected in ellipse(%s,%s,%s,%s,%s)" %
+                   ( self.x0, self.y0, pars[0], pars[1], pars[2]))
+            return [self.x0, self.y0, pars, [numpy.nan]*2]
+
+        errs = self.calc_errors(counts, pars)
+
+        return [self.x0, self.y0, pars, errs]
+
+
+def _save_params(x, y, pars, errs):
+    d = {}
+    d['x'] = x
+    d['y'] = y
+    d['sigma_1']=pars[0]
+    d['sigma_2']=pars[1]
+    d['sigma_1_err']=errs[0]
+    d['sigma_2_err']=errs[1]
+    d['pos']=pars[2]
+
+    return d
+
+
+def _transform_params(in_d, _to_degrees, _to_arcsecs):
+    d={}
+    d['x']          = in_d['x']
+    d['y']          = in_d['y']
+    d['sigma_1']    = convert(in_d['sigma_1'], _to_arcsecs)
+    d['sigma_1_lo'] = convert(in_d['sigma_1'] - in_d['sigma_1_err'], _to_arcsecs)
+    d['sigma_1_hi'] = convert(in_d['sigma_1'] + in_d['sigma_1_err'], _to_arcsecs)
+    d['sigma_2']    = convert(in_d['sigma_2'], _to_arcsecs)
+    d['sigma_2_lo'] = convert(in_d['sigma_2'] - in_d['sigma_2_err'], _to_arcsecs)
+    d['sigma_2_hi'] = convert(in_d['sigma_2'] + in_d['sigma_2_err'], _to_arcsecs)
+    d['pos']        = convert(in_d['pos'], _to_degrees)
+    d['pos_lo']     = convert(numpy.nan, _to_degrees)
+    d['pos_hi']     = convert(numpy.nan, _to_degrees)
+
+    return d
+
+
+def convert(val, factor):
+    return val*factor
+
+def format(val, format="%.2f"):
+    if numpy.isnan(val) or numpy.isinf(val):
+        return "INDEF"
+    return format % val
+
+
+def _get_size(val):
+    return numpy.sqrt(numpy.sum(numpy.square(val)))/numpy.sqrt(2.)
+
+
+def _transform_data(src_d, psf_d, _to_degrees, _to_arcsecs):
+#     src_1 = src_d['sigma_1']
+#     src_2 = src_d['sigma_2']
+#     src_err_1 = src_d['sigma_1_err']
+#     src_err_2 = src_d['sigma_2_err']
+
+#     psf_1 = psf_d['sigma_1']
+#     psf_2 = psf_d['sigma_2']
+#     psf_err_1 = psf_d['sigma_1_err']
+#     psf_err_2 = psf_d['sigma_2_err']
+
+    a_rss = numpy.nan; a_rss_err=numpy.nan; extended=0
+
+    a_rss = lev3_iss.calc_a_rss(src_d, psf_d)
+
+    if a_rss == a_rss and a_rss > 0: 
+        a_rss_err = lev3_iss.calc_a_rss_err(a_rss, src_d, psf_d)
+
+        extended =  lev3_iss.calc_extended(a_rss, a_rss_err, psf_d,
+                                           extent_flag_threshold=5)
+
+    int_d = _save_params(None,None,[a_rss,a_rss,0.0],[a_rss_err,a_rss_err])
+
+    int_d = _transform_params(int_d, _to_degrees, _to_arcsecs)
+    src_d = _transform_params(src_d, _to_degrees, _to_arcsecs)
+    psf_d = _transform_params(psf_d, _to_degrees, _to_arcsecs)
+
+    return (int_d, src_d, psf_d, extended)
+
+
+def set_column(tbl, col, colname, val, unit=None):
+    col.name = str(colname).strip()
+
+    if unit is not None and unit != '':
+        col.unit = unit
+
+    if type(val) in (str, numpy.string_):
+        col.set_nsets(1)
+        col.load(val,False)
+    else:
+        if numpy.isscalar(val):
+            col.set_nsets(1)
+        else:
+            col.set_nsets(len(val))    
+        col.set_values(numpy.asarray(val))
+    tbl.add_column(col)
+
+
+def data_substring(x,y,size,size_lo,size_hi,pos,pos_lo,pos_hi, hdr_str, _units_size):
+
+    unit = '"'
+    if _units_size == 'pixel':
+        unit = _units_size
+
+    lines = ("%s%s %s @ PA %s deg" % 
+             (hdr_str, format(size) , unit, format(pos)))
+
+    if x is not None and y is not None:
+        lines += (" at pixel coords %s, %s" % (format(x, "%.1f"),format(y, "%.1f")))
+
+    lines += ("\n    90%% Confidence intervals: (%s -- %s) @ (%s -- %s)\n\n" %
+              (format(size_lo),format(size_hi),format(pos_lo),format(pos_hi)))
+
+    return lines
+
+
+def format_data(id, psf, int_d, src_d, psf_d, extended, src_units_size, psf_units_size):
+
+    src_size    = _get_size(numpy.array([src_d['sigma_1'],src_d['sigma_2']]))
+    src_size_lo = _get_size(numpy.array([src_d['sigma_1_lo'],src_d['sigma_2_lo']]))
+    src_size_hi = _get_size(numpy.array([src_d['sigma_1_hi'],src_d['sigma_2_hi']]))
+
+    lines =  "Results for Source %i\n\n" % id
+    lines += data_substring(src_d['x'], src_d['y'], src_size, src_size_lo, src_size_hi,
+                            src_d['pos'], src_d['pos_lo'], src_d['pos_hi'],
+                            "Source Observed Size: ", src_units_size)
+
+    if psf is not None:
+        psf_size    = _get_size(numpy.array([psf_d['sigma_1'],psf_d['sigma_2']]))
+        psf_size_lo = _get_size(numpy.array([psf_d['sigma_1_lo'],psf_d['sigma_2_lo']]))
+        psf_size_hi = _get_size(numpy.array([psf_d['sigma_1_hi'],psf_d['sigma_2_hi']]))
+
+        lines += data_substring(psf_d['x'], psf_d['y'], psf_size, psf_size_lo, psf_size_hi,
+                                psf_d['pos'], psf_d['pos_lo'], psf_d['pos_hi'],
+                                "PSF Observed Size:    ", psf_units_size)
+
+        # already converted by ISS
+        int_size    = int_d['sigma_1']
+        int_size_lo = int_d['sigma_1_lo']
+        int_size_hi = int_d['sigma_1_hi']
+
+        lines += data_substring(int_d['x'], int_d['y'], int_size, int_size_lo, int_size_hi,
+                                int_d['pos'], int_d['pos_lo'], int_d['pos_hi'],
+                                "Estimated Intrinsic Size: ", src_units_size)
+
+        lhs = "Source is"
+        rhs = "extended at 90% confidence"
+
+        if extended:
+            lines += ' '.join([lhs,rhs])
+        else:
+            lines += ' '.join([lhs,"not",rhs])
+
+    return lines
+
+
+def write_file(outfile, srcfile, psffile, extended, int_d, src_d, psf_d,
+               src_units_size, psf_units_size):
+
+    tbl = pycrates.TABLECrate(outfile)
+
+    hdr = ['filename', 'psf', 'extent_flag']
+
+    d_keys = ['x','y',
+              'sigma_1','sigma_1_lo','sigma_1_hi',
+              'sigma_2','sigma_2_lo','sigma_2_hi',
+              'pos','pos_lo','pos_hi']
+
+    int_cols = ['','',
+                'major_axis','major_axis_lo','major_axis_hi',
+                'minor_axis','minor_axis_lo','minor_axis_hi',
+                'pos_angle', 'pos_angle_lo', 'pos_angle_hi']
+
+    src_cols = ['x', 'y',
+                'mjr_axis_raw','mjr_axis_raw_lo','mjr_axis_raw_hi',
+                'mnr_axis_raw','mnr_axis_raw_lo','mnr_axis_raw_hi',
+                'pos_angle_raw','pos_angle_raw_lo','pos_angle_raw_hi']
+
+    psf_cols = ['psf_x', 'psf_y',
+                'psf_mjr_axis','psf_mjr_axis_lo','psf_mjr_axis_hi',
+                'psf_mnr_axis','psf_mnr_axis_lo','psf_mnr_axis_hi',
+                'psf_pos_angle','psf_pos_angle_lo','psf_pos_angle_hi']
+
+    size = len(hdr)+len(int_cols)+len(src_cols)+len(psf_cols)-2
+    cols = [pycrates.CrateData() for ii in range(size)]
+
+    src_units = ['pixel']*2 + [src_units_size]*6 + ['deg']*3
+    psf_units = ['pixel']*2 + [psf_units_size]*6 + ['deg']*3
+
+    filenames = [srcfile,psffile,int(extended)]
+    if psffile is None:
+        hdr = ['filename']
+        filenames = [srcfile]
+
+    for item, name in izip(filenames, hdr):
+        set_column(tbl, cols.pop(0), name.upper(), item)
+
+    if psffile is not None:
+        for colname, key, unit in izip(int_cols, d_keys, src_units):
+            if int_d[key] is not None:
+                set_column(tbl, cols.pop(0), colname.upper(), int_d[key], unit)
+
+    for colname, key, unit in izip(src_cols, d_keys, src_units):
+        set_column(tbl, cols.pop(0), colname.upper(), src_d[key], unit)
+
+    if psffile is not None:
+        for colname, key, unit in izip(psf_cols, d_keys, psf_units):
+            set_column(tbl, cols.pop(0), colname.upper(), psf_d[key], unit)
+
+    tbl.write(outfile)
+
+
+def do_source(params, id, srcfile, outfile, psffile, regfile=None):
+
+    # Fit the PSF using guess
+    psf = MHO(None, None, params["srcsize"], 
+              img_size=params["imgsize"], bin_factor=params["binfactor"],
+              min_counts=params["mincounts"], min_thresh=params["minthresh"])
+
+    x, y, pars, errs = psf.mho_find_source_extent(psffile, source_shape=params["shape"],
+                                                  regfile=regfile)
+
+    psf_d = _save_params(x, y, pars, errs)
+
+    # geometric average of PSF sigmas as guess of crude source size
+    src_size = _get_size(pars[[0,1]])
+
+    if numpy.isnan(src_size):
+        src_size = params["srcsize"]
+
+    x = None; y = None;
+
+    # Fit the SRC using PSF fit
+    src = MHO(x, y, src_size, img_size=params["imgsize"], bin_factor=params["binfactor"],
+              min_counts=params["mincounts"], min_thresh=params["minthresh"])
+
+    x, y, pars, errs = src.mho_find_source_extent(srcfile,
+                                                  source_shape=params["shape"],
+                                                  regfile=regfile)
+
+    src_d = _save_params(x, y, pars, errs)
+
+    int_d, src_d, psf_d, extended = _transform_data(src_d, psf_d,
+                                                    src._to_degrees, src._to_arcsecs)
+
+    if get_verbose() < 30:
+        print(format_data(id, psffile, int_d, src_d, psf_d, extended,
+                          src._units_size, psf._units_size))
+
+    write_file(outfile, srcfile, psffile, extended, int_d, src_d, psf_d,
+               src._units_size, psf._units_size)
+#    return (srcfile, psffile, extended, int_d, src_d, psf_d, src._units_size, psf._units_size)
+
+
+def get_file(infiles):
+    file = None
+
+    if infiles:
+        file = infiles.pop(0)
+
+    if str(file) == "" or str(file) == "INDEF" or str(file).lower() == "none":
+        file = None
+
+    if file is not None and not os.path.isfile(file):
+        raise IOError("file not found '%s'" % file)
+
+    return file
+
+
+def run_srcextent():
+
+    params, verbose = get_parameters("srcextent.par")
+
+    set_verbose(verbose)
+
+    for ii, srcfile in enumerate(params["srcfiles"]):
+        id = ii + 1
+
+        if not os.path.isfile(srcfile):
+            raise IOError("source file not found '%s'" % srcfile)
+
+        psffile = get_file(params["psffiles"])
+        regfile = get_file(params["regfiles"])
+        outfile = params["outfiles"][ii]
+
+#     if (pycrates.Crate(srcfile).is_image() != pycrates.Crate(psffile).is_image()):
+#         raise IOError("source file and PSF file must both be images or tables")
+
+        do_source(params, id, srcfile, outfile, psffile, regfile)
+
+
+if __name__ == '__main__':
+    run_srcextent()

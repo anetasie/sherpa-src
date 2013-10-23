@@ -1,0 +1,13 @@
+srcfile,f,a,"",,,"Source file, FITS image or FITS events list"
+outfile,f,a,"",,,"Output file, FITS table"
+psffile,f,a,"",,,"PSF file, FITS image or FITS events list (optional)"
+regfile,f,a,"",,,"Region File, ellipse or circle, in FITS or ASCII (required for events list)"
+shape,s,h,"gaussian",,,"source shape [gaussian,disk]"
+srcsize,r,h,0,,,"crude estimate of source size [arcseconds]"
+imgsize,r,h,0,,,"size of image [arcseconds]"
+binfactor,i,h,0,,,"image binning factor"
+mincounts,i,h,15,,,"minimum counts threshold inside ellipse"
+minthresh,i,h,6,,,"minimum counts threshold for source file"
+clobber,b,h,no,,,"clobber output file"
+verbose,i,h,3,0,5,"verbosity setting"
+mode,s,h,"ql",,,

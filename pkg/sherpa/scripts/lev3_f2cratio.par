@@ -1,0 +1,10 @@
+specfile,s,a,"",,,"spectrafile input"
+outfile,s,a,"",,,"output containing flux-to-count ratio"
+e_band,s,h,"0.2,10.0",,,"energy range (keV) for flux"
+indx,r,h,1.7,,,"photo index of power law"
+norm,r,h,1.0,,,"norm of power law"
+nH,r,h,3.0,,,"H column absorption model (10^20 atoms/cm^2)"
+nH_gal,r,a,,,,"Galactic nH (10^20 atoms/cm^2)"
+kT,r,h,1.0,,,"temperature of blackbody (keV)"
+verbose,i,h,0,0,5,"verbosity level"
+mode,s,h,"ql",,,

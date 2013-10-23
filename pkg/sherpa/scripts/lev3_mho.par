@@ -1,0 +1,12 @@
+evtfile,f,a,"",,,"events file"
+outfile,f,a,"",,,"output of fit parameters"
+x0,r,a,,,,"approximate sky X coordinate"
+y0,r,a,,,,"approximate sky Y coordinate"
+srcsize,r,a,,,,"crude overestimate of source size from wavdetect, ~4.5 sigma"
+imgsize,r,h,0,,,"size of image"
+binfactor,i,h,0,,,"image binning factor"
+shape,s,h,"gaussian",,,"estimate of source shape"
+mincounts,i,h,15,6,,"minimum counts threshold inside ellipse"
+sigmafactor,r,h,0.355,,,"ratio of desired sigma to wavdetect guess e.g. 1.6/4.5"
+verbose,i,h,0,0,5,"verbosity level"
+mode,s,h,"ql",,,
